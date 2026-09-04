@@ -9,4 +9,4 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente.
   * Es werden zwei Passwörter zur Verwaltung benötigt
     * Das Adminpasswort: Nutzer kann im Nachhinein Listen modifizieren, ggf. korrigieren und löschen
     * Das Normale Passwort: Nutzer kann Liste erstellen und Spiele in diese Liste eintragen und diese Liste am Ende abgeben
-  * Nutzer mit normalem Passwort können nur an Spieltagen Listen erstellen und abgeben
+  * Nutzer mit normalem Passwort können nur an Spieltagen Listen (diesen Tages) erstellen, editieren und abgeben
