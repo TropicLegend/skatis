@@ -3,6 +3,7 @@ import { formatMatchdays, isoWeekday, parseIsoDate, todayIso } from '../../lib/d
 import type { TournamentRole } from '../../lib/tokens.js';
 
 export interface TournamentRules {
+  id: string;
   name: string;
   matchdays: number[];
 }
@@ -21,7 +22,7 @@ export function assertMatchdayAllowed(
   const weekday = isoWeekday(parseIsoDate(matchday));
   if (!tournament.matchdays.includes(weekday)) {
     throw forbidden(
-      `${matchday} is not a matchday of "${tournament.name}" ` +
+      `${matchday} is not a matchday of "${tournament.name}" (${tournament.id}) ` +
         `(matchdays: ${formatMatchdays(tournament.matchdays)})`,
     );
   }
@@ -34,11 +35,16 @@ export function assertMatchdayAllowed(
   }
 }
 
-/** Submitted lists are frozen and have to be reopened by an admin. */
-export function assertListEditable(status: 'OPEN' | 'SUBMITTED'): void {
-  if (status === 'SUBMITTED') {
+/**
+ * A submitted list is frozen for members. Admins may keep working on it at any
+ * time ("Nutzer kann im Nachhinein Listen modifizieren, ggf. korrigieren und
+ * löschen") – they do not have to reopen it first.
+ */
+export function assertListEditable(status: 'OPEN' | 'SUBMITTED', role: TournamentRole): void {
+  if (status === 'SUBMITTED' && role !== 'ADMIN') {
     throw conflict(
-      'This list has already been submitted and can only be changed after an admin reopened it',
+      'This list has already been submitted and can no longer be changed. ' +
+        'Ask an admin to correct it.',
     );
   }
 }

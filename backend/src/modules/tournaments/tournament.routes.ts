@@ -1,84 +1,70 @@
 import { Router } from 'express';
-import { unauthorized } from '../../lib/http-error.js';
-import { issueSessionToken } from '../../lib/tokens.js';
-import { authenticate } from '../../middleware/authenticate.js';
+import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { listRouter } from '../lists/list.routes.js';
 import {
-  authenticateTournament,
-  createTournament,
   deleteTournament,
   getTournament,
   listTournaments,
   updateTournament,
 } from './tournament.service.js';
 import {
-  createSessionSchema,
-  createTournamentSchema,
   listTournamentsQuery,
-  tournamentNameParams,
+  tournamentIdParams,
   updateTournamentSchema,
 } from './tournament.schemas.js';
 
 export const tournamentRouter = Router();
 
-/** Creates a tournament. The name has to be unique. */
-tournamentRouter.post('/', async (req, res) => {
-  const body = createTournamentSchema.parse(req.body ?? {});
-  const tournament = await createTournament(body);
-  res.status(201).json({ data: tournament });
-});
-
-tournamentRouter.get('/', async (req, res) => {
+/**
+ * The tournaments the presented token grants access to. Tokens are bound to a
+ * single tournament, so this lists exactly that one – unauthenticated callers
+ * cannot discover tournaments they do not have a password for.
+ */
+tournamentRouter.get('/', authenticate(), async (req, res) => {
+  const { tournamentId } = currentAuth(req);
   const query = listTournamentsQuery.parse(req.query);
-  const result = await listTournaments(query);
+  const result = await listTournaments(query, tournamentId);
+
   res.json({
     data: result.items,
     meta: { total: result.total, limit: result.limit, offset: result.offset },
   });
 });
 
-/** Exchanges one of the two tournament passwords for a session token. */
-tournamentRouter.post('/:tournamentName/sessions', async (req, res) => {
-  const { tournamentName } = tournamentNameParams.parse(req.params);
-  const { password } = createSessionSchema.parse(req.body ?? {});
+/** Details of the tournament – any of its two roles may read them. */
+tournamentRouter.get('/:tournamentId', authenticate(), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const tournament = await getTournament(tournamentId);
 
-  const authentication = await authenticateTournament(tournamentName, password);
-  if (!authentication) {
-    throw unauthorized('Invalid password');
-  }
-
-  const { token, expiresAt } = issueSessionToken(tournamentName, authentication.role);
-  const tournament = await getTournament(tournamentName);
-
-  res.json({
-    data: {
-      token,
-      role: authentication.role,
-      expiresAt: expiresAt.toISOString(),
-      tournament,
-    },
-  });
-});
-
-tournamentRouter.get('/:tournamentName', async (req, res) => {
-  const { tournamentName } = tournamentNameParams.parse(req.params);
-  const tournament = await getTournament(tournamentName);
   res.json({ data: tournament });
 });
 
-/** Admin only: change the matchdays and/or the passwords. */
-tournamentRouter.patch('/:tournamentName', authenticate('ADMIN'), async (req, res) => {
-  const { tournamentName } = tournamentNameParams.parse(req.params);
+/**
+ * Returns the identity behind the presented token – useful for a frontend that
+ * has a token in local storage and wants to know whether it is still valid.
+ */
+tournamentRouter.get('/:tournamentId/session', authenticate(), (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const auth = currentAuth(req);
+
+  res.json({ data: { tournamentId, role: auth.role } });
+});
+
+/** Admin only: change the name, the matchdays and/or the passwords. */
+tournamentRouter.patch('/:tournamentId', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = updateTournamentSchema.parse(req.body ?? {});
-  const tournament = await updateTournament(tournamentName, body);
+  const tournament = await updateTournament(tournamentId, body);
+
   res.json({ data: tournament });
 });
 
 /** Admin only: deletes the tournament including all lists and games. */
-tournamentRouter.delete('/:tournamentName', authenticate('ADMIN'), async (req, res) => {
-  const { tournamentName } = tournamentNameParams.parse(req.params);
-  await deleteTournament(tournamentName);
+tournamentRouter.delete('/:tournamentId', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  await deleteTournament(tournamentId);
+
   res.status(204).end();
 });
 
-tournamentRouter.use('/:tournamentName/lists', listRouter);
+tournamentRouter.use('/:tournamentId/lists', listRouter);

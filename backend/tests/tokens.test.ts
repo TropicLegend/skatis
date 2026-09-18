@@ -7,26 +7,28 @@ import {
   verifySessionToken,
 } from '../src/lib/tokens.js';
 
+const TOURNAMENT_ID = 'K7M2P4QX';
+
 describe('session tokens', () => {
   it('round-trips the claims', () => {
-    const { token, expiresAt } = issueSessionToken('Mittwochsrunde', 'ADMIN');
+    const { token, expiresAt } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
 
     expect(verifySessionToken(token)).toEqual({
-      tournamentName: 'Mittwochsrunde',
+      tournamentId: TOURNAMENT_ID,
       role: 'ADMIN',
     });
     expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('rejects a tampered token', () => {
-    const { token } = issueSessionToken('Mittwochsrunde', 'MEMBER');
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
 
     expect(() => verifySessionToken(`${token}x`)).toThrow();
   });
 
   it('rejects a token signed with a different secret', () => {
     const foreign = jwt.sign({ role: 'ADMIN' }, 'another-secret-that-is-long-enough-123', {
-      subject: 'Mittwochsrunde',
+      subject: TOURNAMENT_ID,
       issuer: TOKEN_ISSUER,
       audience: TOKEN_AUDIENCE,
     });
@@ -36,7 +38,7 @@ describe('session tokens', () => {
 
   it('rejects a token with an unknown role', () => {
     const forged = jwt.sign({ role: 'SUPERUSER' }, process.env.JWT_SECRET as string, {
-      subject: 'Mittwochsrunde',
+      subject: TOURNAMENT_ID,
       issuer: TOKEN_ISSUER,
       audience: TOKEN_AUDIENCE,
     });

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { isoDateSchema } from '../tournaments/tournament.schemas.js';
+import { isoDateSchema, tournamentIdSchema } from '../tournaments/tournament.schemas.js';
 import { createGameSchema } from './game.schemas.js';
 
 export const listParams = z.object({
-  tournamentName: z.string().trim().min(1).max(64),
+  tournamentId: tournamentIdSchema,
   matchday: isoDateSchema,
 });
 

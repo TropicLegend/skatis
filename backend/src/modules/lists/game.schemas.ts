@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateSchema } from '../tournaments/tournament.schemas.js';
+import { isoDateSchema, tournamentIdSchema } from '../tournaments/tournament.schemas.js';
 
 export const playerNameSchema = z.string().trim().min(1).max(64);
 
@@ -37,7 +37,7 @@ export const updateGameSchema = z
   });
 
 export const gameParams = z.object({
-  tournamentName: z.string().trim().min(1).max(64),
+  tournamentId: tournamentIdSchema,
   matchday: isoDateSchema,
   gameId: z.string().trim().min(1).max(64),
 });

@@ -1,18 +1,19 @@
 import type { Request, RequestHandler } from 'express';
 import { forbidden, unauthorized } from '../lib/http-error.js';
+import { normalizeTournamentId } from '../lib/tournament-id.js';
 import { verifySessionToken, type TournamentRole } from '../lib/tokens.js';
 
 export interface RequestAuth {
-  tournamentName: string;
+  tournamentId: string;
   role: TournamentRole;
 }
 
 /**
  * Requires a valid `Authorization: Bearer <token>` header.
  *
- * When the route contains a `:tournamentName` parameter the token must have
- * been issued for exactly that tournament. Passing roles restricts the
- * endpoint to those roles (no roles = any authenticated role).
+ * When the route contains a `:tournamentId` parameter the token must have been
+ * issued for exactly that tournament. Passing roles restricts the endpoint to
+ * those roles (no roles = any authenticated role).
  */
 export function authenticate(...allowedRoles: readonly TournamentRole[]): RequestHandler {
   return (req, _res, next) => {
@@ -36,8 +37,11 @@ export function authenticate(...allowedRoles: readonly TournamentRole[]): Reques
       return;
     }
 
-    const { tournamentName } = req.params;
-    if (tournamentName && claims.tournamentName !== tournamentName) {
+    const requestedId = req.params.tournamentId;
+    if (
+      typeof requestedId === 'string' &&
+      claims.tournamentId !== normalizeTournamentId(requestedId)
+    ) {
       next(forbidden('The session token does not grant access to this tournament'));
       return;
     }
@@ -47,7 +51,7 @@ export function authenticate(...allowedRoles: readonly TournamentRole[]): Reques
       return;
     }
 
-    req.auth = { tournamentName: claims.tournamentName, role: claims.role };
+    req.auth = { tournamentId: claims.tournamentId, role: claims.role };
     next();
   };
 }

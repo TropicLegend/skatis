@@ -10,7 +10,7 @@ import { assignPositions, toGameCreateData, toGameDto, type GameDto } from './ga
 
 export interface ListDto {
   id: string;
-  tournament: string;
+  tournamentId: string;
   matchday: string;
   status: ListStatus;
   submittedAt: string | null;
@@ -28,10 +28,10 @@ export const listWithGamesInclude = {
 
 type ListWithGames = Prisma.GameListGetPayload<{ include: typeof listWithGamesInclude }>;
 
-export function toListDto(list: ListWithGames, tournamentName: string, withGames = false): ListDto {
+export function toListDto(list: ListWithGames, tournamentId: string, withGames = false): ListDto {
   const dto: ListDto = {
     id: list.id,
-    tournament: tournamentName,
+    tournamentId,
     matchday: toIsoDate(list.matchday),
     status: list.status,
     submittedAt: list.submittedAt ? list.submittedAt.toISOString() : null,
@@ -73,10 +73,10 @@ export interface PaginatedLists {
 }
 
 export async function listLists(
-  tournamentName: string,
+  tournamentId: string,
   query: ListListsQuery,
 ): Promise<PaginatedLists> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
 
   const where: Prisma.GameListWhereInput = { tournamentId: tournament.id };
   if (query.status) {
@@ -101,25 +101,25 @@ export async function listLists(
   ]);
 
   return {
-    items: rows.map((row) => toListDto(row, tournament.name)),
+    items: rows.map((row) => toListDto(row, tournament.id)),
     total,
     limit: query.limit,
     offset: query.offset,
   };
 }
 
-export async function getList(tournamentName: string, matchday: string): Promise<ListDto> {
-  const tournament = await getTournamentRow(tournamentName);
+export async function getList(tournamentId: string, matchday: string): Promise<ListDto> {
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
-  return toListDto(list, tournament.name, true);
+  return toListDto(list, tournament.id, true);
 }
 
 export async function createList(
-  tournamentName: string,
+  tournamentId: string,
   input: CreateListInput,
   role: TournamentRole,
 ): Promise<ListDto> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
   assertMatchdayAllowed(tournament, input.matchday, role);
 
   const matchday = parseIsoDate(input.matchday);
@@ -145,26 +145,27 @@ export async function createList(
     include: listWithGamesInclude,
   });
 
-  return toListDto(list, tournament.name, true);
+  return toListDto(list, tournament.id, true);
 }
 
-export async function deleteList(tournamentName: string, matchday: string): Promise<void> {
-  const tournament = await getTournamentRow(tournamentName);
+/** Admin only (enforced by the route). */
+export async function deleteList(tournamentId: string, matchday: string): Promise<void> {
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   await prisma.gameList.deleteMany({ where: { id: list.id } });
 }
 
 export async function submitList(
-  tournamentName: string,
+  tournamentId: string,
   matchday: string,
   role: TournamentRole,
 ): Promise<ListDto> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   assertMatchdayAllowed(tournament, matchday, role);
-  assertListEditable(list.status);
+  assertListEditable(list.status, role);
 
   const updated = await prisma.gameList.update({
     where: { id: list.id },
@@ -172,12 +173,12 @@ export async function submitList(
     include: listWithGamesInclude,
   });
 
-  return toListDto(updated, tournament.name, true);
+  return toListDto(updated, tournament.id, true);
 }
 
-/** Admin only – reopens a submitted list so it can be corrected. */
-export async function reopenList(tournamentName: string, matchday: string): Promise<ListDto> {
-  const tournament = await getTournamentRow(tournamentName);
+/** Admin only: hands a submitted list back to the members. */
+export async function reopenList(tournamentId: string, matchday: string): Promise<ListDto> {
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   if (list.status !== 'SUBMITTED') {
@@ -190,5 +191,5 @@ export async function reopenList(tournamentName: string, matchday: string): Prom
     include: listWithGamesInclude,
   });
 
-  return toListDto(updated, tournament.name, true);
+  return toListDto(updated, tournament.id, true);
 }

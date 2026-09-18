@@ -1,7 +1,8 @@
-import type { Prisma, Tournament } from '@prisma/client';
-import { conflict, notFound } from '../../lib/http-error.js';
+import { Prisma, type Tournament } from '@prisma/client';
+import { notFound } from '../../lib/http-error.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
+import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import type {
   CreateTournamentInput,
@@ -9,8 +10,12 @@ import type {
   UpdateTournamentInput,
 } from './tournament.schemas.js';
 
+/** Number of attempts to find a free tournament id. */
+const MAX_ID_ATTEMPTS = 5;
+
 /** Never select the password hashes for responses. */
 export const tournamentPublicSelect = {
+  id: true,
   name: true,
   matchdays: true,
   createdAt: true,
@@ -21,6 +26,7 @@ export const tournamentPublicSelect = {
 type TournamentRow = Prisma.TournamentGetPayload<{ select: typeof tournamentPublicSelect }>;
 
 export interface TournamentDto {
+  id: string;
   name: string;
   matchdays: number[];
   listCount: number;
@@ -30,6 +36,7 @@ export interface TournamentDto {
 
 export function toTournamentDto(tournament: TournamentRow): TournamentDto {
   return {
+    id: tournament.id,
     name: tournament.name,
     matchdays: sortedDays(tournament.matchdays),
     listCount: tournament._count.lists,
@@ -42,31 +49,46 @@ function sortedDays(matchdays: readonly number[]): number[] {
   return [...matchdays].sort((a, b) => a - b);
 }
 
-export async function createTournament(input: CreateTournamentInput): Promise<TournamentDto> {
-  const existing = await prisma.tournament.findUnique({
-    where: { name: input.name },
-    select: { name: true },
-  });
-  if (existing) {
-    throw conflict(`A tournament named "${input.name}" already exists`);
-  }
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
+/**
+ * Creates a tournament and returns it – including the generated `id` that has
+ * to be shown in the frontend so that users can log in afterwards.
+ */
+export async function createTournament(input: CreateTournamentInput): Promise<TournamentDto> {
   const [adminPasswordHash, passwordHash] = await Promise.all([
     hashPassword(input.adminPassword),
     hashPassword(input.password),
   ]);
 
-  const tournament = await prisma.tournament.create({
-    data: {
-      name: input.name,
-      matchdays: sortedDays(input.matchdays),
-      adminPasswordHash,
-      passwordHash,
-    },
-    select: tournamentPublicSelect,
-  });
+  const tournament = {
+    name: input.name,
+    matchdays: sortedDays(input.matchdays),
+    adminPasswordHash,
+    passwordHash,
+  };
 
-  return toTournamentDto(tournament);
+  let lastError: unknown;
+
+  // The id is random – retry in the (very unlikely) case of a collision.
+  for (let attempt = 1; attempt <= MAX_ID_ATTEMPTS; attempt += 1) {
+    try {
+      const created = await prisma.tournament.create({
+        data: { ...tournament, id: generateTournamentId() },
+        select: tournamentPublicSelect,
+      });
+      return toTournamentDto(created);
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('Could not generate a unique tournament id');
 }
 
 export interface PaginatedTournaments {
@@ -76,16 +98,25 @@ export interface PaginatedTournaments {
   offset: number;
 }
 
-export async function listTournaments(query: ListTournamentsQuery): Promise<PaginatedTournaments> {
-  const where: Prisma.TournamentWhereInput = query.search
-    ? { name: { contains: query.search, mode: 'insensitive' } }
-    : {};
+/**
+ * Lists the tournaments a session grants access to. Sessions are bound to a
+ * single tournament, so `tournamentId` is always given – it keeps the endpoint
+ * from leaking tournaments the caller has no password for.
+ */
+export async function listTournaments(
+  query: ListTournamentsQuery,
+  tournamentId: string,
+): Promise<PaginatedTournaments> {
+  const where: Prisma.TournamentWhereInput = { id: tournamentId };
+  if (query.search) {
+    where.name = { contains: query.search, mode: 'insensitive' };
+  }
 
   const [rows, total] = await Promise.all([
     prisma.tournament.findMany({
       where,
       select: tournamentPublicSelect,
-      orderBy: { name: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
       take: query.limit,
       skip: query.offset,
     }),
@@ -100,13 +131,13 @@ export async function listTournaments(query: ListTournamentsQuery): Promise<Pagi
   };
 }
 
-export async function getTournament(name: string): Promise<TournamentDto> {
+export async function getTournament(tournamentId: string): Promise<TournamentDto> {
   const tournament = await prisma.tournament.findUnique({
-    where: { name },
+    where: { id: tournamentId },
     select: tournamentPublicSelect,
   });
   if (!tournament) {
-    throw notFound(`Tournament "${name}" does not exist`);
+    throw notFound(`Tournament "${tournamentId}" does not exist`);
   }
   return toTournamentDto(tournament);
 }
@@ -115,21 +146,24 @@ export async function getTournament(name: string): Promise<TournamentDto> {
  * Internal helper that includes the password hashes. Never expose the returned
  * object directly – use {@link toTournamentDto} instead.
  */
-export async function getTournamentRow(name: string): Promise<Tournament> {
-  const tournament = await prisma.tournament.findUnique({ where: { name } });
+export async function getTournamentRow(tournamentId: string): Promise<Tournament> {
+  const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
   if (!tournament) {
-    throw notFound(`Tournament "${name}" does not exist`);
+    throw notFound(`Tournament "${tournamentId}" does not exist`);
   }
   return tournament;
 }
 
 export async function updateTournament(
-  name: string,
+  tournamentId: string,
   input: UpdateTournamentInput,
 ): Promise<TournamentDto> {
-  const tournament = await getTournamentRow(name);
+  await getTournamentRow(tournamentId);
 
   const data: Prisma.TournamentUpdateInput = {};
+  if (input.name !== undefined) {
+    data.name = input.name;
+  }
   if (input.matchdays !== undefined) {
     data.matchdays = sortedDays(input.matchdays);
   }
@@ -141,7 +175,7 @@ export async function updateTournament(
   }
 
   const updated = await prisma.tournament.update({
-    where: { id: tournament.id },
+    where: { id: tournamentId },
     data,
     select: tournamentPublicSelect,
   });
@@ -149,10 +183,10 @@ export async function updateTournament(
   return toTournamentDto(updated);
 }
 
-export async function deleteTournament(name: string): Promise<void> {
-  const result = await prisma.tournament.deleteMany({ where: { name } });
+export async function deleteTournament(tournamentId: string): Promise<void> {
+  const result = await prisma.tournament.deleteMany({ where: { id: tournamentId } });
   if (result.count === 0) {
-    throw notFound(`Tournament "${name}" does not exist`);
+    throw notFound(`Tournament "${tournamentId}" does not exist`);
   }
 }
 
@@ -163,18 +197,20 @@ export interface TournamentAuthentication {
 /**
  * Resolves the role granted by a password. Verifies both passwords before
  * answering so that the response time does not reveal which one matched.
+ * Returns `null` for an unknown id as well, so the caller can answer with the
+ * same 401 – that way the endpoint does not disclose which ids exist.
  */
 export async function authenticateTournament(
-  name: string,
+  tournamentId: string,
   password: string,
 ): Promise<TournamentAuthentication | null> {
   const tournament = await prisma.tournament.findUnique({
-    where: { name },
+    where: { id: tournamentId },
     select: { adminPasswordHash: true, passwordHash: true },
   });
 
   if (!tournament) {
-    // Hash anyway so that unknown tournaments take a similar amount of time.
+    // Hash anyway so that unknown ids take a similar amount of time.
     await hashPassword(password);
     return null;
   }

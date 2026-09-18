@@ -11,23 +11,23 @@ function nextFreePosition(positions: readonly number[]): number {
   return positions.reduce((max, position) => Math.max(max, position), 0) + 1;
 }
 
-export async function listGames(tournamentName: string, matchday: string): Promise<GameDto[]> {
-  const tournament = await getTournamentRow(tournamentName);
+export async function listGames(tournamentId: string, matchday: string): Promise<GameDto[]> {
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
   return list.games.map(toGameDto);
 }
 
 export async function createGame(
-  tournamentName: string,
+  tournamentId: string,
   matchday: string,
   input: CreateGameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   assertMatchdayAllowed(tournament, matchday, role);
-  assertListEditable(list.status);
+  assertListEditable(list.status, role);
 
   // Without an explicit position the game is appended to the end of the list.
   // A concurrent insert may collide; the unique constraint then answers 409.
@@ -41,17 +41,17 @@ export async function createGame(
 }
 
 export async function updateGame(
-  tournamentName: string,
+  tournamentId: string,
   matchday: string,
   gameId: string,
   input: UpdateGameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   assertMatchdayAllowed(tournament, matchday, role);
-  assertListEditable(list.status);
+  assertListEditable(list.status, role);
 
   const game = list.games.find((candidate) => candidate.id === gameId);
   if (!game) {
@@ -74,16 +74,16 @@ export async function updateGame(
 }
 
 export async function deleteGame(
-  tournamentName: string,
+  tournamentId: string,
   matchday: string,
   gameId: string,
   role: TournamentRole,
 ): Promise<void> {
-  const tournament = await getTournamentRow(tournamentName);
+  const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
 
   assertMatchdayAllowed(tournament, matchday, role);
-  assertListEditable(list.status);
+  assertListEditable(list.status, role);
 
   const result = await prisma.game.deleteMany({ where: { id: gameId, listId: list.id } });
   if (result.count === 0) {

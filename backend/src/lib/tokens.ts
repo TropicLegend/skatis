@@ -8,8 +8,8 @@ export const TOKEN_AUDIENCE = 'skatis-client';
 export type TournamentRole = 'ADMIN' | 'MEMBER';
 
 export interface SessionClaims {
-  /** Name of the tournament the token grants access to. */
-  tournamentName: string;
+  /** Public id of the tournament the token grants access to. */
+  tournamentId: string;
   role: TournamentRole;
 }
 
@@ -18,12 +18,9 @@ export interface IssuedSessionToken {
   expiresAt: Date;
 }
 
-export function issueSessionToken(
-  tournamentName: string,
-  role: TournamentRole,
-): IssuedSessionToken {
+export function issueSessionToken(tournamentId: string, role: TournamentRole): IssuedSessionToken {
   const token = jwt.sign({ role }, env.JWT_SECRET, {
-    subject: tournamentName,
+    subject: tournamentId,
     expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
     issuer: TOKEN_ISSUER,
     audience: TOKEN_AUDIENCE,
@@ -51,5 +48,5 @@ export function verifySessionToken(token: string): SessionClaims {
     throw new Error('Malformed session token');
   }
 
-  return { tournamentName: decoded.sub, role };
+  return { tournamentId: decoded.sub, role };
 }

@@ -6,31 +6,31 @@ import { createGameSchema, gameParams, updateGameSchema } from './game.schemas.j
 export const gameRouter = Router({ mergeParams: true });
 
 gameRouter.get('/', authenticate(), async (req, res) => {
-  const { tournamentName, matchday } = gameParams.parse(req.params);
-  const games = await listGames(tournamentName, matchday);
+  const { tournamentId, matchday } = gameParams.parse(req.params);
+  const games = await listGames(tournamentId, matchday);
 
   res.json({ data: games });
 });
 
 gameRouter.post('/', authenticate(), async (req, res) => {
-  const { tournamentName, matchday } = gameParams.parse(req.params);
+  const { tournamentId, matchday } = gameParams.parse(req.params);
   const body = createGameSchema.parse(req.body ?? {});
-  const game = await createGame(tournamentName, matchday, body, currentAuth(req).role);
+  const game = await createGame(tournamentId, matchday, body, currentAuth(req).role);
 
   res.status(201).json({ data: game });
 });
 
 gameRouter.patch('/:gameId', authenticate(), async (req, res) => {
-  const { tournamentName, matchday, gameId } = gameParams.parse(req.params);
+  const { tournamentId, matchday, gameId } = gameParams.parse(req.params);
   const body = updateGameSchema.parse(req.body ?? {});
-  const game = await updateGame(tournamentName, matchday, gameId, body, currentAuth(req).role);
+  const game = await updateGame(tournamentId, matchday, gameId, body, currentAuth(req).role);
 
   res.json({ data: game });
 });
 
 gameRouter.delete('/:gameId', authenticate(), async (req, res) => {
-  const { tournamentName, matchday, gameId } = gameParams.parse(req.params);
-  await deleteGame(tournamentName, matchday, gameId, currentAuth(req).role);
+  const { tournamentId, matchday, gameId } = gameParams.parse(req.params);
+  await deleteGame(tournamentId, matchday, gameId, currentAuth(req).role);
 
   res.status(204).end();
 });

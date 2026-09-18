@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createTournamentSchema,
   listTournamentsQuery,
+  loginTournamentSchema,
+  tournamentIdSchema,
   updateTournamentSchema,
 } from '../src/modules/tournaments/tournament.schemas.js';
 import { createListSchema } from '../src/modules/lists/list.schemas.js';
@@ -76,6 +78,29 @@ describe('listTournamentsQuery', () => {
   it('rejects out of range pagination', () => {
     expect(() => listTournamentsQuery.parse({ limit: '1000' })).toThrow();
     expect(() => listTournamentsQuery.parse({ offset: '-1' })).toThrow();
+  });
+});
+
+describe('tournamentIdSchema', () => {
+  it('normalises the id so that it is case insensitive', () => {
+    expect(tournamentIdSchema.parse('  k7m2p4qx ')).toBe('K7M2P4QX');
+  });
+
+  it('rejects empty ids', () => {
+    expect(() => tournamentIdSchema.parse('')).toThrow();
+  });
+});
+
+describe('loginTournamentSchema', () => {
+  it('accepts the id and the password', () => {
+    expect(loginTournamentSchema.parse({ tournamentId: 'k7m2p4qx', password: 'secret' })).toEqual({
+      tournamentId: 'K7M2P4QX',
+      password: 'secret',
+    });
+  });
+
+  it('rejects a missing password', () => {
+    expect(() => loginTournamentSchema.parse({ tournamentId: 'K7M2P4QX' })).toThrow();
   });
 });
 
