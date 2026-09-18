@@ -1,0 +1,71 @@
+// Skatis backend – data model
+//
+// A tournament is identified by its name and is protected by two passwords:
+//   * adminPasswordHash – may change matchdays, reset the regular password,
+//     create/correct/delete lists at any time (including the past)
+//   * passwordHash      – may create a list for the current matchday, enter
+//     games and submit that list
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Status of a list ("Liste"). Once submitted it is frozen unless an admin reopens it.
+enum ListStatus {
+  OPEN
+  SUBMITTED
+}
+
+/// A tournament. `name` is the public identifier used in URLs.
+model Tournament {
+  id                String     @id @default(uuid())
+  name              String     @unique @db.VarChar(64)
+  /// ISO-8601 weekday numbers (1 = Monday … 7 = Sunday) on which lists may be created
+  matchdays         Int[]
+  adminPasswordHash String
+  passwordHash      String
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lists             GameList[]
+
+  @@map("tournaments")
+}
+
+/// One list per matchday of a tournament.
+model GameList {
+  id           String     @id @default(uuid())
+  tournamentId String
+  matchday     DateTime   @db.Date
+  status       ListStatus @default(OPEN)
+  submittedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  games        Game[]
+
+  @@unique([tournamentId, matchday])
+  @@map("game_lists")
+}
+
+/// A single game ("Spiel") entered into a list.
+model Game {
+  id        String   @id @default(uuid())
+  listId    String
+  position  Int
+  players   String[]
+  declarer  String?
+  gameType  String?
+  points    Int
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  list      GameList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, position])
+  @@map("games")
+}

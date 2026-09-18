@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+
+# Prisma has its own formatter: `npx prisma format`
+prisma/
