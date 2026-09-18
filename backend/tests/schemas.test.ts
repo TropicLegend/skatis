@@ -307,18 +307,43 @@ describe('gameSchema – passed out games', () => {
 });
 
 describe('createListSchema', () => {
-  it('accepts a list without games', () => {
-    expect(createListSchema.parse({ matchday: '2026-09-16' })).toEqual({ matchday: '2026-09-16' });
+  it('accepts a list of a series and a table', () => {
+    expect(createListSchema.parse({ matchday: '2026-09-16', series: 1, table: 3 })).toEqual({
+      matchday: '2026-09-16',
+      series: 1,
+      table: 3,
+    });
+  });
+
+  it('reads the numbers of the head from strings as well', () => {
+    const parsed = createListSchema.parse({ matchday: '2026-09-16', series: '2', table: '7' });
+    expect(parsed.series).toBe(2);
+    expect(parsed.table).toBe(7);
+  });
+
+  it('requires the series and the table of the sheet', () => {
+    expect(() => createListSchema.parse({ matchday: '2026-09-16', series: 1 })).toThrow();
+    expect(() => createListSchema.parse({ matchday: '2026-09-16', table: 1 })).toThrow();
+  });
+
+  it('rejects a series or table that is not a positive integer', () => {
+    const base = { matchday: '2026-09-16', series: 1, table: 1 };
+    expect(() => createListSchema.parse({ ...base, series: 0 })).toThrow();
+    expect(() => createListSchema.parse({ ...base, table: -1 })).toThrow();
+    expect(() => createListSchema.parse({ ...base, table: 1.5 })).toThrow();
+    expect(() => createListSchema.parse({ ...base, series: 'Tisch A' })).toThrow();
   });
 
   it('rejects an impossible date', () => {
-    expect(() => createListSchema.parse({ matchday: '2026-02-30' })).toThrow();
-    expect(() => createListSchema.parse({ matchday: '16.09.2026' })).toThrow();
+    expect(() => createListSchema.parse({ matchday: '2026-02-30', series: 1, table: 1 })).toThrow();
+    expect(() => createListSchema.parse({ matchday: '16.09.2026', series: 1, table: 1 })).toThrow();
   });
 
   it('accepts a list with a lineup and games in one request', () => {
     const parsed = createListSchema.parse({
       matchday: '2026-09-16',
+      series: 1,
+      table: 2,
       playerNames: ['Anna', 'Bert', 'Clara'],
       games: [
         { passedOut: true },
@@ -328,11 +353,17 @@ describe('createListSchema', () => {
 
     expect(parsed.games).toHaveLength(2);
     expect(parsed.playerNames).toHaveLength(3);
+    expect(parsed.table).toBe(2);
   });
 
   it('rejects an incomplete lineup', () => {
     expect(() =>
-      createListSchema.parse({ matchday: '2026-09-16', playerNames: ['Anna', 'Bert'] }),
+      createListSchema.parse({
+        matchday: '2026-09-16',
+        series: 1,
+        table: 1,
+        playerNames: ['Anna', 'Bert'],
+      }),
     ).toThrow();
   });
 });

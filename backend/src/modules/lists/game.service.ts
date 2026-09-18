@@ -1,4 +1,5 @@
 import { notFound } from '../../lib/http-error.js';
+import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
@@ -26,24 +27,24 @@ function lastDealer(list: ListWithGames): string | null {
   return last ? last.dealer : null;
 }
 
-export async function listGames(tournamentId: string, matchday: string): Promise<GameDto[]> {
+export async function listGames(tournamentId: string, listId: string): Promise<GameDto[]> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
   return list.games.map(toGameDto);
 }
 
 /** One game of a list – reading needs no role, like the other reads. */
 export async function getGame(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   gameId: string,
 ): Promise<GameDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
   const game = list.games.find((candidate) => candidate.id === gameId);
   if (!game) {
-    throw notFound(`Game ${gameId} does not exist in the list for ${matchday}`);
+    throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
 
   return toGameDto(game);
@@ -57,14 +58,14 @@ export async function getGame(
  */
 export async function createGame(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   input: GameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, matchday, role);
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const lineup = lineupNames(list);
@@ -94,20 +95,20 @@ export async function createGame(
  */
 export async function replaceGame(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   gameId: string,
   input: GameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, matchday, role);
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const game = list.games.find((candidate) => candidate.id === gameId);
   if (!game) {
-    throw notFound(`Game ${gameId} does not exist in the list for ${matchday}`);
+    throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
 
   const lineup = lineupNames(list);
@@ -130,18 +131,18 @@ export async function replaceGame(
 
 export async function deleteGame(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   gameId: string,
   role: TournamentRole,
 ): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, matchday, role);
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const result = await prisma.game.deleteMany({ where: { id: gameId, listId: list.id } });
   if (result.count === 0) {
-    throw notFound(`Game ${gameId} does not exist in the list for ${matchday}`);
+    throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
 }

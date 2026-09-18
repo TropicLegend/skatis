@@ -64,16 +64,24 @@ model GameList {
   id           String           @id @default(uuid())
   tournamentId String
   matchday     DateTime         @db.Date
+  /// Serie within the tournament – the head of the sheet calls it "Serie".
+  series       Int
+  /// Tisch of the evening – the number of the table this sheet belongs to.
+  table        Int              @map("table_number")
   status       ListStatus       @default(OPEN)
   submittedAt  DateTime?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   games        Game[]
-  /// The players of the matchday in their seating order (3, 4 or 5 players).
+  /// The players of the table in their seating order (3, 4 or 5 players).
   lineup       GameListPlayer[]
 
-  @@unique([tournamentId, matchday])
+  // A table of a series is unique per evening – two sheets cannot claim the same
+  // "Serie 1, Tisch 3". Several lists still share a matchday, they only have to
+  // differ in series or table. The list itself is addressed by its id.
+  @@unique([tournamentId, matchday, series, table], map: "game_lists_matchday_series_table_key")
+  @@index([tournamentId, matchday])
   @@map("game_lists")
 }
 

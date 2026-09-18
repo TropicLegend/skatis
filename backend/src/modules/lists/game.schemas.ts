@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { playerNameSchema } from '../players/player.schemas.js';
-import { isoDateSchema, tournamentIdSchema } from '../tournaments/tournament.schemas.js';
 import { maxMatadors } from './game-rules.js';
 
 export const gameTypeSchema = z.enum(['KARO', 'HERZ', 'PIK', 'KREUZ', 'GRAND', 'NULL']);
@@ -115,17 +114,6 @@ export const gameSchema = z.discriminatedUnion('passedOut', [
   passedOutGameSchema,
   playedGameSchema,
 ]);
-
-/** Route parameters of the games of a list. */
-export const gamesParams = z.object({
-  tournamentId: tournamentIdSchema,
-  matchday: isoDateSchema,
-});
-
-/** Route parameters of a single game. */
-export const gameParams = gamesParams.extend({
-  gameId: z.string().trim().min(1).max(64),
-});
 
 export type GameInput = z.infer<typeof gameSchema>;
 export type PlayedGameInput = z.infer<typeof playedGameSchema>;

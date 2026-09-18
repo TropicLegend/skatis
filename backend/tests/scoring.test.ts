@@ -9,9 +9,17 @@ import {
   type ScorableGame,
 } from '../src/modules/lists/scoring.js';
 
-/** A game as the table sees it. */
-function game(declarer: string | null, won: boolean | null, gameValue: number): ScorableGame {
-  return { declarer, won, gameValue };
+/**
+ * A game as the table sees it. It is dealt by the first player of the lineup,
+ * so the three at the table are the lineup without the ones who sit out.
+ */
+function game(
+  declarer: string | null,
+  won: boolean | null,
+  gameValue: number,
+  players: readonly string[] = ['Bert', 'Clara', 'Dora'],
+): ScorableGame {
+  return { players, declarer, won, gameValue };
 }
 
 const PASSED_OUT = game(null, null, 0);
@@ -150,6 +158,39 @@ describe('scoreList', () => {
       totalGameValue: 143,
       opponentBonusPerGame: 30,
     });
+  });
+
+  it('counts the games a player took part in, not the games they declared', () => {
+    const results = scoreList(
+      LINEUP,
+      [
+        // Round 1: Anna deals, so Anna sits out and Bert loses.
+        game('Bert', false, 20, ['Bert', 'Clara', 'Dora']),
+        // Round 2: Bert deals, Anna wins.
+        game('Anna', true, 23, ['Anna', 'Clara', 'Dora']),
+        // Round 3: Clara deals.
+        game(null, null, 0, ['Anna', 'Bert', 'Dora']),
+      ],
+      '2026-09-16',
+    );
+
+    expect(byName(results, 'Anna').gamesPlayed).toBe(2);
+    expect(byName(results, 'Bert').gamesPlayed).toBe(2);
+    expect(byName(results, 'Clara').gamesPlayed).toBe(2);
+    expect(byName(results, 'Dora').gamesPlayed).toBe(3);
+  });
+
+  it('pays the opponent bonus although the player sat the round out', () => {
+    // Anna deals in round 1, so she is not at the table – but she still profits
+    // from the Alleinspiel Bert lost.
+    const results = scoreList(
+      LINEUP,
+      [game('Bert', false, 20, ['Bert', 'Clara', 'Dora'])],
+      '2026-09-16',
+    );
+
+    expect(byName(results, 'Anna').gamesPlayed).toBe(0);
+    expect(byName(results, 'Anna').opponentBonus).toBe(30);
   });
 
   it('gives every player of the lineup a row, in seating order', () => {

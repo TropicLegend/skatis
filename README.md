@@ -62,7 +62,7 @@ Wenn der Spieler der Alleinspieler ist gewinnt. Bekommt der den Spielwert gutges
 
 Die Tabelle besteht aus einem Kopfbereich, einem Spielwert-/Gewinnstufenbereich, vier Spielerbereichen und einer abschließenden Punkteauswertung.
 
-Kopf: Datum, Serie und Tisch sowie Name und Startnummer für vier Spieler. Die Spieler werden als Platz 1, Platz 2, Platz 3 und Platz 4 bezeichnet.
+Kopf: Datum, Serie und Tisch sowie der Name der vier Spieler. Die Spieler werden als Platz 1, Platz 2, Platz 3 und Platz 4 bezeichnet.
 
 Spieltabelle: Es gibt 48 Zeilen, nummeriert von 1 bis 48. Jede Zeile entspricht einem Spiel. Die Spalten sind in folgender Reihnfolge (Grundwert,Spitze "Mit",Spitze "Ohne", Hand, Schneider, Scheider Ang, Schwarz, Schwarz Ang, Offen, Positiver Spielwert, Negativer Spielwert) dann für jeder Spieler eine (Eintragungsspalte,Gew,Verl) und am eine eine Eingepasst Spalte."
 

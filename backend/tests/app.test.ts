@@ -71,14 +71,15 @@ describe('api', () => {
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('validates path parameters before touching the database', async () => {
+  it('treats a list id as opaque and leaves "does not exist" to the database', async () => {
     const response = await request(app)
-      .get(`/api/tournaments/${TOURNAMENT_ID}/lists/nonsense`)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists/not-a-real-list`)
       .set('Authorization', `Bearer ${issueSessionToken(TOURNAMENT_ID, 'MEMBER').token}`);
 
-    expect(response.status).toBe(422);
-    expect(response.body.error.code).toBe('VALIDATION_ERROR');
-    expect(response.body.error.details.issues[0].path).toBe('matchday');
+    // A list is addressed by its id, so nothing about the id itself can be
+    // malformed any more – an id that is unknown is a 404 (503 here, because
+    // the suite runs without a database).
+    expect(response.body.error?.code).not.toBe('VALIDATION_ERROR');
   });
 
   it('requires a bearer token for protected endpoints', async () => {
@@ -165,7 +166,7 @@ describe('api', () => {
   it('validates the lineup of a list before touching the database', async () => {
     const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
     const response = await request(app)
-      .put(`/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/players`)
+      .put(`/api/tournaments/${TOURNAMENT_ID}/lists/list-1/players`)
       .set('Authorization', `Bearer ${token}`)
       .send({ playerNames: [] });
 
@@ -174,13 +175,14 @@ describe('api', () => {
     expect(response.body.error.details.issues[0].path).toBe('playerNames');
   });
 
-  it('validates the matchday of the results endpoint before touching the database', async () => {
+  it('validates the matchday filter of the list collection before touching the database', async () => {
     const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
     const response = await request(app)
-      .get(`/api/tournaments/${TOURNAMENT_ID}/lists/nonsense/results`)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists?matchday=nonsense`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(response.body.error.details.issues[0].path).toBe('matchday');
   });
 
@@ -197,10 +199,11 @@ describe('api', () => {
 
   it('protects the endpoints that were added last', async () => {
     const paths = [
-      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/results`],
-      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/games/game-1`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/results`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/games/game-1`],
       ['patch', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
       ['delete', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/standings`],
     ] as const;
 
     for (const [method, path] of paths) {

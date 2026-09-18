@@ -32,6 +32,8 @@ export const LOSS_PENALTY = 50;
 
 /** What one game contributes to the table. */
 export interface ScorableGame {
+  /** The three players of the round – they took part, played or Eingepasst. */
+  players: readonly string[];
   /** `null` when the game was passed out. */
   declarer: string | null;
   /** `null` when the game was passed out. */
@@ -43,6 +45,8 @@ export interface PlayerResultDto {
   name: string;
   /** Seat in the lineup – position 1 dealt in round 1. */
   position: number;
+  /** Games of the list the player took part in – the Geber rule decides it. */
+  gamesPlayed: number;
   /** Number of Alleinspiele the player won ("Gew"). */
   won: number;
   /** Number of Alleinspiele the player lost ("Verl"). */
@@ -94,6 +98,9 @@ export function opponentBonusPerGame(playerCount: number): number {
 /**
  * Builds the result table of a list. The lineup is taken as given, so a game
  * whose declarer is not in it (impossible through the API) is ignored.
+ *
+ * The tournament standing is built from these tables, and it carries
+ * `points + opponentBonus` of every matchday – see `../tournaments/standings.ts`.
  */
 export function scoreList(
   lineup: readonly string[],
@@ -135,6 +142,7 @@ export function scoreList(
     return {
       name,
       position: index + 1,
+      gamesPlayed: games.filter((game) => game.players.includes(name)).length,
       won: won.length,
       lost: lost.length,
       wonGameValue,

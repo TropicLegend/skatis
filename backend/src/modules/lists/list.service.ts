@@ -28,6 +28,10 @@ export interface ListDto {
   id: string;
   tournamentId: string;
   matchday: string;
+  /** "Serie" from the head of the sheet – which round of games this is. */
+  series: number;
+  /** "Tisch" from the head of the sheet – which table this sheet belongs to. */
+  table: number;
   status: ListStatus;
   submittedAt: string | null;
   /**
@@ -87,6 +91,8 @@ export function toListDto(
     id: list.id,
     tournamentId: context.tournamentId,
     matchday: toIsoDate(list.matchday),
+    series: list.series,
+    table: list.table,
     status: list.status,
     submittedAt: list.submittedAt ? list.submittedAt.toISOString() : null,
     locked: lockReasons.length > 0,
@@ -108,18 +114,18 @@ export function toListDto(
   return dto;
 }
 
-/** Loads a list by matchday, including its games. Throws 404 when missing. */
+/** Loads a list by id, including its games. Throws 404 when it does not exist. */
 export async function findListOrThrow(
   tournamentId: string,
-  matchday: string,
+  listId: string,
 ): Promise<ListWithGames> {
-  const list = await prisma.gameList.findUnique({
-    where: { tournamentId_matchday: { tournamentId, matchday: parseIsoDate(matchday) } },
+  const list = await prisma.gameList.findFirst({
+    where: { id: listId, tournamentId },
     include: listWithGamesInclude,
   });
 
   if (!list) {
-    throw notFound(`No list exists for ${matchday}`);
+    throw notFound(`List ${listId} does not exist in this tournament`);
   }
 
   return list;
@@ -143,7 +149,11 @@ export async function listLists(
   if (query.status) {
     where.status = query.status;
   }
-  if (query.from || query.to) {
+  // `matchday` picks the evening (several tables may share it), `from`/`to`
+  // span a range of them.
+  if (query.matchday) {
+    where.matchday = parseIsoDate(query.matchday);
+  } else if (query.from || query.to) {
     where.matchday = {
       ...(query.from ? { gte: parseIsoDate(query.from) } : {}),
       ...(query.to ? { lte: parseIsoDate(query.to) } : {}),
@@ -154,7 +164,7 @@ export async function listLists(
     prisma.gameList.findMany({
       where,
       include: listWithGamesInclude,
-      orderBy: { matchday: 'desc' },
+      orderBy: [{ matchday: 'desc' }, { series: 'asc' }, { table: 'asc' }],
       take: query.limit,
       skip: query.offset,
     }),
@@ -171,11 +181,11 @@ export async function listLists(
 
 export async function getList(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   role: TournamentRole,
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
   return toListDto(list, listViewContext(tournament, role), true);
 }
 
@@ -188,10 +198,10 @@ export async function getList(
  */
 export async function getListResults(
   tournamentId: string,
-  matchday: string,
+  listId: string,
 ): Promise<ListResultsDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
   return scoreList(lineupNames(list), list.games, toIsoDate(list.matchday));
 }
@@ -205,17 +215,29 @@ export async function createList(
   assertMatchdayAllowed(tournament, input.matchday, role);
 
   const matchday = parseIsoDate(input.matchday);
+
+  // A table of a series can only have one sheet per evening. The unique index
+  // backs this up; the check is here to answer with a helpful message.
   const existing = await prisma.gameList.findUnique({
-    where: { tournamentId_matchday: { tournamentId: tournament.id, matchday } },
+    where: {
+      tournamentId_matchday_series_table: {
+        tournamentId: tournament.id,
+        matchday,
+        series: input.series,
+        table: input.table,
+      },
+    },
     select: { id: true },
   });
   if (existing) {
-    throw conflict(`A list for ${input.matchday} already exists`);
+    throw conflict(
+      `Serie ${input.series}, Tisch ${input.table} already has a list for ${input.matchday}`,
+      { listId: existing.id },
+    );
   }
 
   const games = input.games ?? [];
   const players = await resolveTournamentPlayers(tournament.id, input.playerNames ?? []);
-
   if (games.length > 0) {
     assertLineupComplete(players.length);
   }
@@ -243,6 +265,8 @@ export async function createList(
     data: {
       tournamentId: tournament.id,
       matchday,
+      series: input.series,
+      table: input.table,
       lineup: {
         create: players.map((player, index) => ({
           position: index + 1,
@@ -264,14 +288,14 @@ export async function createList(
  */
 export async function setListPlayers(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   playerNames: readonly string[],
   role: TournamentRole,
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, matchday, role);
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   if (list.games.length > 0) {
@@ -294,27 +318,27 @@ export async function setListPlayers(
     });
   });
 
-  const updated = await findListOrThrow(tournament.id, matchday);
+  const updated = await findListOrThrow(tournament.id, list.id);
   return toListDto(updated, listViewContext(tournament, role), true);
 }
 
 /** Admin only (enforced by the route). */
-export async function deleteList(tournamentId: string, matchday: string): Promise<void> {
+export async function deleteList(tournamentId: string, listId: string): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
   await prisma.gameList.deleteMany({ where: { id: list.id } });
 }
 
 export async function submitList(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   role: TournamentRole,
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, matchday, role);
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
 
   // Submitting twice is always a mistake – an admin who wants a new timestamp
   // reopens the list first.
@@ -339,11 +363,11 @@ export async function submitList(
  */
 export async function reopenList(
   tournamentId: string,
-  matchday: string,
+  listId: string,
   role: TournamentRole,
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
-  const list = await findListOrThrow(tournament.id, matchday);
+  const list = await findListOrThrow(tournament.id, listId);
 
   if (list.status !== 'SUBMITTED') {
     throw conflict('This list is not submitted');

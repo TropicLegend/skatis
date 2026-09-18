@@ -1,32 +1,27 @@
-/**
- * The standings of a tournament ("Turnierwertung").
- *
- * A matchday is scored on its own table (see `../lists/scoring.ts`), which
- * contains parts that only make sense for that one evening – the flat +50/−50
- * per Alleinspiel and the bonus for the losses of the other players. Those are
- * deliberately **not** carried over between matchdays.
- *
- * The tournament standing therefore tracks just two things per player, added up
- * over the matchdays:
- *
- * * how many games they took part in
- * * how many points they gained with them (the account of the matchday)
- *
- * and ranks by the average points per game, which makes players comparable who
- * played a different number of games. Everything here is pure – the service
- * only feeds it the games of the submitted matchdays.
- */
+import type { ListResultsDto } from '../lists/scoring.js';
 
-/** One game, as far as the standing cares about it. */
-export interface StandingGame {
-  /** The three players of the round – they took part, whether or not it was played. */
-  players: readonly string[];
-  /** `null` for a game that was passed out. */
-  declarer: string | null;
-  /** `null` for a game that was passed out. */
-  won: boolean | null;
-  gameValue: number;
-}
+/**
+ * The standing of a tournament.
+ *
+ * It is built from the result tables of the matchdays that were submitted, so
+ * the two views can never drift apart. A matchday contributes two numbers per
+ * player:
+ *
+ * * `gamesPlayed` – the games of that matchday the player took part in
+ * * `points + opponentBonus` – what the player gained: the Spielwerte of their
+ *   own Alleinspiele (a loss debited twice) plus the bonus for every Alleinspiel
+ *   **another** player lost (+40 / +30 / +24 for a lineup of 3 / 4 / 5)
+ *
+ * The bonus is why a player can gain points in a game they did not take part
+ * in: it is paid out to the whole lineup of the matchday, not only to the three
+ * players at the table.
+ *
+ * Both numbers are added up over the matchdays, and the ranking value is the
+ * score per game played, which makes players comparable who played a different
+ * number of games. The parts of the matchday table that belong to that one
+ * evening – the flat +50 per won and -50 per lost Alleinspiel – are deliberately
+ * **not** carried over.
+ */
 
 export interface StandingRow {
   /** Position in the table, `1` is the best. `null` while the player has no game. */
@@ -34,24 +29,24 @@ export interface StandingRow {
   name: string;
   /** Games of the counted matchdays the player took part in. */
   gamesPlayed: number;
-  /** Points gained with those games: a loss counts twice, as in the table. */
+  /** Spielwerte of the player's own Alleinspiele – a loss is debited twice. */
   points: number;
-  /** `points / gamesPlayed`, rounded to two decimals. `null` without a game. */
-  averagePoints: number | null;
+  /** Bonus for the Alleinspiele the other players lost. */
+  opponentBonus: number;
+  /** `points + opponentBonus` – what the whole tournament earned the player. */
+  score: number;
+  /** `score / gamesPlayed`, rounded to two decimals. `null` without a game. */
+  averageScore: number | null;
 }
 
 export interface TournamentStandingsDto {
   tournamentId: string;
-  /** How many submitted matchdays went into the standing. */
+  /** How many dates went into the standing. */
   matchdaysCounted: number;
+  /** How many submitted lists went into the standing – a date may have several. */
+  listsCounted: number;
   /** The players of the tournament, best first. */
   players: StandingRow[];
-}
-
-/** What one game is worth to its Alleinspieler – a loss is debited twice. */
-export function gamePoints(game: StandingGame): number {
-  if (game.declarer === null || game.won === null) return 0;
-  return game.won ? game.gameValue : -2 * game.gameValue;
 }
 
 /** Rounds to two decimals and never returns a negative zero. */
@@ -60,38 +55,54 @@ function round2(value: number): number {
   return rounded === 0 ? 0 : rounded;
 }
 
+/** The numbers a player collected over the counted matchdays. */
+interface Account {
+  gamesPlayed: number;
+  points: number;
+  opponentBonus: number;
+}
+
 /**
- * Builds the standing from the games of the counted matchdays. `names` is the
- * roster of the tournament – a player without a game keeps a row, but without a
- * rank.
+ * Builds the standing from the result tables of the counted lists. `names` is
+ * the roster of the tournament – a player without a game keeps a row, but
+ * without a rank.
  */
 export function tournamentStandings(
   tournamentId: string,
   names: readonly string[],
-  games: readonly StandingGame[],
-  matchdaysCounted: number,
+  lists: readonly ListResultsDto[],
 ): TournamentStandingsDto {
-  const counted = new Map<string, { gamesPlayed: number; points: number }>();
-  for (const name of names) counted.set(name, { gamesPlayed: 0, points: 0 });
+  const accounts = new Map<string, Account>();
+  for (const name of names) {
+    accounts.set(name, { gamesPlayed: 0, points: 0, opponentBonus: 0 });
+  }
 
-  for (const game of games) {
-    for (const name of game.players) {
-      const entry = counted.get(name);
-      // A game of a player who is not in the roster cannot happen through the
+  for (const list of lists) {
+    for (const player of list.players) {
+      // A row for a player who is not in the roster cannot happen through the
       // API; ignoring it keeps the standing consistent with the roster.
-      if (entry) entry.gamesPlayed += 1;
-    }
+      const account = accounts.get(player.name);
+      if (!account) continue;
 
-    if (game.declarer !== null) {
-      const entry = counted.get(game.declarer);
-      if (entry) entry.points += gamePoints(game);
+      account.gamesPlayed += player.gamesPlayed;
+      account.points += player.points;
+      account.opponentBonus += player.opponentBonus;
     }
   }
 
   const rows = names.map((name) => {
-    const { gamesPlayed, points } = counted.get(name) ?? { gamesPlayed: 0, points: 0 };
-    // The ranking uses the unrounded average, so rounding cannot change it.
-    return { name, gamesPlayed, points, average: gamesPlayed === 0 ? null : points / gamesPlayed };
+    const account = accounts.get(name) ?? { gamesPlayed: 0, points: 0, opponentBonus: 0 };
+    const score = account.points + account.opponentBonus;
+
+    return {
+      name,
+      gamesPlayed: account.gamesPlayed,
+      points: account.points,
+      opponentBonus: account.opponentBonus,
+      score,
+      // The ranking uses the unrounded average, so rounding cannot change it.
+      average: account.gamesPlayed === 0 ? null : score / account.gamesPlayed,
+    };
   });
 
   // Best average first; players without a game come last, sorted by name.
@@ -118,9 +129,16 @@ export function tournamentStandings(
       name: row.name,
       gamesPlayed: row.gamesPlayed,
       points: row.points,
-      averagePoints: row.average === null ? null : round2(row.average),
+      opponentBonus: row.opponentBonus,
+      score: row.score,
+      averageScore: row.average === null ? null : round2(row.average),
     };
   });
 
-  return { tournamentId, matchdaysCounted, players };
+  return {
+    tournamentId,
+    matchdaysCounted: new Set(lists.map((list) => list.matchday)).size,
+    listsCounted: lists.length,
+    players,
+  };
 }

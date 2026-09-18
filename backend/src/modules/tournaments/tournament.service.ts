@@ -1,9 +1,11 @@
 import { Prisma, type Tournament } from '@prisma/client';
 import { notFound } from '../../lib/http-error.js';
+import { toIsoDate } from '../../lib/dates.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { scoreList } from '../lists/scoring.js';
 import type {
   CreateTournamentInput,
   ListTournamentsQuery,
@@ -160,6 +162,11 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
  * A list that is still open is not part of the tournament result yet, and one
  * that was reopened drops out of it again – so the standing always describes
  * what has actually been handed in.
+ *
+ * Every matchday is scored with the same rules as `GET …/lists/:matchday/
+ * results`, and the standing takes `points + opponentBonus` from it: the bonus
+ * for the Alleinspiele the other players lost is what a player can gain in games
+ * they did not take part in.
  */
 export async function getTournamentStandings(
   tournamentId: string,
@@ -174,19 +181,30 @@ export async function getTournamentStandings(
     }),
     prisma.gameList.findMany({
       where: { tournamentId: tournament.id, status: 'SUBMITTED' },
+      orderBy: { matchday: 'asc' },
       select: {
+        matchday: true,
+        lineup: {
+          orderBy: { position: 'asc' },
+          select: { player: { select: { name: true } } },
+        },
         games: { select: { players: true, declarer: true, won: true, gameValue: true } },
       },
     }),
   ]);
 
-  const games = lists.flatMap((list) => list.games);
+  const matchdays = lists.map((list) =>
+    scoreList(
+      list.lineup.map((entry) => entry.player.name),
+      list.games,
+      toIsoDate(list.matchday),
+    ),
+  );
 
   return tournamentStandings(
     tournament.id,
     roster.map((player) => player.name),
-    games,
-    lists.length,
+    matchdays,
   );
 }
 
