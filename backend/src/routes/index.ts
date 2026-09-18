@@ -9,7 +9,7 @@ apiRouter.get('/', (_req, res) => {
   res.json({
     data: {
       name: 'skatis-api',
-      version: '0.5.0',
+      version: '0.6.0',
       documentation: 'https://github.com/TropicLegend/skatis/blob/main/backend/README.md',
       endpoints: {
         health: 'GET /api/health',

@@ -39,6 +39,9 @@ export const setListPlayersSchema = z.object({
   playerNames: lineupSchema,
 });
 
+/** A query string never contains a boolean – `false` would be truthy. */
+const booleanQuery = z.enum(['true', 'false']).transform((value) => value === 'true');
+
 export const listListsQuery = z
   .object({
     /** Exactly this matchday – the evening with all its tables. */
@@ -46,6 +49,12 @@ export const listListsQuery = z
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional(),
     status: z.enum(['OPEN', 'SUBMITTED']).optional(),
+    /**
+     * Whether the list counts for the standing: handed in, or of a day that is
+     * over. Unlike `status` this asks what the list means now, not what is
+     * stored – a list of a past day counts while its status is still `OPEN`.
+     */
+    counted: booleanQuery.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     offset: z.coerce.number().int().min(0).default(0),
   })

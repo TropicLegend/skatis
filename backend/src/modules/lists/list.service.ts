@@ -1,13 +1,15 @@
 import type { ListStatus, Prisma } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
-import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
+import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { resolveTournamentPlayers } from '../players/player.service.js';
 import {
+  assertDayNotOver,
   assertListEditable,
   assertMatchdayAllowed,
+  countsForStanding,
   listLockReasons,
   type ListLockReason,
 } from './list-access.js';
@@ -32,7 +34,14 @@ export interface ListDto {
   series: number;
   /** "Tisch" from the head of the sheet – which table this sheet belongs to. */
   table: number;
+  /** The stored status – `OPEN` until somebody hands the list in. */
   status: ListStatus;
+  /**
+   * Whether the list counts for the tournament standing: it was handed in, or
+   * its matchday is over. A list lives for a single day, so it becomes final by
+   * itself – a list can therefore be `OPEN` and `counted` at the same time.
+   */
+  counted: boolean;
   submittedAt: string | null;
   /**
    * True when the requesting role may not change this list any more. A
@@ -94,6 +103,7 @@ export function toListDto(
     series: list.series,
     table: list.table,
     status: list.status,
+    counted: countsForStanding(list),
     submittedAt: list.submittedAt ? list.submittedAt.toISOString() : null,
     locked: lockReasons.length > 0,
     lockReasons,
@@ -148,6 +158,16 @@ export async function listLists(
   const where: Prisma.GameListWhereInput = { tournamentId: tournament.id };
   if (query.status) {
     where.status = query.status;
+  }
+  // `counted` asks what the list means now – handed in, or of a day that is
+  // over – while `status` asks what is stored.
+  if (query.counted !== undefined) {
+    const today = parseIsoDate(todayIso());
+    where.AND = [
+      query.counted
+        ? { OR: [{ status: 'SUBMITTED' }, { matchday: { lt: today } }] }
+        : { AND: [{ status: 'OPEN' }, { matchday: { gte: today } }] },
+    ];
   }
   // `matchday` picks the evening (several tables may share it), `from`/`to`
   // span a range of them.
@@ -338,6 +358,9 @@ export async function submitList(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
+  // A list of a past day is final by itself, so there is nothing to hand in –
+  // and it counts for the standing either way.
+  assertDayNotOver(list.matchday, 'submitted');
   assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
 
   // Submitting twice is always a mistake – an admin who wants a new timestamp
@@ -368,6 +391,8 @@ export async function reopenList(
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
+
+  assertDayNotOver(list.matchday, 'reopened');
 
   if (list.status !== 'SUBMITTED') {
     throw conflict('This list is not submitted');

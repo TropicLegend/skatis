@@ -1,6 +1,6 @@
 import { Prisma, type Tournament } from '@prisma/client';
 import { notFound } from '../../lib/http-error.js';
-import { toIsoDate } from '../../lib/dates.js';
+import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
@@ -158,15 +158,16 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
 }
 
 /**
- * The standing of the tournament, built from the **submitted** matchdays only.
- * A list that is still open is not part of the tournament result yet, and one
- * that was reopened drops out of it again – so the standing always describes
- * what has actually been handed in.
+ * The standing of the tournament, built from the lists that **count**: the ones
+ * that were handed in and the ones whose day is over – a list of a past
+ * matchday is final even when nobody submitted it. A list that is still open on
+ * its own day is not part of the tournament result yet, and reopening one drops
+ * it out again, so the standing always describes what is final.
  *
- * Every matchday is scored with the same rules as `GET …/lists/:matchday/
- * results`, and the standing takes `points + opponentBonus` from it: the bonus
- * for the Alleinspiele the other players lost is what a player can gain in games
- * they did not take part in.
+ * Every list is scored with the rules of `GET …/lists/:listId/results`, and the
+ * standing sums up the whole final result of a player: the Spielwerte of their
+ * Alleinspiele, the flat +50 per won and -50 per lost Alleinspiel and the bonus
+ * for the Alleinspiele the other players lost.
  */
 export async function getTournamentStandings(
   tournamentId: string,
@@ -180,7 +181,10 @@ export async function getTournamentStandings(
       orderBy: { name: 'asc' },
     }),
     prisma.gameList.findMany({
-      where: { tournamentId: tournament.id, status: 'SUBMITTED' },
+      where: {
+        tournamentId: tournament.id,
+        OR: [{ status: 'SUBMITTED' }, { matchday: { lt: parseIsoDate(todayIso()) } }],
+      },
       orderBy: { matchday: 'asc' },
       select: {
         matchday: true,

@@ -8,7 +8,10 @@ the weekdays on which it takes place. The API answers with a short
 request. A tournament owns its **players** (just names); a **list** exists per
 table and matchday and holds the lineup of that table in seating order – 3, 4 or 5
 players. An evening can be played at several tables, so one matchday can have
-several lists. Every game of a list is played by three of those players – who
+several lists. A list belongs to exactly one day and is part of the tournament
+standing as soon as that day is over, whether or not somebody handed it in – a
+tournament is played over months, so the standing collects all those evenings.
+Every game of a list is played by three of those players – who
 sits out follows the Geber rule – and follows the four steps of the Skat rules in
 the [README](../README.md) of the repository. From the games the API derives the
 **result table** of the list: what every player won, lost and is credited with,
@@ -116,8 +119,8 @@ sequenceDiagram
     F->>A: POST /api/tournaments/K7M2P4QX/lists/3b6f1c8a…/games (Bearer token)
     A-->>F: 201 {data: {position: 1, dealer: "Anna", declarer: "Bert", gameValue: 72}}
     F->>A: POST /api/tournaments/K7M2P4QX/lists/3b6f1c8a…/submit (Bearer token)
-    A-->>F: 200 {data: {status: "SUBMITTED", locked: true}}
-    Note over F: from here the table counts for the standing of the tournament
+    A-->>F: 200 {data: {status: "SUBMITTED", counted: true, locked: true}}
+    Note over F: the table counts from here on – and by itself once its day is over
 ```
 
 ### Players and lineups
@@ -143,9 +146,9 @@ tournament once and can then be put on a list:
 - A player can only be deleted while they are not part of any list.
 - `PATCH …/players/:playerName` corrects a name. That is the only way to fix a
   typo, because a player who plays in a list cannot be deleted. The names recorded
-  in already entered games are rewritten as well. A rename that touches a
-  **submitted** list is reserved for an `ADMIN`, like every other change to a
-  submitted list.
+  in already entered games are rewritten as well. A rename that touches a list
+  that already **counts** – a submitted one or one of a past day – is reserved for
+  an `ADMIN`, like every other change to such a list.
 
 ### Entering a game
 
@@ -224,11 +227,11 @@ and the dealer stay, everything else is taken from the request.
 
 (`src/modules/lists/scoring.ts`)
 
-This is the table of **one list** – the sheet of one table – and the parts below
-are deliberately per sheet: the flat bonuses and the bonus for the losses of the
-others are **not** carried over to the other tables or to the next matchday. How
-the tournament combines the sheets is described under
-[Tournament standings](#tournament-standings).
+This is the table of **one list** – the sheet of one table. Its `total` is the
+final result of that evening for every player, and it is exactly what the list
+contributes to the tournament: the flat bonuses and the bonus for the lost
+Alleinspiele of the others included. How the tournament adds the sheets up is
+described under [Tournament standings](#tournament-standings).
 
 Every game is credited to its Alleinspieler, starting from an account of 0:
 
@@ -279,14 +282,28 @@ formula above.
 
 `GET …/lists/:listId/results` answers exactly this table, always derived from
 the current games – so it is up to date while the list is still being filled.
+The `total` of a row is what the player takes into the
+[standing](#tournament-standings) of the tournament, part by part.
 
 ### Tournament standings
 
 (`src/modules/tournaments/standings.ts`)
 
-The table above belongs to one list, and the parts of it that only make sense for
-that one table – the flat **+50** per won and **-50** per lost Alleinspiel – are
-not carried over. What a list contributes to the tournament is:
+A tournament runs over **months**: every evening of the weekly schedule adds its
+tables, and the standing is the sum over all of them. A list belongs to exactly
+one day and never to several, so nothing has to be totalled per month or per
+season – the standing simply collects every list that **counts**.
+
+A list counts when it was handed in **or** when its day is over:
+
+- **handed in** – `status: "SUBMITTED"`, most likely by the members on the
+  evening itself.
+- **the day is over** – nobody has to submit for that. When the matchday has
+  passed, the sheet is final: it counts, even though its stored `status` is still
+  `OPEN`. The API reports this as `counted: true`, so a frontend never has to do
+  the date arithmetic itself.
+
+The whole `total` of the sheet is carried over, part by part:
 
 1. **`gamesPlayed`** – how many games of the list the player took part in.
    A player takes part in a game when they are in its `players` array, which is
@@ -297,34 +314,41 @@ not carried over. What a list contributes to the tournament is:
 2. **`points`** – what the player's own Alleinspiele are worth: a won one credits
    its Spielwert, a lost one debits twice of it. A player who is not the
    Alleinspieler changes nothing here.
-3. **`opponentBonus`** – the bonus for every Alleinspiel **another** player lost,
+3. **`wonBonus`** and **`lossPenalty`** – the flat `+50` per won and `-50` per
+   lost Alleinspiel. The tournament carries them over like the Spielwerte, so a
+   won game is worth its Spielwert **plus** 50 in the standing.
+4. **`opponentBonus`** – the bonus for every Alleinspiel **another** player lost,
    `+40` / `+30` / `+24` for a lineup of 3 / 4 / 5 players. This is how a player
    gains points in a game they did not take part in: like in the table of the
-   matchday, the bonus goes to the whole lineup, not only to the three players at
+   evening, the bonus goes to the whole lineup, not only to the three players at
    the table.
 
-Both numbers of a list are added up over all counted lists into `points` and
-`opponentBonus`, and `score = points + opponentBonus` is what the tournament
-earned the player in total. Several tables of one evening are simply several
-lists, so a player who sat at two of them collects both.
+`score = points + wonBonus + lossPenalty + opponentBonus` adds those parts up
+over all counted lists – the sum of the `total` column of the player's sheets.
+Several tables of one evening are simply several lists, so a player who sat at two
+of them collects both.
+
+`GET …/tournaments/:tournamentId/standings` answers it. `listsCounted` tells how
+many counted lists went into the numbers and `matchdaysCounted` how many
+different dates they were played on – over months of play those are very
+different numbers.
 
 The **ranking value** is `averageScore = score / gamesPlayed` – the score per
 game played, which makes players comparable who played a different number of
-games. The standing sorts by it, best first. The unrounded average decides the
-order, so rounding the output to two decimals can never change who is in front.
+games, and which is what keeps a long tournament fair when not everybody is there
+every week. The standing sorts by it, best first. The unrounded average decides
+the order, so rounding the output to two decimals can never change who is in
+front.
 
 - Players with the **same average share a rank**, and the next rank skips the
   ones taken (1, 1, 3).
 - A player without a single game keeps a row but has `rank: null` and
   `averageScore: null`, and is listed after everyone who played.
-- A list that is still `OPEN` does not count, and one that was reopened drops out
-  again. Reopening and submitting a corrected list therefore updates the standing
-  right away, and deleting a list removes its games from it.
-
-`GET …/tournaments/:tournamentId/standings` answers it. `listsCounted` tells how
-many submitted lists went into the numbers and `matchdaysCounted` how many
-different dates they were played on – for a tournament of 90 players those are
-very different numbers.
+- A list that is still open **on its own day** does not count yet. It joins the
+  standing when it is submitted or when its day is over, and reopening it before
+  that takes it out again – so the standing always describes what is final.
+- A list of a past day cannot be reopened: it counts either way. An admin can
+  still correct its games, and the standing follows immediately.
 
 Worked example – two matchdays of a 4 player list, so the bonus is 30:
 
@@ -334,15 +358,17 @@ Worked example – two matchdays of a 4 player list, so the bonus is 30:
 | 1        | Bert   | Clara    | Null, lost, 23        | Clara `-46`; the other three get `+30` each    |
 | 2        | Anna   | Dora     | Herz Ohne 1, lost, 20 | Dora `-40`; the other three get `+30` each     |
 
-| Player | gamesPlayed | points | opponentBonus | score | averageScore |
-| ------ | ----------- | ------ | ------------- | ----- | ------------ |
-| Bert   | 2           | 72     | 60            | 132   | **66**       |
-| Anna   | 1           | 0      | 60            | 60    | **60**       |
-| Dora   | 3           | -40    | 30            | -10   | **-3.33**    |
-| Clara  | 3           | -46    | 30            | -16   | **-5.33**    |
+| Player | gamesPlayed | points | wonBonus | lossPenalty | opponentBonus | score | averageScore |
+| ------ | ----------- | ------ | -------- | ----------- | ------------- | ----- | ------------ |
+| Bert   | 2           | 72     | 50       | 0           | 60            | 182   | **91**       |
+| Anna   | 1           | 0      | 0        | 0           | 60            | 60    | **60**       |
+| Dora   | 3           | -40    | 0        | -50         | 30            | -60   | **-20**      |
+| Clara  | 3           | -46    | 0        | -50         | 30            | -66   | **-22**      |
 
 Anna dealt in the first round of both matchdays, so she played a single game –
-but she still collected the bonus of both lost Alleinspiele.
+but she still collected the bonus of both lost Alleinspiele. Her one evening of
+games is worth more per game than Clara's three, which is exactly what
+`averageScore` is there for.
 
 ### Passwords and roles
 
@@ -388,18 +414,26 @@ stored token is still valid can be checked with
 
 - `matchdays` are ISO weekdays (`1` = Monday … `7` = Sunday). A list only exists
   for a matchday of its tournament.
+- A list belongs to **exactly one day** – there are no lists that stay open over
+  several days. Its head is the date, the Serie and the Tisch.
 - There can be **several lists per matchday** – one evening is often played at
   several tables with different players (90 players mean 30 tables of three).
   Each list has its own id and is addressed by it; the matchday is an attribute
   of the list, and the same player may sit at two tables of one evening.
-- A `MEMBER` may only create or change a list of _today's_ matchday ("today" is
-  decided by the `TZ` environment variable) and only if that weekday is a
-  matchday. An `ADMIN` may also create and correct lists of past or future days.
+- A list **counts as submitted** once its day is over, whether or not somebody
+  handed it in. Then it is part of the
+  [standing](#tournament-standings) of the tournament, and its `status` stays as
+  it was – the `counted` flag tells what the list means now.
+- Lists can only be created and submitted on a day the admin put into
+  `matchdays`. A `MEMBER` may only work on _today's_ matchday ("today" is decided
+  by the `TZ` environment variable); an `ADMIN` may also create and correct lists
+  of past or future matchdays.
 - Reading lists, players and games is allowed for both roles on any day.
 - Both roles may manage the players of their tournament at any time – a
   tournament's roster is not tied to a matchday.
-- Submitting a list freezes it for members. An admin may keep editing it; with
-  `reopen` an admin hands it back to the members.
+- Submitting a list on its own day freezes it for members. An admin may keep
+  editing it; with `reopen` an admin hands it back to the members – but only
+  while its day lasts, because a list of a past day cannot be reopened.
 - A list can only be played by the players of its lineup, so a game is only
   accepted once the lineup is complete (3, 4 or 5 players).
 - Games can only be entered for players of the list: the Alleinspieler has to be
@@ -428,6 +462,7 @@ tells the frontend where it stands, so it does not have to re-derive the rules:
   "series": 1,
   "table": 3,
   "status": "SUBMITTED",
+  "counted": true,
   "submittedAt": "2026-09-16T19:42:11.000Z",
   "locked": true,
   "lockReasons": ["SUBMITTED"],
@@ -444,9 +479,14 @@ matchdays of the tournament were changed after the list was created. Reading is
 always allowed: only changing a locked list is refused, with `409` for a
 submitted list and `403` for another day.
 
+`locked` says nothing about the standing. A list of a past day is `counted` for
+everybody – only an admin can still change it, and it stays in the standing while
+they do.
+
 ## Quickstart
 
-One Skat evening from an empty database to a submitted list. `BASE` is the API
+One Skat evening from an empty database to a submitted list – and beyond, to the
+standing it feeds. `BASE` is the API
 root; `jq` is only used to pick values out of the answers. `TODAY` has to be a
 matchday of the tournament – for the example it is simply derived from today.
 
@@ -503,12 +543,13 @@ curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$LIST/games \
 curl -s $BASE/tournaments/K7M2P4QX/lists/$LIST/results -H "Authorization: Bearer $TOKEN" | jq .data.players
 # => [ {"name":"Anna","points":0,"wonBonus":0,"lossPenalty":0,"opponentBonus":0,"total":0, …} ]
 
-# 7. hand the list in – from now on members can only read it. Submitting is what
-#    makes the matchday count for the tournament standing.
+# 7. hand the list in – from now on members can only read it. Handing it in is
+#    optional: a list counts for the standing once its day is over at the latest.
 curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$LIST/submit \
   -H "Authorization: Bearer $TOKEN"
 
-# 8. the standing of the tournament over all submitted lists
+# 8. the standing of the tournament over all counted lists – the ones that were
+#    handed in and the ones whose day is over
 curl -s $BASE/tournaments/K7M2P4QX/standings -H "Authorization: Bearer $TOKEN" | jq .data
 # => {"tournamentId":"K7M2P4QX","matchdaysCounted":1,"listsCounted":1,"players":[ … ]}
 
@@ -690,7 +731,7 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/tournaments`                         | any   | The token's tournament                                  |
 | GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
-| GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all submitted lists                   |
+| GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
 | PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays`, `password`, `adminPassword` |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
 
@@ -742,8 +783,9 @@ The cheapest way for a frontend to check a token it has in storage: `401` means
 
 #### `GET /tournaments/:tournamentId/standings`
 
-The standing of the tournament over all lists that were **submitted**, best
-player first. See [Tournament standings](#tournament-standings) for the rules.
+The standing of the tournament over all lists that **count** – the ones that were
+submitted and the ones whose day is over –, best player first. See
+[Tournament standings](#tournament-standings) for the rules.
 
 **Response** `200`
 
@@ -759,15 +801,19 @@ player first. See [Tournament standings](#tournament-standings) for the rules.
         "name": "Bert",
         "gamesPlayed": 2,
         "points": 72,
+        "wonBonus": 50,
+        "lossPenalty": 0,
         "opponentBonus": 60,
-        "score": 132,
-        "averageScore": 66
+        "score": 182,
+        "averageScore": 91
       },
       {
         "rank": 2,
         "name": "Anna",
         "gamesPlayed": 1,
         "points": 0,
+        "wonBonus": 0,
+        "lossPenalty": 0,
         "opponentBonus": 60,
         "score": 60,
         "averageScore": 60
@@ -777,18 +823,22 @@ player first. See [Tournament standings](#tournament-standings) for the rules.
         "name": "Dora",
         "gamesPlayed": 3,
         "points": -40,
+        "wonBonus": 0,
+        "lossPenalty": -50,
         "opponentBonus": 30,
-        "score": -10,
-        "averageScore": -3.33
+        "score": -60,
+        "averageScore": -20
       },
       {
         "rank": 4,
         "name": "Clara",
         "gamesPlayed": 3,
         "points": -46,
+        "wonBonus": 0,
+        "lossPenalty": -50,
         "opponentBonus": 30,
-        "score": -16,
-        "averageScore": -5.33
+        "score": -66,
+        "averageScore": -22
       },
       {
         "rank": null,
@@ -805,12 +855,13 @@ player first. See [Tournament standings](#tournament-standings) for the rules.
 ```
 
 This is the worked example of [Tournament standings](#tournament-standings): the
-score of a player is `points + opponentBonus`, and the rank comes from
-`score / gamesPlayed`.
+score of a player is `points + wonBonus + lossPenalty + opponentBonus` – the sum
+of the `total` of their sheets – and the rank comes from `score / gamesPlayed`.
 
-A list that is still `OPEN` does not count, and one that was reopened drops out
-again – the standing always describes what has actually been handed in. Reading
-is allowed for both roles.
+A list counts for this standing once it is submitted or its day is over; a list
+that is still open **on its own day** does not count yet, and reopening one takes
+it out again – the standing always describes what is final. Reading is allowed
+for both roles.
 
 **Errors:** `404` unknown tournament.
 
@@ -905,8 +956,8 @@ cannot be deleted. The names recorded in already entered games are rewritten as
 well, and a rename to the same name is a no-op.
 
 **Errors:** `404` unknown player, `409` the new name is already taken, `409` the
-player plays in a submitted list and the token is a member token (answer contains
-`details.submittedLists`).
+player plays in a list that already counts and the token is a member token (answer
+contains `details.countedLists`).
 
 **`DELETE /tournaments/:tournamentId/players/:playerName`** → `204`, no body.
 
@@ -915,34 +966,43 @@ contains the number of lists in `details`).
 
 ### Lists
 
-A list is one table's sheet for one matchday: its lineup in seating order, and
-every game in it is played by exactly those players. The head of the sheet –
+A list is one table's sheet for **one** matchday: its lineup in seating order,
+and every game in it is played by exactly those players. The head of the sheet –
 **Datum, Serie und Tisch** – is therefore part of every list: `matchday`,
 `series` and `table`, all three required. A matchday may carry as many lists as
 there were tables, which is why a list is addressed by its **own id** and not by
 the date.
 
-| Method | Path                                               | Auth  | Description                                      |
-| ------ | -------------------------------------------------- | ----- | ------------------------------------------------ |
-| GET    | `/tournaments/:tournamentId/lists`                 | any   | All lists of the tournament                      |
-| POST   | `/tournaments/:tournamentId/lists`                 | any   | Create a list                                    |
-| GET    | `/tournaments/:tournamentId/lists/:listId`         | any   | One list incl. lineup and games                  |
-| GET    | `/tournaments/:tournamentId/lists/:listId/results` | any   | The result table of the list                     |
-| PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                               |
-| DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                  |
-| POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it becomes locked for members |
-| POST   | `/tournaments/:tournamentId/lists/:listId/reopen`  | ADMIN | Give a submitted list back to the members        |
+A list never spans several days: it belongs to its matchday and becomes part of the
+[standing](#tournament-standings) as soon as that day is over, whether or not
+somebody handed it in – the `counted` flag of a list tells which of the two is the
+case.
+
+| Method | Path                                               | Auth  | Description                                            |
+| ------ | -------------------------------------------------- | ----- | ------------------------------------------------------ |
+| GET    | `/tournaments/:tournamentId/lists`                 | any   | All lists of the tournament                            |
+| POST   | `/tournaments/:tournamentId/lists`                 | any   | Create a list                                          |
+| GET    | `/tournaments/:tournamentId/lists/:listId`         | any   | One list incl. lineup and games                        |
+| GET    | `/tournaments/:tournamentId/lists/:listId/results` | any   | The result table of the list                           |
+| PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                                     |
+| DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                        |
+| POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it counts and is locked for members |
+| POST   | `/tournaments/:tournamentId/lists/:listId/reopen`  | ADMIN | Give a submitted list back to the members              |
 
 #### `GET /tournaments/:tournamentId/lists`
 
 Query: `?matchday=` (exactly one date – the evening with all its tables),
-`?from=` and `?to=` (a range of dates), `?status=OPEN|SUBMITTED`, `?limit=`
-(1–100, default 20), `?offset=` (default 0). Newest matchday first, then by
-series and table – so the sheets of an evening come in the order of the room.
+`?from=` and `?to=` (a range of dates), `?status=OPEN|SUBMITTED` (what is
+stored), `?counted=true|false` (whether the list already counts for the standing:
+handed in or of a past day), `?limit=` (1–100, default 20), `?offset=` (default
+0). Newest matchday first, then by series and table – so the sheets of an evening
+come in the order of the room.
 
 `?matchday=` is the one to use for "the lists of tonight": it answers every table
 of that date in a single request and is what a scoreboard of the evening needs.
-`?from=`/`?to=` are ignored while `?matchday=` is given.
+`?counted=false` answers the sheets that are still being played, `?counted=true`
+the ones that are already final. `?from=`/`?to=` are ignored while `?matchday=` is
+given.
 
 **Response** `200` – no `games` in the collection, see the detail endpoint.
 
@@ -956,6 +1016,7 @@ of that date in a single request and is what a scoreboard of the evening needs.
       "series": 1,
       "table": 3,
       "status": "OPEN",
+      "counted": false,
       "submittedAt": null,
       "locked": false,
       "lockReasons": [],
@@ -1025,6 +1086,7 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
     "series": 1,
     "table": 3,
     "status": "OPEN",
+    "counted": false,
     "submittedAt": null,
     "locked": false,
     "lockReasons": [],
@@ -1241,15 +1303,23 @@ round), `409` unknown player, `422` wrong size or duplicate name.
 
 #### `POST …/lists/:listId/submit` and `…/lists/:listId/reopen`
 
-`submit` freezes the list for members, `reopen` (admin only) gives it back.
+`submit` freezes the list for members and makes it count for the standing,
+`reopen` (admin only) gives it back. Both work on the **day of the list** only:
+a list of a past day already counts, so it cannot be handed in any more and it
+cannot be reopened. Nobody has to submit for a list to count – that happens by
+itself when the day is over.
 
-**Response** `200` – the list including its games, with the new `status`. Excerpt:
+**Request** – no body.
+
+**Response** `200` – the list including its games, with the new `status` and
+`counted`. Excerpt:
 
 ```json
 {
   "data": {
     "matchday": "2026-09-18",
     "status": "SUBMITTED",
+    "counted": true,
     "submittedAt": "2026-09-18T19:42:11.008Z",
     "locked": true,
     "lockReasons": ["SUBMITTED"]
@@ -1258,7 +1328,8 @@ round), `409` unknown player, `422` wrong size or duplicate name.
 ```
 
 **Errors:** `404` unknown list, `403` day not allowed / member token on
-`reopen`, `409` already submitted (`submit`) or not submitted (`reopen`).
+`reopen`, `409` the day of the list is over (it counts by itself), `409` already
+submitted (`submit`) or not submitted (`reopen`).
 
 #### `DELETE /tournaments/:tournamentId/lists/:listId`
 
@@ -1379,18 +1450,18 @@ Success:
 }
 ```
 
-| Status | Code                  | Meaning                                                                                          |
-| ------ | --------------------- | ------------------------------------------------------------------------------------------------ |
-| 400    | `BAD_REQUEST`         | Malformed JSON body                                                                              |
-| 401    | `UNAUTHORIZED`        | Missing/invalid token, wrong id or password                                                      |
-| 403    | `FORBIDDEN`           | Wrong role, wrong tournament, not a matchday                                                     |
-| 404    | `NOT_FOUND`           | Unknown tournament, list or game                                                                 |
-| 409    | `CONFLICT`            | Duplicate Serie/Tisch of a day, frozen list, unknown player, a game that violates the Skat rules |
-| 413    | `PAYLOAD_TOO_LARGE`   | Body larger than 100 kb                                                                          |
-| 422    | `VALIDATION_ERROR`    | Payload or path/query validation failed                                                          |
-| 429    | `TOO_MANY_REQUESTS`   | Rate limit of the endpoints without a token                                                      |
-| 500    | `INTERNAL_ERROR`      | Unexpected server error                                                                          |
-| 503    | `SERVICE_UNAVAILABLE` | Database not reachable                                                                           |
+| Status | Code                  | Meaning                                                                                                             |
+| ------ | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 400    | `BAD_REQUEST`         | Malformed JSON body                                                                                                 |
+| 401    | `UNAUTHORIZED`        | Missing/invalid token, wrong id or password                                                                         |
+| 403    | `FORBIDDEN`           | Wrong role, wrong tournament, not a matchday                                                                        |
+| 404    | `NOT_FOUND`           | Unknown tournament, list or game                                                                                    |
+| 409    | `CONFLICT`            | Duplicate Serie/Tisch of a day, final list, list of a past day, unknown player, a game that violates the Skat rules |
+| 413    | `PAYLOAD_TOO_LARGE`   | Body larger than 100 kb                                                                                             |
+| 422    | `VALIDATION_ERROR`    | Payload or path/query validation failed                                                                             |
+| 429    | `TOO_MANY_REQUESTS`   | Rate limit of the endpoints without a token                                                                         |
+| 500    | `INTERNAL_ERROR`      | Unexpected server error                                                                                             |
+| 503    | `SERVICE_UNAVAILABLE` | Database not reachable                                                                                              |
 
 Every response carries an `X-Request-Id` header (echoing a caller-provided
 `X-Request-Id` when it is a sane value) that also appears in the logs. Quote it
@@ -1422,28 +1493,37 @@ surrogate key for the join table of a lineup; it is never returned.
 ### List
 
 A list is the sheet of one table: its head is **Datum, Serie und Tisch**, its body
-is the lineup and the games.
+is the lineup and the games. It belongs to a single day – there is no list that
+lives over several matchdays.
 
-| Field                    | Type                  | Notes                                                   |
-| ------------------------ | --------------------- | ------------------------------------------------------- |
-| `id`                     | string                | uuid – this is what `:listId` in every path is          |
-| `tournamentId`           | string                |                                                         |
-| `matchday`               | string                | `YYYY-MM-DD` – "Datum" of the head                      |
-| `series`                 | number                | "Serie" of the head, from 1                             |
-| `table`                  | number                | "Tisch" of the head, from 1                             |
-| `status`                 | `OPEN` \| `SUBMITTED` |                                                         |
-| `submittedAt`            | string \| null        |                                                         |
-| `locked`                 | boolean               | relative to the requesting role                         |
-| `lockReasons`            | string[]              | empty while unlocked, see [Locked lists](#locked-lists) |
-| `players`                | object[]              | `{ name, position }` in seating order – Platz 1 … n     |
-| `gameCount`              | number                |                                                         |
-| `totalGameValue`         | number                | sum of the `gameValue` of all its games                 |
-| `games`                  | Game[]                | only on the detail endpoint                             |
-| `createdAt`, `updatedAt` | string                | ISO 8601                                                |
+| Field                    | Type                  | Notes                                                                      |
+| ------------------------ | --------------------- | -------------------------------------------------------------------------- |
+| `id`                     | string                | uuid – this is what `:listId` in every path is                             |
+| `tournamentId`           | string                |                                                                            |
+| `matchday`               | string                | `YYYY-MM-DD` – "Datum" of the head                                         |
+| `series`                 | number                | "Serie" of the head, from 1                                                |
+| `table`                  | number                | "Tisch" of the head, from 1                                                |
+| `status`                 | `OPEN` \| `SUBMITTED` | what is **stored** – `OPEN` until somebody hands it in                     |
+| `counted`                | boolean               | whether it belongs to the standings **now**: handed in, or its day is over |
+| `submittedAt`            | string \| null        | when it was handed in – `null` while nobody did                            |
+| `locked`                 | boolean               | relative to the requesting role                                            |
+| `lockReasons`            | string[]              | empty while unlocked, see [Locked lists](#locked-lists)                    |
+| `players`                | object[]              | `{ name, position }` in seating order – Platz 1 … n                        |
+| `gameCount`              | number                |                                                                            |
+| `totalGameValue`         | number                | sum of the `gameValue` of all its games                                    |
+| `games`                  | Game[]                | only on the detail endpoint                                                |
+| `createdAt`, `updatedAt` | string                | ISO 8601                                                                   |
 
 `matchday`, `series` and `table` are required when a list is created and identify
 the sheet among all others of the tournament: one table of a series has exactly one
 sheet per evening.
+
+`status` and `counted` answer two different questions, which is why both are
+there: `status` is the row as it is stored, `counted` is what the list means now.
+A list of yesterday that nobody handed in is `status: "OPEN"` and
+`counted: true` – it is final all the same, and the
+[standing](#tournament-standings) already contains it. After a submitted list was
+reopened on the same evening, both are `false`/`OPEN` again.
 
 ### Game
 
@@ -1509,14 +1589,15 @@ A `Result` row:
 | `total`            | number | `points + wonBonus + lossPenalty + opponentBonus`                 |
 
 See [Results](#results-ergebnistabelle) for the rules and a worked example.
-`points + opponentBonus` of a row is what a matchday contributes to the
-[standing](#tournament-standings) of the player.
+The `total` of a row is exactly what the list contributes to the
+[standing](#tournament-standings) of the player – the flat bonuses included.
 
 ### Standing
 
 The tournament standing of one player, as an entry of the `players` array of
-`GET …/tournaments/:tournamentId/standings`. It is the sum of the rows above over
-all submitted lists – several of which may belong to the same matchday.
+`GET …/tournaments/:tournamentId/standings`. It is the sum of the `Result` rows
+above over all counted lists – the ones that were handed in and the ones whose day
+is over, several of which may belong to the same matchday.
 
 | Field           | Type           | Notes                                                             |
 | --------------- | -------------- | ----------------------------------------------------------------- |
@@ -1524,9 +1605,15 @@ all submitted lists – several of which may belong to the same matchday.
 | `name`          | string         |                                                                   |
 | `gamesPlayed`   | number         | Σ `gamesPlayed` of the counted lists                              |
 | `points`        | number         | Σ `points` – the Spielwerte of the player's own Alleinspiele      |
+| `wonBonus`      | number         | Σ `wonBonus` – `+50` per won Alleinspiel                          |
+| `lossPenalty`   | number         | Σ `lossPenalty` – `-50` per lost Alleinspiel                      |
 | `opponentBonus` | number         | Σ `opponentBonus` – for the Alleinspiele the others lost          |
-| `score`         | number         | `points + opponentBonus`                                          |
+| `score`         | number         | `points + wonBonus + lossPenalty + opponentBonus`                 |
 | `averageScore`  | number \| null | `score / gamesPlayed`, rounded to two decimals; the ranking value |
+
+`score` is therefore the sum of the `total` column of the player's sheets, and
+`averageScore` is what keeps a tournament that runs over months comparable: it is
+the score per game played, however many evenings somebody missed.
 
 ## Rate limits
 
@@ -1584,25 +1671,27 @@ Known limitations:
 
 ## Troubleshooting
 
-| Symptom                                                                 | Cause                                                                                                                   |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `401 Missing bearer token`                                              | header missing or not `Authorization: Bearer <token>`                                                                   |
-| `401 Invalid or expired session token`                                  | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
-| `403 The session token does not grant access to this tournament`        | the token belongs to another tournament id                                                                              |
-| `403 … is not a matchday of …`                                          | the weekday of that date is not in `matchdays`                                                                          |
-| `403 Lists can only be created or changed on the current matchday`      | members may only touch today's list – use the admin password                                                            |
-| `409 This list has already been submitted`                              | reopen it as an admin before changing or submitting it again                                                            |
-| `409 The players of this list cannot be changed any more`               | the list already contains games                                                                                         |
-| `409 … sits out this round because … deals`                             | step 1: that player is one of the ones who sit out – check `dealer`                                                     |
-| `409 Serie … Tisch … already has a list for …`                          | that table of the series already has a sheet that evening – see [Lists](#lists)                                         |
-| `409 Every player of a list has to be part of the tournament`           | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
-| `409 … plays in a submitted list, so the name can no longer be changed` | correct the name with the admin password, or reopen the list first                                                      |
-| `409 A list consists of 3, 4 or 5 players`                              | the lineup has the wrong size                                                                                           |
-| `404 List … does not exist in this tournament`                          | the `:listId` is wrong or the list was deleted – fetch the lists of the evening with `GET /lists?matchday=…`            |
-| `422` with `details.issues[].path`                                      | the field named in `path` is wrong                                                                                      |
-| `429 Too many requests`                                                 | wait for `Retry-After` seconds                                                                                          |
-| `503 Database is unavailable`                                           | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
-| startup aborts with `database schema could not be prepared`             | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
+| Symptom                                                                           | Cause                                                                                                                   |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `401 Missing bearer token`                                                        | header missing or not `Authorization: Bearer <token>`                                                                   |
+| `401 Invalid or expired session token`                                            | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
+| `403 The session token does not grant access to this tournament`                  | the token belongs to another tournament id                                                                              |
+| `403 … is not a matchday of …`                                                    | the weekday of that date is not in `matchdays`                                                                          |
+| `403 Lists can only be created or changed on the current matchday`                | members may only touch today's list – use the admin password                                                            |
+| `409 This list has already been submitted`                                        | reopen it as an admin before changing or submitting it again                                                            |
+| `409 The day of this list is over, so it already counts as submitted`             | handing a list in only works on the day of the list – a past list is final without it                                   |
+| `409 The day of this list is over, so it can no longer be reopened`               | a list of a past day always counts; an admin can still correct its games                                                |
+| `409 The players of this list cannot be changed any more`                         | the list already contains games                                                                                         |
+| `409 … sits out this round because … deals`                                       | step 1: that player is one of the ones who sit out – check `dealer`                                                     |
+| `409 Serie … Tisch … already has a list for …`                                    | that table of the series already has a sheet that evening – see [Lists](#lists)                                         |
+| `409 Every player of a list has to be part of the tournament`                     | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
+| `409 … plays in a list that already counts, so the name can no longer be changed` | correct the name with the admin password – a list of a past day counts as well                                          |
+| `409 A list consists of 3, 4 or 5 players`                                        | the lineup has the wrong size                                                                                           |
+| `404 List … does not exist in this tournament`                                    | the `:listId` is wrong or the list was deleted – fetch the lists of the evening with `GET /lists?matchday=…`            |
+| `422` with `details.issues[].path`                                                | the field named in `path` is wrong                                                                                      |
+| `429 Too many requests`                                                           | wait for `Retry-After` seconds                                                                                          |
+| `503 Database is unavailable`                                                     | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
+| startup aborts with `database schema could not be prepared`                       | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
 
 ## Configuration
 

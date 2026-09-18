@@ -11,7 +11,8 @@ export interface TournamentRules {
 /** Why a list is locked for a role. */
 export type ListLockReason = 'SUBMITTED' | 'NOT_CURRENT_MATCHDAY' | 'NOT_A_MATCHDAY';
 
-export interface LockableList {
+/** A list as far as the rules of this module are concerned. */
+export interface ListState {
   status: 'OPEN' | 'SUBMITTED';
   matchday: Date;
 }
@@ -25,7 +26,7 @@ export interface LockableList {
  * and the answer the API gives cannot drift apart.
  */
 export function listLockReasons(
-  list: LockableList,
+  list: ListState,
   matchdays: readonly number[],
   role: TournamentRole,
 ): ListLockReason[] {
@@ -44,6 +45,43 @@ export function listLockReasons(
   }
 
   return reasons;
+}
+
+/**
+ * A list exists for **one** day and never for more than one: there is no list
+ * that stays open across matchdays. Its day is therefore over as soon as the
+ * server's clock has moved on (the `TZ` environment variable decides when).
+ */
+export function isMatchdayOver(matchday: Date, today: string = todayIso()): boolean {
+  return toIsoDate(matchday) < today;
+}
+
+/**
+ * Whether a list counts for the tournament standing. A list that was handed in
+ * counts from that moment; one that was never submitted counts as submitted as
+ * soon as its day is over – the evening is over, the sheet is final.
+ *
+ * Nobody has to submit for that to happen: a list of a past day is final even
+ * when its stored `status` still says `OPEN`, which is why the API reports the
+ * stored status and the `counted` flag side by side.
+ */
+export function countsForStanding(list: ListState, today: string = todayIso()): boolean {
+  return list.status === 'SUBMITTED' || isMatchdayOver(list.matchday, today);
+}
+
+/**
+ * Refuses to hand in or reopen a list of a past day: it already counts, no
+ * matter what its stored status says, so both actions would be a lie.
+ */
+export function assertDayNotOver(matchday: Date, action: 'submitted' | 'reopened'): void {
+  if (!isMatchdayOver(matchday)) return;
+
+  throw conflict(
+    action === 'submitted'
+      ? 'The day of this list is over, so it already counts as submitted'
+      : 'The day of this list is over, so it can no longer be reopened',
+    { matchday: toIsoDate(matchday) },
+  );
 }
 
 /**

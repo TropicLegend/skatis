@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { HttpError } from '../src/lib/http-error.js';
 import { isoWeekday, parseIsoDate, todayIso, toIsoDate } from '../src/lib/dates.js';
 import {
+  assertDayNotOver,
   assertListEditable,
   assertMatchdayAllowed,
+  countsForStanding,
   listLockReasons,
-  type LockableList,
+  type ListState,
 } from '../src/modules/lists/list-access.js';
 import type { TournamentRole } from '../src/lib/tokens.js';
 
@@ -33,7 +35,7 @@ const THIRD_WEEKDAY =
 /** Today and the other day are both matchdays of the tournament. */
 const MATCHDAYS = [TODAY_WEEKDAY, OTHER_WEEKDAY];
 
-function list(status: LockableList['status'], matchday: string): LockableList {
+function list(status: ListState['status'], matchday: string): ListState {
   return { status, matchday: parseIsoDate(matchday) };
 }
 
@@ -71,9 +73,65 @@ describe('listLockReasons', () => {
   });
 });
 
+describe('countsForStanding', () => {
+  it('counts a list that was handed in', () => {
+    expect(countsForStanding(list('SUBMITTED', TODAY))).toBe(true);
+  });
+
+  it('does not count the open list of today', () => {
+    expect(countsForStanding(list('OPEN', TODAY))).toBe(false);
+  });
+
+  it('counts a list of a past day although its status is still OPEN', () => {
+    expect(countsForStanding(list('OPEN', OTHER_DAY))).toBe(true);
+  });
+
+  it('counts an old list of a tournament that runs over months', () => {
+    expect(countsForStanding(list('OPEN', '2026-01-14'), '2026-09-18')).toBe(true);
+    expect(countsForStanding(list('OPEN', '2026-09-17'), '2026-09-18')).toBe(true);
+  });
+
+  it('does not count a list of a future day', () => {
+    expect(countsForStanding(list('OPEN', shiftDays(1)))).toBe(false);
+    expect(countsForStanding(list('OPEN', '2027-01-06'), '2026-09-18')).toBe(false);
+  });
+});
+
+describe('assertDayNotOver', () => {
+  it('accepts the day of the list itself', () => {
+    expect(() => assertDayNotOver(parseIsoDate(TODAY), 'submitted')).not.toThrow();
+    expect(() => assertDayNotOver(parseIsoDate(TODAY), 'reopened')).not.toThrow();
+  });
+
+  it('refuses to hand in a list of a past day', () => {
+    let error: unknown;
+    try {
+      assertDayNotOver(parseIsoDate(OTHER_DAY), 'submitted');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(HttpError);
+    expect((error as HttpError).status).toBe(409);
+    expect((error as HttpError).message).toContain('counts as submitted');
+  });
+
+  it('refuses to reopen a list of a past day', () => {
+    expect(() => assertDayNotOver(parseIsoDate(OTHER_DAY), 'reopened')).toThrow(HttpError);
+  });
+
+  it('refuses an evening that lies months back just the same', () => {
+    expect(() => assertDayNotOver(parseIsoDate('2026-01-14'), 'reopened')).toThrow(HttpError);
+  });
+
+  it('leaves a future day alone – an admin may work ahead', () => {
+    expect(() => assertDayNotOver(parseIsoDate(shiftDays(1)), 'reopened')).not.toThrow();
+  });
+});
+
 describe('the lock and the rejection of the API agree', () => {
   const tournament = { id: 'K7M2P4QX', name: 'Mittwochsrunde', matchdays: MATCHDAYS };
-  const statuses: LockableList['status'][] = ['OPEN', 'SUBMITTED'];
+  const statuses: ListState['status'][] = ['OPEN', 'SUBMITTED'];
   const roles: TournamentRole[] = ['MEMBER', 'ADMIN'];
 
   for (const status of statuses) {

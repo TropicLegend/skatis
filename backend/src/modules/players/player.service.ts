@@ -1,7 +1,9 @@
 import type { Player } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
+import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { countsForStanding } from '../lists/list-access.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import type { CreatePlayerInput } from './player.schemas.js';
 
@@ -78,9 +80,9 @@ export async function deletePlayer(tournamentId: string, name: string): Promise<
  * would otherwise be permanent – and a player cannot be removed once they play.
  *
  * Games store the names of the lineup, team, so a rename has to rewrite them.
- * Lists that were already submitted are frozen for members, therefore a rename
- * that touches one of them is reserved for an admin – the same rule as for the
- * list itself.
+ * A list that already counts is frozen for members – that is every submitted
+ * list and every list of a past day – therefore a rename that touches one of
+ * them is reserved for an admin, the same rule as for the list itself.
  */
 export async function renamePlayer(
   tournamentId: string,
@@ -110,12 +112,12 @@ export async function renamePlayer(
   });
 
   if (role !== 'ADMIN') {
-    const submitted = lists.filter((list) => list.status === 'SUBMITTED');
-    if (submitted.length > 0) {
+    const counted = lists.filter((list) => countsForStanding(list));
+    if (counted.length > 0) {
       throw conflict(
-        `"${player.name}" plays in a submitted list, so the name can no longer be changed. ` +
+        `"${player.name}" plays in a list that already counts, so the name can no longer be changed. ` +
           'Ask an admin to correct it.',
-        { submittedLists: submitted.map((list) => list.matchday.toISOString().slice(0, 10)) },
+        { countedLists: [...new Set(counted.map((list) => toIsoDate(list.matchday)))] },
       );
     }
   }

@@ -97,23 +97,29 @@ describe('tournamentStandings', () => {
     expect(standings.matchdaysCounted).toBe(2);
     expect(standings.tournamentId).toBe('K7M2P4QX');
 
-    // Bert: 120 from matchday 1 and the bonus of matchday 2, over two games.
-    expect(row(standings, 'Bert')).toMatchObject({
-      gamesPlayed: 2,
-      points: 120,
-      opponentBonus: 30,
-      score: 150,
-      averageScore: 75,
-      rank: 1,
-    });
-
-    // Anna: 23 from her win, plus the bonus of matchday 2, over one game.
+    // Anna won 23 in her single game and collected the bonus of matchday 2, so
+    // she averages 103 over one game.
     expect(row(standings, 'Anna')).toMatchObject({
       gamesPlayed: 1,
       points: 23,
+      wonBonus: 50,
+      lossPenalty: 0,
       opponentBonus: 30,
-      score: 53,
-      averageScore: 53,
+      score: 103,
+      averageScore: 103,
+      rank: 1,
+    });
+
+    // Bert won 120 over two games: 200 in total, but only 100 per game – the
+    // flat bonuses make a player with few games jump ahead.
+    expect(row(standings, 'Bert')).toMatchObject({
+      gamesPlayed: 2,
+      points: 120,
+      wonBonus: 50,
+      lossPenalty: 0,
+      opponentBonus: 30,
+      score: 200,
+      averageScore: 100,
       rank: 2,
     });
 
@@ -121,37 +127,109 @@ describe('tournamentStandings', () => {
     expect(row(standings, 'Clara')).toMatchObject({
       gamesPlayed: 3,
       points: 0,
+      wonBonus: 0,
+      lossPenalty: 0,
       opponentBonus: 30,
       score: 30,
       averageScore: 10,
       rank: 3,
     });
 
-    // Dora lost her Null, so she is debited twice.
+    // Dora lost her Null, so she is debited twice and pays the penalty.
     expect(row(standings, 'Dora')).toMatchObject({
       gamesPlayed: 3,
       points: -46,
+      wonBonus: 0,
+      lossPenalty: -50,
       opponentBonus: 0,
-      score: -46,
-      averageScore: -15.33,
+      score: -96,
+      averageScore: -32,
       rank: 4,
     });
   });
 
-  it('ignores the flat bonuses of the matchday table', () => {
+  it('carries the flat bonuses of the list over, like the Spielwerte', () => {
+    const table = matchday('2026-09-16', [game('Anna', true, 24, ['Anna', 'Bert', 'Clara'])]);
+
+    // The list result of Anna: the Spielwert of 24 and a +50 won bonus.
+    expect(table.players[0]?.wonBonus).toBe(50);
+
+    const standings = tournamentStandings('K7M2P4QX', ['Anna'], [table]);
+    expect(row(standings, 'Anna')).toMatchObject({
+      gamesPlayed: 1,
+      points: 24,
+      wonBonus: 50,
+      lossPenalty: 0,
+      opponentBonus: 0,
+      score: 74,
+      averageScore: 74,
+    });
+  });
+
+  it('debits the flat penalty for every lost Alleinspiel', () => {
     const standings = tournamentStandings(
       'K7M2P4QX',
       ['Anna'],
-      [matchday('2026-09-16', [game('Anna', true, 24, ['Anna', 'Bert', 'Clara'])])],
+      [
+        matchday('2026-09-16', [game('Anna', false, 20, ['Anna', 'Bert', 'Clara'])]),
+        matchday('2026-09-23', [game('Anna', true, 20, ['Anna', 'Bert', 'Clara'])]),
+      ],
     );
 
-    // 24 points and a +50 won bonus in the matchday table, but only the 24
-    // belong to the tournament standing.
-    const table = matchday('2026-09-16', [game('Anna', true, 24, ['Anna', 'Bert', 'Clara'])]);
-    expect(table.players[0]?.wonBonus).toBe(50);
+    // -40 for the loss and +20 for the win, plus +50 for the win and -50 for
+    // the loss: the account ends where it started, the game count grows.
+    expect(row(standings, 'Anna')).toMatchObject({
+      gamesPlayed: 2,
+      points: -20,
+      wonBonus: 50,
+      lossPenalty: -50,
+      opponentBonus: 0,
+      score: -20,
+      averageScore: -10,
+    });
+  });
 
-    expect(row(standings, 'Anna').points).toBe(24);
-    expect(row(standings, 'Anna').score).toBe(24);
+  it('keeps adding up over the months of a tournament', () => {
+    // A tournament is played for months, so the standing sums up every evening
+    // since the first one – nothing is reset per month, and an evening that was
+    // never handed in counts once its day is over.
+    const standings = tournamentStandings(
+      'K7M2P4QX',
+      ['Anna', 'Bert'],
+      [
+        matchday('2026-01-14', [game('Bert', true, 24, ['Bert', 'Clara', 'Dora'])]),
+        matchday('2026-04-08', [game('Bert', true, 24, ['Bert', 'Clara', 'Dora'])]),
+        matchday('2026-09-16', [game('Anna', false, 24, ['Anna', 'Clara', 'Dora'])]),
+      ],
+    );
+
+    expect(standings.matchdaysCounted).toBe(3);
+    expect(standings.listsCounted).toBe(3);
+
+    // Bert: the two wins of January and April, three months apart, plus the
+    // bonus for the loss of September he was not at the table for.
+    expect(row(standings, 'Bert')).toMatchObject({
+      gamesPlayed: 2,
+      points: 48,
+      wonBonus: 100,
+      lossPenalty: 0,
+      opponentBonus: 30,
+      score: 178,
+      averageScore: 89,
+      rank: 1,
+    });
+
+    // Anna: one lost Alleinspiel in September, debited twice and penalised.
+    expect(row(standings, 'Anna')).toMatchObject({
+      gamesPlayed: 1,
+      points: -48,
+      wonBonus: 0,
+      lossPenalty: -50,
+      opponentBonus: 0,
+      score: -98,
+      averageScore: -98,
+      rank: 2,
+    });
   });
 
   it('lists the players without a game last and without a rank', () => {
@@ -183,21 +261,28 @@ describe('tournamentStandings', () => {
     ]);
 
     // Anna and Bert played two rounds each and won 40 in one of them, so both
-    // average 20. Clara played three rounds with the same 40, so she is behind.
-    expect(row(standings, 'Anna')).toMatchObject({ gamesPlayed: 2, averageScore: 20, rank: 1 });
-    expect(row(standings, 'Bert')).toMatchObject({ gamesPlayed: 2, averageScore: 20, rank: 1 });
-    expect(row(standings, 'Clara')).toMatchObject({ gamesPlayed: 3, averageScore: 13.33, rank: 3 });
+    // count 90 over two games. Clara played three rounds with the same 40, so
+    // she is behind.
+    expect(row(standings, 'Anna')).toMatchObject({ gamesPlayed: 2, averageScore: 45, rank: 1 });
+    expect(row(standings, 'Bert')).toMatchObject({ gamesPlayed: 2, averageScore: 45, rank: 1 });
+    expect(row(standings, 'Clara')).toMatchObject({ gamesPlayed: 3, averageScore: 30, rank: 3 });
   });
 
   it('never reports a negative zero', () => {
+    // Anna only ever sat at the table of an eingepasstes Spiel, so every part of
+    // her account stays zero – and it has to stay a positive zero.
     const standings = tournamentStandings(
       'K7M2P4QX',
       ['Anna'],
-      [matchday('2026-09-16', [game('Anna', true, 0, ['Anna', 'Bert', 'Clara'])])],
+      [matchday('2026-09-16', [game(null, null, 0, ['Anna', 'Bert', 'Clara'])])],
     );
 
+    expect(row(standings, 'Anna').gamesPlayed).toBe(1);
     expect(Object.is(row(standings, 'Anna').points, 0)).toBe(true);
+    expect(Object.is(row(standings, 'Anna').wonBonus, 0)).toBe(true);
+    expect(Object.is(row(standings, 'Anna').lossPenalty, 0)).toBe(true);
     expect(Object.is(row(standings, 'Anna').opponentBonus, 0)).toBe(true);
+    expect(Object.is(row(standings, 'Anna').score, 0)).toBe(true);
     expect(Object.is(row(standings, 'Anna').averageScore, 0)).toBe(true);
   });
 
@@ -218,8 +303,9 @@ describe('tournamentStandings', () => {
     expect(standings.matchdaysCounted).toBe(2);
 
     // The three of the first table played both of its lists, the rest only one.
-    expect(row(standings, 'Bert')).toMatchObject({ gamesPlayed: 2, points: 24, score: 24 });
-    expect(row(standings, 'Dora')).toMatchObject({ gamesPlayed: 1, points: 24, score: 24 });
+    // Each win is worth its Spielwert and the flat +50 of its own sheet.
+    expect(row(standings, 'Bert')).toMatchObject({ gamesPlayed: 2, points: 24, score: 74 });
+    expect(row(standings, 'Dora')).toMatchObject({ gamesPlayed: 1, points: 24, score: 74 });
     expect(row(standings, 'Ida')).toMatchObject({ gamesPlayed: 1, points: 0, score: 0 });
   });
 

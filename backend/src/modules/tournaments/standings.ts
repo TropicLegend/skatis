@@ -3,37 +3,45 @@ import type { ListResultsDto } from '../lists/scoring.js';
 /**
  * The standing of a tournament.
  *
- * It is built from the result tables of the matchdays that were submitted, so
- * the two views can never drift apart. A matchday contributes two numbers per
- * player:
+ * It is built from the result tables of the counted lists, so the two views can
+ * never drift apart. A list contributes the whole final result of every player:
  *
- * * `gamesPlayed` – the games of that matchday the player took part in
- * * `points + opponentBonus` – what the player gained: the Spielwerte of their
- *   own Alleinspiele (a loss debited twice) plus the bonus for every Alleinspiel
- *   **another** player lost (+40 / +30 / +24 for a lineup of 3 / 4 / 5)
+ * * `gamesPlayed` – the games of that list the player took part in
+ * * `points` – the Spielwerte of the player's own Alleinspiele (a loss debited
+ *   twice)
+ * * `wonBonus` / `lossPenalty` – the flat +50 per won and -50 per lost
+ *   Alleinspiel; the tournament carries them over like the Spielwerte
+ * * `opponentBonus` – the bonus for every Alleinspiel **another** player lost
+ *   (+40 / +30 / +24 for a lineup of 3 / 4 / 5)
+ *
+ * `score = points + wonBonus + lossPenalty + opponentBonus` is the `total` of
+ * that evening's sheet, so a score is the sum of the player's list results and
+ * nothing is dropped on the way from the sheet to the standing.
  *
  * The bonus is why a player can gain points in a game they did not take part
- * in: it is paid out to the whole lineup of the matchday, not only to the three
+ * in: it is paid out to the whole lineup of the list, not only to the three
  * players at the table.
  *
- * Both numbers are added up over the matchdays, and the ranking value is the
+ * All parts are added up over the counted lists, and the ranking value is the
  * score per game played, which makes players comparable who played a different
- * number of games. The parts of the matchday table that belong to that one
- * evening – the flat +50 per won and -50 per lost Alleinspiel – are deliberately
- * **not** carried over.
+ * number of games.
  */
 
 export interface StandingRow {
   /** Position in the table, `1` is the best. `null` while the player has no game. */
   rank: number | null;
   name: string;
-  /** Games of the counted matchdays the player took part in. */
+  /** Games of the counted lists the player took part in. */
   gamesPlayed: number;
   /** Spielwerte of the player's own Alleinspiele – a loss is debited twice. */
   points: number;
+  /** Flat bonus for the won Alleinspiele: `+50` each. */
+  wonBonus: number;
+  /** Flat penalty for the lost Alleinspiele: `-50` each. */
+  lossPenalty: number;
   /** Bonus for the Alleinspiele the other players lost. */
   opponentBonus: number;
-  /** `points + opponentBonus` – what the whole tournament earned the player. */
+  /** `points + wonBonus + lossPenalty + opponentBonus`. */
   score: number;
   /** `score / gamesPlayed`, rounded to two decimals. `null` without a game. */
   averageScore: number | null;
@@ -55,11 +63,18 @@ function round2(value: number): number {
   return rounded === 0 ? 0 : rounded;
 }
 
-/** The numbers a player collected over the counted matchdays. */
+/** The numbers a player collected over the counted lists. */
 interface Account {
   gamesPlayed: number;
   points: number;
+  wonBonus: number;
+  lossPenalty: number;
   opponentBonus: number;
+}
+
+/** An account that was never touched. */
+function emptyAccount(): Account {
+  return { gamesPlayed: 0, points: 0, wonBonus: 0, lossPenalty: 0, opponentBonus: 0 };
 }
 
 /**
@@ -74,7 +89,7 @@ export function tournamentStandings(
 ): TournamentStandingsDto {
   const accounts = new Map<string, Account>();
   for (const name of names) {
-    accounts.set(name, { gamesPlayed: 0, points: 0, opponentBonus: 0 });
+    accounts.set(name, emptyAccount());
   }
 
   for (const list of lists) {
@@ -86,18 +101,22 @@ export function tournamentStandings(
 
       account.gamesPlayed += player.gamesPlayed;
       account.points += player.points;
+      account.wonBonus += player.wonBonus;
+      account.lossPenalty += player.lossPenalty;
       account.opponentBonus += player.opponentBonus;
     }
   }
 
   const rows = names.map((name) => {
-    const account = accounts.get(name) ?? { gamesPlayed: 0, points: 0, opponentBonus: 0 };
-    const score = account.points + account.opponentBonus;
+    const account = accounts.get(name) ?? emptyAccount();
+    const score = account.points + account.wonBonus + account.lossPenalty + account.opponentBonus;
 
     return {
       name,
       gamesPlayed: account.gamesPlayed,
       points: account.points,
+      wonBonus: account.wonBonus,
+      lossPenalty: account.lossPenalty,
       opponentBonus: account.opponentBonus,
       score,
       // The ranking uses the unrounded average, so rounding cannot change it.
@@ -129,6 +148,8 @@ export function tournamentStandings(
       name: row.name,
       gamesPlayed: row.gamesPlayed,
       points: row.points,
+      wonBonus: row.wonBonus,
+      lossPenalty: row.lossPenalty,
       opponentBonus: row.opponentBonus,
       score: row.score,
       averageScore: row.average === null ? null : round2(row.average),
