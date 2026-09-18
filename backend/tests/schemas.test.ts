@@ -119,24 +119,25 @@ describe('players', () => {
   });
 
   it('rejects a lineup that contains a player twice', () => {
-    expect(() => lineupSchema.parse(['p1', 'p1', 'p2'])).toThrow();
+    expect(() => lineupSchema.parse(['Anna', 'Anna', 'Bert'])).toThrow();
+    expect(() => lineupSchema.parse(['Anna', ' Anna ', 'Bert'])).toThrow();
   });
 
   it('rejects a lineup of fewer than 3 or more than 5 players', () => {
-    expect(() => lineupSchema.parse(['p1', 'p2'])).toThrow();
-    expect(() => lineupSchema.parse(['p1', 'p2', 'p3', 'p4', 'p5', 'p6'])).toThrow();
+    expect(() => lineupSchema.parse(['Anna', 'Bert'])).toThrow();
+    expect(() => lineupSchema.parse(['Anna', 'Bert', 'Clara', 'Dora', 'Emil', 'Frida'])).toThrow();
   });
 
-  it('accepts a lineup of 3, 4 or 5 players in seating order', () => {
-    expect(lineupSchema.parse(['p1', 'p2', 'p3'])).toHaveLength(3);
-    expect(lineupSchema.parse(['p1', 'p2', 'p3', 'p4'])).toHaveLength(4);
-    expect(lineupSchema.parse(['p1', 'p2', 'p3', 'p4', 'p5'])).toHaveLength(5);
+  it('accepts a lineup of 3, 4 or 5 names in seating order', () => {
+    expect(lineupSchema.parse(['Anna', 'Bert', 'Clara'])).toHaveLength(3);
+    expect(lineupSchema.parse(['Anna', 'Bert', 'Clara', 'Dora'])).toHaveLength(4);
+    expect(lineupSchema.parse(['Anna', 'Bert', 'Clara', 'Dora', 'Emil'])).toHaveLength(5);
   });
 
   it('requires a complete lineup when the lineup is replaced', () => {
-    expect(() => setListPlayersSchema.parse({ playerIds: [] })).toThrow();
-    expect(setListPlayersSchema.parse({ playerIds: ['p1', 'p2', 'p3'] })).toEqual({
-      playerIds: ['p1', 'p2', 'p3'],
+    expect(() => setListPlayersSchema.parse({ playerNames: [] })).toThrow();
+    expect(setListPlayersSchema.parse({ playerNames: ['Anna', 'Bert', 'Clara'] })).toEqual({
+      playerNames: ['Anna', 'Bert', 'Clara'],
     });
   });
 });
@@ -320,7 +321,7 @@ describe('createListSchema', () => {
   it('accepts a list with a lineup and games in one request', () => {
     const parsed = createListSchema.parse({
       matchday: '2026-09-16',
-      playerIds: ['p1', 'p2', 'p3'],
+      playerNames: ['Anna', 'Bert', 'Clara'],
       games: [
         { passedOut: true },
         { passedOut: false, declarer: 'Anna', gameType: 'NULL', won: true },
@@ -328,12 +329,12 @@ describe('createListSchema', () => {
     });
 
     expect(parsed.games).toHaveLength(2);
-    expect(parsed.playerIds).toHaveLength(3);
+    expect(parsed.playerNames).toHaveLength(3);
   });
 
   it('rejects an incomplete lineup', () => {
     expect(() =>
-      createListSchema.parse({ matchday: '2026-09-16', playerIds: ['p1', 'p2'] }),
+      createListSchema.parse({ matchday: '2026-09-16', playerNames: ['Anna', 'Bert'] }),
     ).toThrow();
   });
 });

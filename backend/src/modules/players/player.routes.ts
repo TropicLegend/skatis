@@ -25,9 +25,9 @@ playerRouter.post('/', authenticate(), async (req, res) => {
 });
 
 /** Removes a player – only while they are not part of any list. */
-playerRouter.delete('/:playerId', authenticate(), async (req, res) => {
-  const { tournamentId, playerId } = playerParams.parse(req.params);
-  await deletePlayer(tournamentId, playerId);
+playerRouter.delete('/:playerName', authenticate(), async (req, res) => {
+  const { tournamentId, playerName } = playerParams.parse(req.params);
+  await deletePlayer(tournamentId, playerName);
 
   res.status(204).end();
 });

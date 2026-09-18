@@ -76,8 +76,8 @@ listRouter.post('/:matchday/reopen', authenticate('ADMIN'), async (req, res) => 
  */
 listRouter.put('/:matchday/players', authenticate(), async (req, res) => {
   const { tournamentId, matchday } = listParams.parse(req.params);
-  const { playerIds } = setListPlayersSchema.parse(req.body ?? {});
-  const list = await setListPlayers(tournamentId, matchday, playerIds, currentAuth(req).role);
+  const { playerNames } = setListPlayersSchema.parse(req.body ?? {});
+  const list = await setListPlayers(tournamentId, matchday, playerNames, currentAuth(req).role);
 
   res.json({ data: list });
 });

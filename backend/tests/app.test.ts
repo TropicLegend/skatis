@@ -163,11 +163,11 @@ describe('api', () => {
     const response = await request(app)
       .put(`/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/players`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ playerIds: [] });
+      .send({ playerNames: [] });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
-    expect(response.body.error.details.issues[0].path).toBe('playerIds');
+    expect(response.body.error.details.issues[0].path).toBe('playerNames');
   });
 
   it('validates the properties of a game before touching the database', async () => {

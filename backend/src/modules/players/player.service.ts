@@ -5,12 +5,11 @@ import { getTournamentRow } from '../tournaments/tournament.service.js';
 import type { CreatePlayerInput } from './player.schemas.js';
 
 export interface PlayerDto {
-  id: string;
   name: string;
 }
 
 export function toPlayerDto(player: Player): PlayerDto {
-  return { id: player.id, name: player.name };
+  return { name: player.name };
 }
 
 export async function listPlayers(tournamentId: string): Promise<PlayerDto[]> {
@@ -46,18 +45,20 @@ export async function createPlayer(
   return toPlayerDto(player);
 }
 
-export async function findPlayerOrThrow(tournamentId: string, playerId: string): Promise<Player> {
-  const player = await prisma.player.findFirst({ where: { id: playerId, tournamentId } });
+export async function findPlayerOrThrow(tournamentId: string, name: string): Promise<Player> {
+  const player = await prisma.player.findUnique({
+    where: { tournamentId_name: { tournamentId, name } },
+  });
   if (!player) {
-    throw notFound(`Player ${playerId} does not exist in this tournament`);
+    throw notFound(`"${name}" is not a player of this tournament`);
   }
   return player;
 }
 
 /** Removes a player – only while they are not part of any list. */
-export async function deletePlayer(tournamentId: string, playerId: string): Promise<void> {
+export async function deletePlayer(tournamentId: string, name: string): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
-  const player = await findPlayerOrThrow(tournament.id, playerId);
+  const player = await findPlayerOrThrow(tournament.id, name);
 
   const listCount = await prisma.gameList.count({
     where: { lineup: { some: { playerId: player.id } } },
@@ -72,30 +73,32 @@ export async function deletePlayer(tournamentId: string, playerId: string): Prom
 }
 
 /**
- * Resolves player ids of a tournament. Rejects ids that belong to another
- * tournament so that a list can only ever contain players of its own
- * tournament. The order of `playerIds` is kept – it is the seating order of the
+ * Resolves the names of a lineup to players of the tournament. Names that do
+ * not belong to it are rejected, so a list can only ever contain players of its
+ * own tournament. The order of `names` is kept – it is the seating order of the
  * lineup, which decides who deals in which round.
  */
 export async function resolveTournamentPlayers(
   tournamentId: string,
-  playerIds: readonly string[],
+  names: readonly string[],
 ): Promise<Player[]> {
-  const uniqueIds = [...new Set(playerIds)];
-  if (uniqueIds.length === 0) return [];
+  const uniqueNames = [...new Set(names)];
+  if (uniqueNames.length === 0) return [];
 
   const players = await prisma.player.findMany({
-    where: { id: { in: uniqueIds }, tournamentId },
+    where: { tournamentId, name: { in: uniqueNames } },
   });
 
-  const byId = new Map(players.map((player) => [player.id, player]));
-  const unknownPlayerIds = uniqueIds.filter((id) => !byId.has(id));
-  if (unknownPlayerIds.length > 0) {
-    throw conflict('Players have to belong to this tournament', { unknownPlayerIds });
+  const byName = new Map(players.map((player) => [player.name, player]));
+  const unknownPlayers = uniqueNames.filter((name) => !byName.has(name));
+  if (unknownPlayers.length > 0) {
+    throw conflict('Every player of a list has to be part of the tournament', {
+      unknownPlayers,
+    });
   }
 
-  return uniqueIds.flatMap((id) => {
-    const player = byId.get(id);
+  return uniqueNames.flatMap((name) => {
+    const player = byName.get(name);
     return player ? [player] : [];
   });
 }

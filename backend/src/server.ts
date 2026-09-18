@@ -1,9 +1,22 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
+import { migrateDatabase } from './lib/migrate.js';
 import { prisma } from './lib/prisma.js';
 
 const app = createApp();
+
+// The schema has to fit the code before the first request is served.
+try {
+  await migrateDatabase();
+} catch (error) {
+  logger.fatal(
+    { err: error },
+    'startup aborted – the database schema could not be prepared (set AUTO_MIGRATE=false to skip this step)',
+  );
+  await prisma.$disconnect().catch(() => undefined);
+  process.exit(1);
+}
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(

@@ -10,8 +10,8 @@ export const listParams = z.object({
 
 export const createListSchema = z.object({
   matchday: isoDateSchema,
-  /** The lineup of the matchday in seating order (3, 4 or 5 players). */
-  playerIds: lineupSchema.optional(),
+  /** The lineup of the matchday in seating order (3, 4 or 5 names). */
+  playerNames: lineupSchema.optional(),
   /** Games are appended in order – the API assigns the round numbers. */
   games: z.array(gameSchema).max(200).optional(),
 });
@@ -22,7 +22,7 @@ export const createListSchema = z.object({
  * deals in which round.
  */
 export const setListPlayersSchema = z.object({
-  playerIds: lineupSchema,
+  playerNames: lineupSchema,
 });
 
 export const listListsQuery = z

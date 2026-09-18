@@ -1,6 +1,14 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+/**
+ * Reads a boolean from the environment. `z.coerce.boolean()` cannot be used for
+ * this: it turns every non-empty string – including "false" – into `true`.
+ */
+const booleanSchema = z
+  .enum(['true', 'false', '1', '0'], 'Expected true, false, 1 or 0')
+  .transform((value) => value === 'true' || value === '1');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -13,6 +21,8 @@ const envSchema = z.object({
   /** Requests per window for the endpoints that need no token. `0` disables it. */
   RATE_LIMIT_MAX: z.coerce.number().int().min(0).default(20),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
+  /** Apply pending database migrations before the server starts serving. */
+  AUTO_MIGRATE: booleanSchema.default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;

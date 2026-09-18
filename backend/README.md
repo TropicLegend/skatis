@@ -40,8 +40,7 @@ cp .env.example .env              # then edit the values
 # DATABASE_URL must point at YOUR PostgreSQL instance,
 # JWT_SECRET must be a random string of at least 32 characters
 
-npm run db:migrate -- --name init # creates the tables
-npm run dev                       # http://localhost:3000/api
+npm run dev                       # migrates the database, then http://localhost:3000/api
 ```
 
 Generate a proper secret with:
@@ -52,6 +51,26 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 Everything is installed locally – no global packages and no root privileges are
 required.
+
+### Database migrations
+
+The server **applies pending migrations by itself on startup**: before it starts
+listening, it runs `prisma migrate deploy` against `DATABASE_URL`. A fresh
+database therefore needs no manual step, and a deployment that ships new
+migrations upgrades without a separate job.
+
+- It is retried up to **3 times** (2 s apart) and gives up after **60 s** per
+  attempt, because a database in Kubernetes may not be reachable at the very
+  first moment.
+- If it still fails, the process logs `startup aborted – the database schema
+could not be prepared` and exits with code `1` instead of serving requests
+  against an incomplete schema.
+- Set `AUTO_MIGRATE=false` to skip it, e.g. when migrations are applied by a
+  separate pipeline step or the database user is not allowed to change the
+  schema. The server then starts against whatever schema it finds.
+
+For manual work the scripts below stay available – `npm run db:migrate -- --name x`
+while developing a schema change, `npm run db:deploy` to apply migrations by hand.
 
 ## Scripts
 
@@ -85,8 +104,8 @@ sequenceDiagram
     A->>D: SELECT password hashes
     A-->>F: 200 {token, role: "MEMBER"|"ADMIN", expiresAt, tournament}
     F->>A: POST /api/tournaments/K7M2P4QX/players {name: "Anna"}
-    A-->>F: 201 {data: {id, name: "Anna"}}
-    F->>A: PUT /api/tournaments/K7M2P4QX/lists/2026-09-16/players {playerIds: [...]}
+    A-->>F: 201 {data: {name: "Anna"}}
+    F->>A: PUT /api/tournaments/K7M2P4QX/lists/2026-09-16/players {playerNames: [...]}
     A-->>F: 200 {data: {matchday, players: [{name, position}], games: []}}
     F->>A: POST /api/tournaments/K7M2P4QX/lists/2026-09-16/games (Bearer token)
     A-->>F: 201 {data: {position: 1, dealer: "Anna", declarer: "Bert", gameValue: 72}}
@@ -99,9 +118,12 @@ tournament once and can then be put on a list:
 
 - `POST /api/tournaments/:tournamentId/players` adds a player. Names are unique
   per tournament, so the same name cannot be added twice.
+- A player is addressed **by their name** in every other endpoint – there is no
+  player id in the API. The name is the handle, and it is compared **exactly**
+  (surrounding whitespace is trimmed, `anna` and `Anna` are different players).
 - `PUT /api/tournaments/:tournamentId/lists/:matchday/players` sets the lineup of
-  a matchday. Only ids of players **of the same tournament** are accepted –
-  anything else is rejected with `409`.
+  a matchday. Only names of players **of the same tournament** are accepted –
+  anything else is rejected with `409` (`unknownPlayers` lists the names).
 - A lineup consists of **3, 4 or 5 players** and its order matters: it is the
   seating order of the matchday. Player 1 deals in round 1, player 2 in round 2
   and so on; after the last player it starts over with player 1. The answers
@@ -110,6 +132,7 @@ tournament once and can then be put on a list:
   while the list has **no games** yet – afterwards the request is rejected with
   `409`.
 - A player can only be deleted while they are not part of any list.
+- Renaming is not supported. Delete the player and add the new name instead.
 
 ### Entering a game
 
@@ -250,7 +273,7 @@ tells the frontend where it stands, so it does not have to re-derive the rules:
   "submittedAt": "2026-09-16T19:42:11.000Z",
   "locked": true,
   "lockReasons": ["SUBMITTED"],
-  "players": [{ "id": "…", "name": "Anna", "position": 1 }],
+  "players": [{ "name": "Anna", "position": 1 }],
   "gameCount": 24,
   "totalGameValue": 811,
   "games": []
@@ -292,14 +315,13 @@ for NAME in Anna Bert Clara Dora; do
     -d "{\"name\":\"$NAME\"}" > /dev/null
 done
 
-# their ids – the order of this array is the seating order
-PLAYERS=$(curl -s $BASE/tournaments/K7M2P4QX/players -H "Authorization: Bearer $TOKEN" \
-  | jq -c '[.data[].id]')
+# the seating order is simply the order of the names
+PLAYERS='["Anna","Bert","Clara","Dora"]'
 
 # 4. create the list of the matchday and set the lineup
 curl -s -X POST $BASE/tournaments/K7M2P4QX/lists \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"matchday\":\"$TODAY\",\"playerIds\":$PLAYERS}"
+  -d "{\"matchday\":\"$TODAY\",\"playerNames\":$PLAYERS}"
 
 # 5. enter the first game: Anna deals, so Bert may play a grand with 2 Spitzen
 curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$TODAY/games \
@@ -450,18 +472,20 @@ with its players, lists and games.
 
 ### Players
 
-| Method | Path                                           | Auth | Description                                                |
-| ------ | ---------------------------------------------- | ---- | ---------------------------------------------------------- |
-| GET    | `/tournaments/:tournamentId/players`           | any  | All players of the tournament, sorted by name              |
-| POST   | `/tournaments/:tournamentId/players`           | any  | `{ name }` – 1–64 characters, unique inside the tournament |
-| DELETE | `/tournaments/:tournamentId/players/:playerId` | any  | Remove a player (only while not on any list)               |
+| Method | Path                                             | Auth | Description                                                |
+| ------ | ------------------------------------------------ | ---- | ---------------------------------------------------------- |
+| GET    | `/tournaments/:tournamentId/players`             | any  | All players of the tournament, sorted by name              |
+| POST   | `/tournaments/:tournamentId/players`             | any  | `{ name }` – 1–64 characters, unique inside the tournament |
+| DELETE | `/tournaments/:tournamentId/players/:playerName` | any  | Remove a player (only while not on any list)               |
 
 ```json
-{ "id": "9f1c2a…", "name": "Anna" }
+{ "name": "Anna" }
 ```
 
 Players are the roster of the tournament: they are created once and then put on
-a list, which is what makes a game possible at all.
+a list, which is what makes a game possible at all. A player is identified by
+their name inside the tournament, so there is no id to remember – the `:playerName`
+path parameter is the name itself (URL-encoded, e.g. `players/Anna%20M%C3%BCller`).
 
 Errors: `409` the name already exists, `409` the player is part of a list and
 cannot be deleted, `404` unknown player.
@@ -487,16 +511,16 @@ seating order, and every game in it is played by exactly those players.
 
 `POST …/lists`
 
-| Field       | Type     | Rules                                                                |
-| ----------- | -------- | -------------------------------------------------------------------- |
-| `matchday`  | string   | `YYYY-MM-DD`, a matchday of the tournament, at most one list per day |
-| `playerIds` | string[] | optional: 3–5 ids of this tournament **in seating order**            |
-| `games`     | game[]   | optional: entered in order, they become rounds 1…n                   |
+| Field         | Type     | Rules                                                                      |
+| ------------- | -------- | -------------------------------------------------------------------------- |
+| `matchday`    | string   | `YYYY-MM-DD`, a matchday of the tournament, at most one list per day       |
+| `playerNames` | string[] | optional: 3–5 names of this tournament **in seating order**, no duplicates |
+| `games`       | game[]   | optional: entered in order, they become rounds 1…n                         |
 
-`PUT …/lists/:matchday/players` – `{ "playerIds": ["…", "…", "…"] }` with 3–5
-ids of this tournament in seating order; `playerIds[0]` deals in round 1. The
-request is rejected once the list contains games, because the lineup decides who
-deals in which round.
+`PUT …/lists/:matchday/players` – `{ "playerNames": ["Anna", "Bert", "Clara"] }`
+with 3–5 names of this tournament in seating order; `playerNames[0]` deals in
+round 1. The request is rejected once the list contains games, because the lineup
+decides who deals in which round.
 
 `GET …/lists/:matchday` → `200`
 
@@ -511,8 +535,8 @@ deals in which round.
     "locked": true,
     "lockReasons": ["SUBMITTED"],
     "players": [
-      { "id": "9f1c2a…", "name": "Anna", "position": 1 },
-      { "id": "77ab31…", "name": "Bert", "position": 2 }
+      { "name": "Anna", "position": 1 },
+      { "name": "Bert", "position": 2 }
     ],
     "gameCount": 24,
     "totalGameValue": 811,
@@ -631,10 +655,14 @@ when you report a problem.
 
 ### Player
 
-| Field  | Type   | Notes                             |
-| ------ | ------ | --------------------------------- |
-| `id`   | string | uuid, used as reference on a list |
-| `name` | string | unique inside the tournament      |
+| Field  | Type   | Notes                                                               |
+| ------ | ------ | ------------------------------------------------------------------- |
+| `name` | string | unique inside the tournament and the only way a player is addressed |
+
+There is no player id in the API. A player is identified by their name inside
+the tournament, which is exactly what the game rules need anyway – `declarer`
+and `players` of a game are names, too. Only the database uses an internal
+surrogate key for the join table of a lineup; it is never returned.
 
 ### List
 
@@ -647,7 +675,7 @@ when you report a problem.
 | `submittedAt`            | string \| null        |                                                         |
 | `locked`                 | boolean               | relative to the requesting role                         |
 | `lockReasons`            | string[]              | empty while unlocked, see [Locked lists](#locked-lists) |
-| `players`                | object[]              | `{ id, name, position }` in seating order               |
+| `players`                | object[]              | `{ name, position }` in seating order                   |
 | `gameCount`              | number                |                                                         |
 | `totalGameValue`         | number                | sum of the `gameValue` of all its games                 |
 | `games`                  | Game[]                | only on the detail endpoint                             |
@@ -732,19 +760,21 @@ Known limitations:
 
 ## Troubleshooting
 
-| Symptom                                                            | Cause                                                        |
-| ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `401 Missing bearer token`                                         | header missing or not `Authorization: Bearer <token>`        |
-| `401 Invalid or expired session token`                             | the token expired (`JWT_EXPIRES_IN`) – log in again          |
-| `403 The session token does not grant access to this tournament`   | the token belongs to another tournament id                   |
-| `403 … is not a matchday of …`                                     | the weekday of that date is not in `matchdays`               |
-| `403 Lists can only be created or changed on the current matchday` | members may only touch today's list – use the admin password |
-| `409 This list has already been submitted`                         | reopen it as an admin before changing or submitting it again |
-| `409 The players of the matchday cannot be changed any more`       | the list already contains games                              |
-| `409 … does not play this round because … deals`                   | step 1: that player sits out – check `dealer`                |
-| `422` with `details.issues[].path`                                 | the field named in `path` is wrong                           |
-| `429 Too many requests`                                            | wait for `Retry-After` seconds                               |
-| `503 Database is unavailable`                                      | check `DATABASE_URL` and `GET /api/health/ready`             |
+| Symptom                                                            | Cause                                                                                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `401 Missing bearer token`                                         | header missing or not `Authorization: Bearer <token>`                                                                   |
+| `401 Invalid or expired session token`                             | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
+| `403 The session token does not grant access to this tournament`   | the token belongs to another tournament id                                                                              |
+| `403 … is not a matchday of …`                                     | the weekday of that date is not in `matchdays`                                                                          |
+| `403 Lists can only be created or changed on the current matchday` | members may only touch today's list – use the admin password                                                            |
+| `409 This list has already been submitted`                         | reopen it as an admin before changing or submitting it again                                                            |
+| `409 The players of the matchday cannot be changed any more`       | the list already contains games                                                                                         |
+| `409 … does not play this round because … deals`                   | step 1: that player sits out – check `dealer`                                                                           |
+| `409 Every player of a list has to be part of the tournament`      | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
+| `422` with `details.issues[].path`                                 | the field named in `path` is wrong                                                                                      |
+| `429 Too many requests`                                            | wait for `Retry-After` seconds                                                                                          |
+| `503 Database is unavailable`                                      | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
+| startup aborts with `database schema could not be prepared`        | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
 
 ## Configuration
 
@@ -762,6 +792,7 @@ All settings come from the environment – see `.env.example`:
 | `RATE_LIMIT_MAX`       | `20`               | Requests per window for the endpoints without a token, `0` disables it |
 | `RATE_LIMIT_WINDOW_MS` | `60000`            | Length of that window in milliseconds                                  |
 | `TZ`                   | system             | Timezone that decides the current matchday                             |
+| `AUTO_MIGRATE`         | `true`             | Apply pending migrations on startup (`false` skips it)                 |
 
 Invalid configuration aborts startup with a list of the offending variables.
 
@@ -774,8 +805,8 @@ backend/
 │   ├── app.ts                  # express app factory
 │   ├── server.ts               # bootstrap + graceful shutdown
 │   ├── config/env.ts           # validated environment
-│   ├── lib/                    # dates, errors, logger, passwords, prisma, tokens,
-│   │                           # tournament id generation
+│   ├── lib/                    # dates, errors, logger, migrations, passwords,
+│   │                           # prisma, tokens, tournament id generation
 │   ├── middleware/             # auth, cors, error handler, request context
 │   ├── modules/
 │   │   ├── tournaments/        # schemas, service, routes
@@ -806,7 +837,12 @@ real instance.
 ## Deployment notes
 
 - Build with `npm run build`, then run `npm start`.
-- Apply migrations with `npm run db:deploy` before starting the new version.
+- Migrations are applied on startup (see
+  [Database migrations](#database-migrations)), so no separate step is required.
+  To keep schema changes out of the application container, run `npm run db:deploy`
+  beforehand and start with `AUTO_MIGRATE=false`.
+- The database user needs `CREATE`/`ALTER` rights on the schema for automatic
+  migrations; without them start with `AUTO_MIGRATE=false`.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown (stop accepting requests, close
   the Prisma pool, force exit after 10 s).
 - Run behind a TLS terminating proxy; tokens are sent as bearer headers.

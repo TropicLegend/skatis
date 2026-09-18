@@ -4,7 +4,7 @@ import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
-import { resolveTournamentPlayers, toPlayerDto } from '../players/player.service.js';
+import { resolveTournamentPlayers } from '../players/player.service.js';
 import {
   assertListEditable,
   assertMatchdayAllowed,
@@ -18,7 +18,6 @@ import { nextDealer } from './game-rules.js';
 
 /** A player of a list together with their seat in the lineup. */
 export interface ListPlayerDto {
-  id: string;
   name: string;
   /** Seating order – position 1 deals in round 1. */
   position: number;
@@ -92,7 +91,7 @@ export function toListDto(
     locked: lockReasons.length > 0,
     lockReasons,
     players: list.lineup.map((entry) => ({
-      ...toPlayerDto(entry.player),
+      name: entry.player.name,
       position: entry.position,
     })),
     gameCount: list.games.length,
@@ -197,7 +196,7 @@ export async function createList(
   }
 
   const games = input.games ?? [];
-  const players = await resolveTournamentPlayers(tournament.id, input.playerIds ?? []);
+  const players = await resolveTournamentPlayers(tournament.id, input.playerNames ?? []);
 
   if (games.length > 0) {
     assertLineupComplete(players.length);
@@ -244,7 +243,7 @@ export async function createList(
 export async function setListPlayers(
   tournamentId: string,
   matchday: string,
-  playerIds: readonly string[],
+  playerNames: readonly string[],
   role: TournamentRole,
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
@@ -260,7 +259,7 @@ export async function setListPlayers(
     );
   }
 
-  const players = await resolveTournamentPlayers(tournament.id, playerIds);
+  const players = await resolveTournamentPlayers(tournament.id, playerNames);
 
   await prisma.$transaction(async (transaction) => {
     await transaction.gameListPlayer.deleteMany({ where: { listId: list.id } });
