@@ -36,3 +36,8 @@ Wie berechnet man den Spielwert?
   * Pik 11
   * Kreuz 12
   * Grand 24
+ 
+  Wie trägt man das Spiel in die Liste ein?
+  
+
+  
