@@ -10,7 +10,7 @@ apiRouter.get('/', (_req, res) => {
   res.json({
     data: {
       name: 'skatis-api',
-      version: '0.2.0',
+      version: '0.3.0',
       endpoints: {
         health: '/api/health',
         createTournament: 'POST /api/createTournament',
@@ -18,6 +18,7 @@ apiRouter.get('/', (_req, res) => {
         tournaments: 'GET /api/tournaments',
         tournament: 'GET /api/tournaments/:tournamentId',
         session: 'GET /api/tournaments/:tournamentId/session',
+        players: '/api/tournaments/:tournamentId/players',
         lists: '/api/tournaments/:tournamentId/lists',
         games: '/api/tournaments/:tournamentId/lists/:matchday/games',
       },

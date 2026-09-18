@@ -37,36 +37,110 @@ model Tournament {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   lists             GameList[]
+  players           Player[]
 
   @@index([name])
   @@map("tournaments")
 }
 
+/// A person taking part in a tournament. Players are created once per
+/// tournament and can then be put on its lists.
+model Player {
+  id           String           @id @default(uuid())
+  tournamentId String
+  name         String           @db.VarChar(64)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  lineups      GameListPlayer[]
+
+  /// Within a tournament a name identifies a player.
+  @@unique([tournamentId, name])
+  @@map("players")
+}
+
 /// One list per matchday of a tournament.
 model GameList {
-  id           String     @id @default(uuid())
+  id           String           @id @default(uuid())
   tournamentId String
-  matchday     DateTime   @db.Date
-  status       ListStatus @default(OPEN)
+  matchday     DateTime         @db.Date
+  status       ListStatus       @default(OPEN)
   submittedAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   games        Game[]
+  /// The players of the matchday in their seating order (3, 4 or 5 players).
+  lineup       GameListPlayer[]
 
   @@unique([tournamentId, matchday])
   @@map("game_lists")
 }
 
+/// A player on a list. `position` is the seating order of the matchday: the
+/// player at position 1 deals in round 1, then position 2 and so on – after the
+/// last player the first one deals again.
+model GameListPlayer {
+  listId   String
+  playerId String
+  position Int
+  list     GameList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([listId, playerId])
+  @@unique([listId, position])
+  @@index([playerId])
+  @@map("game_list_players")
+}
+
+/// The six game types of a game ("Spiel").
+enum GameType {
+  KARO
+  HERZ
+  PIK
+  KREUZ
+  GRAND
+  NULL
+}
+
+/// "Mit" / "Ohne" – the Spitzen of a suit or grand game.
+enum Matadors {
+  WITH
+  WITHOUT
+}
+
 /// A single game ("Spiel") entered into a list.
 model Game {
-  id        String   @id @default(uuid())
-  listId    String
-  position  Int
-  players   String[]
-  declarer  String?
-  gameType  String?
-  points    Int
+  id       String    @id @default(uuid())
+  listId   String
+  /// Round within the list, starts at 1.
+  position Int
+  /// The lineup of the list at the time the game was entered.
+  players  String[]
+  /// Geber of the round – follows the seating order of the lineup.
+  dealer   String
+  /// Alleinspieler; `null` means the game was passed out ("eingepasst").
+  declarer String?
+  gameType GameType?
+
+  /// Gewinnstufen (step 2): announced Hand / Schneider / Schwarz / Offen.
+  hand               Boolean @default(false)
+  schneiderAnnounced Boolean @default(false)
+  schwarzAnnounced   Boolean @default(false)
+  offen              Boolean @default(false)
+
+  /// Spitzen (step 3) – never set for a null game.
+  matadors      Matadors?
+  matadorsCount Int?
+
+  /// Spielergebnis (step 4).
+  schneider Boolean  @default(false)
+  schwarz   Boolean  @default(false)
+  won       Boolean?
+
+  /// Spielwert, computed by the API from the properties above.
+  gameValue Int @default(0)
+
   note      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

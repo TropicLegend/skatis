@@ -1,14 +1,29 @@
-import { badRequest, notFound } from '../../lib/http-error.js';
+import { notFound } from '../../lib/http-error.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { assertListEditable, assertMatchdayAllowed } from './list-access.js';
-import { findListOrThrow } from './list.service.js';
-import { toGameCreateData, toGameDto, toGameUpdateData, type GameDto } from './game.mapper.js';
-import type { CreateGameInput, UpdateGameInput } from './game.schemas.js';
+import { findListOrThrow, lineupNames, type ListWithGames } from './list.service.js';
+import { assertDeclarerAllowed, assertLineupComplete } from './game-entry.js';
+import {
+  toGameCreateData,
+  toGameDto,
+  toGameProperties,
+  toGameUpdateData,
+  type GameDto,
+} from './game.mapper.js';
+import type { GameInput } from './game.schemas.js';
+import { nextDealer } from './game-rules.js';
 
+/** Rounds are appended, so a new game gets the next free position. */
 function nextFreePosition(positions: readonly number[]): number {
   return positions.reduce((max, position) => Math.max(max, position), 0) + 1;
+}
+
+/** The dealer of the last round, or `null` when no game has been entered yet. */
+function lastDealer(list: ListWithGames): string | null {
+  const last = list.games.at(-1);
+  return last ? last.dealer : null;
 }
 
 export async function listGames(tournamentId: string, matchday: string): Promise<GameDto[]> {
@@ -17,10 +32,16 @@ export async function listGames(tournamentId: string, matchday: string): Promise
   return list.games.map(toGameDto);
 }
 
+/**
+ * Enters a game into a list. Every property of the game is checked: the shape
+ * and the rules that depend on the game itself by the schema, the rules that
+ * depend on the list here. `position`, `dealer` and `players` come from the
+ * list, `gameValue` is calculated.
+ */
 export async function createGame(
   tournamentId: string,
   matchday: string,
-  input: CreateGameInput,
+  input: GameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
   const tournament = await getTournamentRow(tournamentId);
@@ -29,22 +50,32 @@ export async function createGame(
   assertMatchdayAllowed(tournament, matchday, role);
   assertListEditable(list.status, role);
 
-  // Without an explicit position the game is appended to the end of the list.
-  // A concurrent insert may collide; the unique constraint then answers 409.
-  const position = input.position ?? nextFreePosition(list.games.map((game) => game.position));
+  const lineup = lineupNames(list);
+  assertLineupComplete(lineup.length);
+
+  // Player 1 deals in round 1, then player 2 and so on.
+  const dealer = nextDealer(lineup, lastDealer(list));
+  assertDeclarerAllowed(input, lineup, dealer);
+
+  const position = nextFreePosition(list.games.map((game) => game.position));
+  const properties = toGameProperties(input, { position, dealer, players: lineup });
 
   const game = await prisma.game.create({
-    data: { ...toGameCreateData(input, position), listId: list.id },
+    data: { ...toGameCreateData(properties), listId: list.id },
   });
 
   return toGameDto(game);
 }
 
-export async function updateGame(
+/**
+ * Replaces a game. The round keeps its position and its dealer, so the request
+ * only carries the properties of the game itself.
+ */
+export async function replaceGame(
   tournamentId: string,
   matchday: string,
   gameId: string,
-  input: UpdateGameInput,
+  input: GameInput,
   role: TournamentRole,
 ): Promise<GameDto> {
   const tournament = await getTournamentRow(tournamentId);
@@ -58,16 +89,19 @@ export async function updateGame(
     throw notFound(`Game ${gameId} does not exist in the list for ${matchday}`);
   }
 
-  // Validate the resulting game, not just the patched fields.
-  const players = input.players ?? game.players;
-  const declarer = input.declarer === undefined ? game.declarer : input.declarer;
-  if (declarer !== null && !players.includes(declarer)) {
-    throw badRequest('The declarer must be one of the players');
-  }
+  const lineup = lineupNames(list);
+  assertLineupComplete(lineup.length);
+  assertDeclarerAllowed(input, lineup, game.dealer);
+
+  const properties = toGameProperties(input, {
+    position: game.position,
+    dealer: game.dealer,
+    players: lineup,
+  });
 
   const updated = await prisma.game.update({
     where: { id: game.id },
-    data: toGameUpdateData(input),
+    data: toGameUpdateData(properties),
   });
 
   return toGameDto(updated);

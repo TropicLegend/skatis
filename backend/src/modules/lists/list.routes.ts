@@ -7,9 +7,15 @@ import {
   getList,
   listLists,
   reopenList,
+  setListPlayers,
   submitList,
 } from './list.service.js';
-import { createListSchema, listListsQuery, listParams } from './list.schemas.js';
+import {
+  createListSchema,
+  listListsQuery,
+  listParams,
+  setListPlayersSchema,
+} from './list.schemas.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
 
 export const listRouter = Router({ mergeParams: true });
@@ -17,7 +23,7 @@ export const listRouter = Router({ mergeParams: true });
 listRouter.get('/', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const query = listListsQuery.parse(req.query);
-  const result = await listLists(tournamentId, query);
+  const result = await listLists(tournamentId, query, currentAuth(req).role);
 
   res.json({
     data: result.items,
@@ -35,7 +41,7 @@ listRouter.post('/', authenticate(), async (req, res) => {
 
 listRouter.get('/:matchday', authenticate(), async (req, res) => {
   const { tournamentId, matchday } = listParams.parse(req.params);
-  const list = await getList(tournamentId, matchday);
+  const list = await getList(tournamentId, matchday, currentAuth(req).role);
 
   res.json({ data: list });
 });
@@ -59,7 +65,19 @@ listRouter.post('/:matchday/submit', authenticate(), async (req, res) => {
 /** Admin only: reopens a submitted list so members can edit it again. */
 listRouter.post('/:matchday/reopen', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, matchday } = listParams.parse(req.params);
-  const list = await reopenList(tournamentId, matchday);
+  const list = await reopenList(tournamentId, matchday, currentAuth(req).role);
+
+  res.json({ data: list });
+});
+
+/**
+ * Replaces the players of the list – they have to belong to the tournament.
+ * They are the lineup of the matchday, so they play every game of the list.
+ */
+listRouter.put('/:matchday/players', authenticate(), async (req, res) => {
+  const { tournamentId, matchday } = listParams.parse(req.params);
+  const { playerIds } = setListPlayersSchema.parse(req.body ?? {});
+  const list = await setListPlayers(tournamentId, matchday, playerIds, currentAuth(req).role);
 
   res.json({ data: list });
 });

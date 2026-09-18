@@ -9,6 +9,8 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente.
     * Das Adminpasswort: Nutzer kann im Nachhinein Listen modifizieren, ggf. korrigieren und löschen - und außerdem Listen für die Vergangenheit erstellen. Nutzer kann Zeitraum in der Woche setzen/ändern in der andere Nutzer Listen erstellen und abgeben können. Nutzer kann das normale Passwort neu setzen.
     * Das Normale Passwort: Nutzer kann Liste erstellen und Spiele in diese Liste eintragen und diese Liste am Ende abgeben
   * Nutzer mit normalem Passwort können nur an Spieltagen Listen (diesen Tages) erstellen, editieren und abgeben
+  * Listen können nur für Spieler geführt werden, die dem Turnier zugefügt wurden.
+  * Spiele können nur für Spieler geführt werden, die Teil der Liste sind.
 
 ## Logik
 * Wenn man über das normale Passwort in einem Turnier ist, kann man eine Liste erstellen. Eine Liste besteht aus 3,4 oder 5 Personen. Diese Spieler stehen in einer festen Reihenfolge auf der Liste. Spieler 1 ist der Geber in Runde 1. Danach Spieler 2 usw. Wenn alle Spieler einmal gegeben haben gibt wieder Spieler 1 und es geht von vorne los.

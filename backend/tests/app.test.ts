@@ -139,6 +139,72 @@ describe('api', () => {
     expect(response.body.error.code).toBe('FORBIDDEN');
   });
 
+  it('requires a bearer token for the players of a tournament', async () => {
+    const response = await request(app).get(`/api/tournaments/${TOURNAMENT_ID}/players`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('validates a new player before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/players`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: '   ' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.details.issues[0].path).toBe('name');
+  });
+
+  it('validates the lineup of a list before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .put(`/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/players`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ playerIds: [] });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.details.issues[0].path).toBe('playerIds');
+  });
+
+  it('validates the properties of a game before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/games`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ passedOut: false, declarer: 'Anna', gameType: 'GRAND', won: true });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.details.issues[0].path).toBe('matadors');
+  });
+
+  it('accepts a passed out game and then looks for the list', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/games`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ passedOut: true });
+
+    // Valid input passed the schema, so the request reached the database.
+    expect(response.status).not.toBe(422);
+    expect([404, 503]).toContain(response.status);
+  });
+
+  it('rejects players of another tournament', async () => {
+    const { token } = issueSessionToken(OTHER_TOURNAMENT_ID, 'ADMIN');
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/players`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Anna' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
   it('handles cors preflight requests', async () => {
     const response = await request(app)
       .options('/api/tournaments')

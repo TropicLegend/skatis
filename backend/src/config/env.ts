@@ -10,6 +10,9 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().min(1).default('12h'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   CORS_ORIGIN: z.string().default('*'),
+  /** Requests per window for the endpoints that need no token. `0` disables it. */
+  RATE_LIMIT_MAX: z.coerce.number().int().min(0).default(20),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

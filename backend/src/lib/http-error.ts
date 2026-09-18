@@ -8,6 +8,7 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'PAYLOAD_TOO_LARGE'
+  | 'TOO_MANY_REQUESTS'
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE';
 
@@ -44,6 +45,9 @@ export const validationError = (
   message = 'Request validation failed',
   details?: unknown,
 ): HttpError => new HttpError(422, 'VALIDATION_ERROR', message, details);
+
+export const tooManyRequests = (message = 'Too many requests'): HttpError =>
+  new HttpError(429, 'TOO_MANY_REQUESTS', message);
 
 export const serviceUnavailable = (message = 'Service unavailable'): HttpError =>
   new HttpError(503, 'SERVICE_UNAVAILABLE', message);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { listRouter } from '../lists/list.routes.js';
+import { playerRouter } from '../players/player.routes.js';
 import {
   deleteTournament,
   getTournament,
@@ -67,4 +68,5 @@ tournamentRouter.delete('/:tournamentId', authenticate('ADMIN'), async (req, res
   res.status(204).end();
 });
 
+tournamentRouter.use('/:tournamentId/players', playerRouter);
 tournamentRouter.use('/:tournamentId/lists', listRouter);

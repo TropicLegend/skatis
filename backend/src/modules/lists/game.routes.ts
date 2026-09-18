@@ -1,29 +1,30 @@
 import { Router } from 'express';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
-import { createGame, deleteGame, listGames, updateGame } from './game.service.js';
-import { createGameSchema, gameParams, updateGameSchema } from './game.schemas.js';
+import { createGame, deleteGame, listGames, replaceGame } from './game.service.js';
+import { gameParams, gameSchema, gamesParams } from './game.schemas.js';
 
 export const gameRouter = Router({ mergeParams: true });
 
 gameRouter.get('/', authenticate(), async (req, res) => {
-  const { tournamentId, matchday } = gameParams.parse(req.params);
+  const { tournamentId, matchday } = gamesParams.parse(req.params);
   const games = await listGames(tournamentId, matchday);
 
   res.json({ data: games });
 });
 
 gameRouter.post('/', authenticate(), async (req, res) => {
-  const { tournamentId, matchday } = gameParams.parse(req.params);
-  const body = createGameSchema.parse(req.body ?? {});
+  const { tournamentId, matchday } = gamesParams.parse(req.params);
+  const body = gameSchema.parse(req.body ?? {});
   const game = await createGame(tournamentId, matchday, body, currentAuth(req).role);
 
   res.status(201).json({ data: game });
 });
 
-gameRouter.patch('/:gameId', authenticate(), async (req, res) => {
+/** Replaces a game completely – position and dealer of the round stay. */
+gameRouter.put('/:gameId', authenticate(), async (req, res) => {
   const { tournamentId, matchday, gameId } = gameParams.parse(req.params);
-  const body = updateGameSchema.parse(req.body ?? {});
-  const game = await updateGame(tournamentId, matchday, gameId, body, currentAuth(req).role);
+  const body = gameSchema.parse(req.body ?? {});
+  const game = await replaceGame(tournamentId, matchday, gameId, body, currentAuth(req).role);
 
   res.json({ data: game });
 });

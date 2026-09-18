@@ -54,4 +54,28 @@ describe('session tokens', () => {
 
     expect(() => verifySessionToken(forged)).toThrow();
   });
+
+  it('rejects an unsigned token', () => {
+    const encode = (value: unknown): string =>
+      Buffer.from(JSON.stringify(value)).toString('base64url');
+    const unsigned = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+      sub: TOURNAMENT_ID,
+      role: 'ADMIN',
+      iss: TOKEN_ISSUER,
+      aud: TOKEN_AUDIENCE,
+    })}.`;
+
+    expect(() => verifySessionToken(unsigned)).toThrow();
+  });
+
+  it('rejects a token signed with another algorithm', () => {
+    const foreign = jwt.sign({ role: 'ADMIN' }, process.env.JWT_SECRET as string, {
+      subject: TOURNAMENT_ID,
+      algorithm: 'HS512',
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    });
+
+    expect(() => verifySessionToken(foreign)).toThrow();
+  });
 });

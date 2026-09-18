@@ -1,26 +1,29 @@
 import { z } from 'zod';
+import { lineupSchema } from '../players/player.schemas.js';
 import { isoDateSchema, tournamentIdSchema } from '../tournaments/tournament.schemas.js';
-import { createGameSchema } from './game.schemas.js';
+import { gameSchema } from './game.schemas.js';
 
 export const listParams = z.object({
   tournamentId: tournamentIdSchema,
   matchday: isoDateSchema,
 });
 
-export const createListSchema = z
-  .object({
-    matchday: isoDateSchema,
-    games: z.array(createGameSchema).max(200).optional(),
-  })
-  .refine(
-    (list) => {
-      const positions = (list.games ?? [])
-        .map((game) => game.position)
-        .filter((position): position is number => position !== undefined);
-      return new Set(positions).size === positions.length;
-    },
-    { message: 'Game positions must be unique', path: ['games'] },
-  );
+export const createListSchema = z.object({
+  matchday: isoDateSchema,
+  /** The lineup of the matchday in seating order (3, 4 or 5 players). */
+  playerIds: lineupSchema.optional(),
+  /** Games are appended in order – the API assigns the round numbers. */
+  games: z.array(gameSchema).max(200).optional(),
+});
+
+/**
+ * Replaces the players of a list. Only players of the same tournament are
+ * accepted, and only while the list has no games yet – the lineup decides who
+ * deals in which round.
+ */
+export const setListPlayersSchema = z.object({
+  playerIds: lineupSchema,
+});
 
 export const listListsQuery = z
   .object({

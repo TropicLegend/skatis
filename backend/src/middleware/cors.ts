@@ -21,7 +21,7 @@ export const cors: RequestHandler = (req, res, next) => {
 
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Request-Id');
-  res.setHeader('Access-Control-Expose-Headers', 'X-Request-Id');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Request-Id,Retry-After');
   res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {

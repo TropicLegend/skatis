@@ -35,6 +35,8 @@ export function issueSessionToken(tournamentId: string, role: TournamentRole): I
 /** Verifies a session token and returns its claims. Throws when invalid or expired. */
 export function verifySessionToken(token: string): SessionClaims {
   const decoded = jwt.verify(token, env.JWT_SECRET, {
+    // Pinned so that a token can never be accepted with another algorithm.
+    algorithms: ['HS256'],
     issuer: TOKEN_ISSUER,
     audience: TOKEN_AUDIENCE,
   });
