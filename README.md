@@ -39,7 +39,38 @@ Wie berechnet man den Spielwert?
   * Kreuz 12
   * Grand 24
  
-  Wie trägt man das Spiel in die Liste ein?
+  Wie berechnet man den Spielwert?
+
+*  die Nullspiele haben feste Spielwerte:
+   * Null 23
+   * Null Hand 35
+   * Null Offen 46
+   * Null Hand Offen 59
+
+* Die anderen Spielwerte berechnet man so: (Spitze+Anzahl_Gewinnstufen+1)*Grundwert.
+  Anzahl_Gewinnstufen ist die Anzahl der ausgewählen Gewinnstufen(Hand, Schneider Ang, Schwarz Ang., Offen, Schneider, Schwarz)
+  Grundwerte
+  * Karo 9
+  * Herz 10
+  * Pik 11
+  * Kreuz 12
+  * Grand 24
+
+Wenn der Spieler der Alleinspieler ist gewinnt. Bekommt der den Spielwert gutgeschrieben. Wenn der Alleinspieler verliert bekommt er den doppelten Spielwert abgezogen. Dies Trägt man dann in die Tabelle ein die zb so aussehen kann. Anzahl Spiele und Spieler kann varieren aber das Prinzip ist das gleiche.
+
+"Es handelt sich um eine Ergebnistabelle für ein Kartenspiel mit 4 Spielern und 48 Einzelspielen.
+
+Die Tabelle besteht aus einem Kopfbereich, einem Spielwert-/Gewinnstufenbereich, vier Spielerbereichen und einer abschließenden Punkteauswertung.
+
+Kopf: Datum, Serie und Tisch sowie Name und Startnummer für vier Spieler. Die Spieler werden als Platz 1, Platz 2, Platz 3 und Platz 4 bezeichnet.
+
+Spieltabelle: Es gibt 48 Zeilen, nummeriert von 1 bis 48. Jede Zeile entspricht einem Spiel. Die Spalten sind in folgender Reihnfolge (Grundwert,Spitze "Mit",Spitze "Ohne", Hand, Schneider, Scheider Ang, Schwarz, Schwarz Ang, Offen, Positiver Spielwert, Negativer Spielwert) dann für jeder Spieler eine (Eintragungsspalte,Gew,Verl) und am eine eine Eingepasst Spalte.
+"
+Wir tragen also ein Spiel in eine Zeile ein. Ganz vorne der Grundwert. Bei Nullspielen einfach schon gleich der Spielwert. Dann schreiben wir die Spitzen in die nächste oder übernächste Spalte je nachdem ob "Mit" oder "Ohne". Dann kreuzen wir bei den Gewinnstufen die entsprechenen an. Wenn das Alleinspiel Gewonnen wurde schreiben wir in die Spalte "Positiver Spielwert" den Spielwert, wenn verloren schreiben wir in " Negativer Spielwert" den Spielwert mal 2. Diesen Wert verrechnen wir dann mit dem Punktekonto des Alleinspielers, welches am Start der Liste auf 0 ist. Bei Gewonnenem Alleinspiel dann die Anzahl der Gewonnenen Alleinspiele des Spielers in das Feld "Gew". Bei Verlorenem Alleinspiel die Anzahl der Verlorenen Alleinspieler des Spieles in das Feld "Verl". Wenn Eingepasst streiche die Zeile durch und schreibe hinten in der letzten spalte die Anzahl eingepasste Spiele in die Eingepasst Spalte.
+Ganz unten in der Liste Steht das Gesamtergebnis der jeweiligen Spieler. Das Gesamtergebnis sind die Spielpunkte von oben +50 für jedes Gewonnenes Alleinspiel -50 für jedes verlorenes. (+24 bei 5 Spielern ,+30 bei 4 Spielern,+40 bei 3 Spielern) für jedes verlorenes Alleinspiel eines anderen Spielers. Dieses Gesamtergebnis soll während die ganzen Spiele eingetragen werden durchgängig aktualisiert werden.
+
+  
+
   
 
   
