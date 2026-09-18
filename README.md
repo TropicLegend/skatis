@@ -73,5 +73,18 @@ Ganz unten in der Liste Steht das Gesamtergebnis der jeweiligen Spieler. Das Ges
   
 
   
+So one player can play on multiple lists each evening. After submitting a list, each player is attributed a certain amount of points in the tournament. This is calculated in the following way:
+First of all, a player's amount of played games is an important metric.
+The amount of games the player has participated in in a list, can be found out the following way:
 
+Which games he has participated in, can be found out the following way:
+3-player list: The player plays every game.
+4-player list: The player plays every game he is NOT "Geber" in.
+5-player list: The player plays every game in which the player left of him or right of him has NOT been the "Geber".
+
+After finding out, how many games the player has participated in, this count is added to the total amount of games the player has participated in in the tournament.
+To calculate his standing in the tournament, the next thing is to add the total amount of points gained by the player in the list to the total amounts gained in the tournament. 
+In the end, you calculate the average points per game to get his standing in the tournament.
+Do this for every player when a list is submitted.
+The amount of total games played and total points gained by a player need to be kept track of.
   
