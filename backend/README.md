@@ -8,10 +8,11 @@ the weekdays on which it takes place. The API answers with a short
 request. A tournament owns its **players** (just names); a **list** exists per
 table and matchday and holds the lineup of that table in seating order – 3, 4 or 5
 players. An evening can be played at several tables, so one matchday can have
-several lists. Every **game** in the list is played by those players and follows the
-four steps of the Skat rules in the [README](../README.md) of the repository.
-From the games the API derives the **result table** of the evening: what every
-player won, lost and is credited with, including the final result. There are no
+several lists. Every game of a list is played by three of those players – who
+sits out follows the Geber rule – and follows the four steps of the Skat rules in
+the [README](../README.md) of the repository. From the games the API derives the
+**result table** of the list: what every player won, lost and is credited with,
+including the final result. There are no
 user accounts – access is granted by the normal or the admin password together
 with the tournament id.
 
@@ -223,10 +224,11 @@ and the dealer stay, everything else is taken from the request.
 
 (`src/modules/lists/scoring.ts`)
 
-This is the table of **one matchday**, and the parts below are deliberately
-per evening: the flat bonuses and the bonus for the losses of the others are
-**not** carried over to the next matchday. How the tournament combines the
-evenings is described under [Tournament standings](#tournament-standings).
+This is the table of **one list** – the sheet of one table – and the parts below
+are deliberately per sheet: the flat bonuses and the bonus for the losses of the
+others are **not** carried over to the other tables or to the next matchday. How
+the tournament combines the sheets is described under
+[Tournament standings](#tournament-standings).
 
 Every game is credited to its Alleinspieler, starting from an account of 0:
 
@@ -246,14 +248,27 @@ So `total = points + wonBonus + lossPenalty + opponentBonus`, where
 `points = wonGameValue - lostGameValue`. Each part is reported separately, so a
 frontend can show where a result comes from instead of only the sum.
 
-Worked example – 4 players, three games:
+Worked example – 4 players, four rounds, three of them played:
 
-| Round | Dealer | Declarer | Game                   | Spielwert | Effect               |
-| ----- | ------ | -------- | ---------------------- | --------- | -------------------- |
-| 1     | Anna   | Bert     | Grand Hand, 2 Mit, won | 120       | Bert `+120`, `won 1` |
-| 2     | Bert   | Clara    | Null, won              | 23        | Clara `+23`, `won 1` |
-| 3     | Clara  | Dora     | Herz Ohne 1, lost      | 20        | Dora `-40`, `lost 1` |
-| 4     | Dora   | –        | Eingepasst             | 0         | nothing              |
+| Round | Dealer | Declarer | Game                                   | Spielwert | Effect               |
+| ----- | ------ | -------- | -------------------------------------- | --------- | -------------------- |
+| 1     | Anna   | Bert     | Grand Hand, Schneider Ang., 2 Mit, won | 120       | Bert `+120`, `won 1` |
+| 2     | Bert   | Clara    | Null, won                              | 23        | Clara `+23`, `won 1` |
+| 3     | Clara  | Dora     | Herz Ohne 1, lost                      | 20        | Dora `-40`, `lost 1` |
+| 4     | Dora   | –        | Eingepasst                             | 0         | nothing              |
+
+The Spielwerte follow the formula above:
+
+```text
+Round 1   Grand, 2 Mit, Hand, Schneider angesagt   (2 + 2 + 1) * 24 = 120
+Round 2   Null                                     23
+Round 3   Herz ohne 1, verloren                    (1 + 0 + 1) * 10 = 20
+Round 4   eingepasst                               0
+```
+
+An announced level is itself a Gewinnstufe, so leaving "Schneider Ang." out of
+the name while keeping the 120 would make the row look like it contradicts the
+formula above.
 
 | Player | points | wonBonus | lossPenalty | opponentBonus | `total` |
 | ------ | ------ | -------- | ----------- | ------------- | ------- |
@@ -408,7 +423,10 @@ tells the frontend where it stands, so it does not have to re-derive the rules:
 
 ```json
 {
+  "id": "3b6f1c8a-9d24-4c31-9a5f-6f5f0f2c1b77",
   "matchday": "2026-09-16",
+  "series": 1,
+  "table": 3,
   "status": "SUBMITTED",
   "submittedAt": "2026-09-16T19:42:11.000Z",
   "locked": true,
@@ -460,7 +478,7 @@ done
 # the seating order is simply the order of the names
 PLAYERS='["Anna","Bert","Clara","Dora"]'
 
-# 4. create the list of the matchday and set the lineup – the answer carries the
+# 4. create the sheet of a table and set the lineup – the answer carries the
 #    id of the list, which is what every following step addresses
 LIST=$(curl -s -X POST $BASE/tournaments/K7M2P4QX/lists \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -539,8 +557,11 @@ instead of provoking a `409`.
 Base URL: `http://localhost:3000/api`
 
 Legend: **–** = no token required, **any** = token of any role, **ADMIN** = admin
-token required. `:tournamentId` is the id returned by `POST /tournaments`;
-`:matchday` is always a date in the format `YYYY-MM-DD`.
+token required. `:tournamentId` is the id returned by `POST /tournaments` and
+`:listId` the uuid of a list as returned by `POST /tournaments/:tournamentId/lists`
+– a list is **not** addressed by its date, because one matchday can carry several
+tables. A matchday is always a date in the format `YYYY-MM-DD`, in a query or in a
+body.
 
 ### Creating a tournament and opening a session
 
@@ -669,7 +690,7 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/tournaments`                         | any   | The token's tournament                                  |
 | GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
-| GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all submitted matchdays               |
+| GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all submitted lists                   |
 | PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays`, `password`, `adminPassword` |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
 
@@ -1120,7 +1141,7 @@ Grand won with 120, a Null won with 23, a Herz lost with 20 and one Eingepasst
 game. `locked` and `lockReasons` describe the **requesting** role – see
 [Locked lists](#locked-lists).
 
-**Errors:** `404` unknown list, `422` invalid matchday.
+**Errors:** `404` unknown list, `422` invalid query.
 
 #### `GET /tournaments/:tournamentId/lists/:listId/results`
 
@@ -1202,7 +1223,7 @@ roles, also after the list was submitted.
 }
 ```
 
-**Errors:** `404` unknown list, `422` invalid matchday.
+**Errors:** `404` unknown list.
 
 #### `PUT /tournaments/:tournamentId/lists/:listId/players`
 
@@ -1218,7 +1239,7 @@ Replaces the lineup. `playerNames[0]` deals in round 1.
 list is locked or already contains games (the lineup decides who deals in which
 round), `409` unknown player, `422` wrong size or duplicate name.
 
-#### `POST …/lists/:listId/submit` and `POST …/lists/:listId/reopen`
+#### `POST …/lists/:listId/submit` and `…/lists/:listId/reopen`
 
 `submit` freezes the list for members, `reopen` (admin only) gives it back.
 
@@ -1323,10 +1344,10 @@ A game that was passed out needs nothing else – the flow ends after step 1:
 `positiveGameValue: 0`, `negativeGameValue: 0`.
 
 **Errors:** `403` day not allowed for this role, `404` unknown list, `409` the
-list is locked, the lineup is not complete yet, or the declarer does not play this
-round (`details.dealer`, `details.sittingOutPlayers`, `details.playingPlayers`),
-`422` the game breaks the
-rules of the steps above (`details.issues` names the field).
+list is locked, the lineup is not complete yet, or the declarer is one of the
+players who sit out this round (`details.dealer`, `details.sittingOutPlayers`,
+`details.playingPlayers`), `422` the game breaks the rules of the steps above
+(`details.issues` names the field).
 
 `GET …/games` answers `{ "data": [ …game… ] }` ordered by `position`;
 `GET …/games/:gameId` answers a single game. `PUT …/games/:gameId` replaces the
@@ -1335,13 +1356,7 @@ game completely (the round and the dealer stay), which is why there is no `PATCH
 stored values. The answer of a `GET` can be sent back as it is: fields the API
 derives itself are ignored. `DELETE …/games/:gameId` → `204`.
 
-**Errors (single game):** `404` unknown game in that list, `422` invalid
-`:gameId` or payload.
-
-Errors: `422` a property is missing or contradicts another one – `details.issues`
-names the field; `409` a rule that depends on the list (the lineup is incomplete,
-or the declarer may not play this round because of the dealer); `409` the list is
-locked; `403` another matchday (members only); `404` unknown game.
+**Errors (single game):** `404` unknown game in that list, `422` invalid payload.
 
 ## Response format
 
@@ -1364,18 +1379,18 @@ Success:
 }
 ```
 
-| Status | Code                  | Meaning                                                                              |
-| ------ | --------------------- | ------------------------------------------------------------------------------------ |
-| 400    | `BAD_REQUEST`         | Malformed JSON body                                                                  |
-| 401    | `UNAUTHORIZED`        | Missing/invalid token, wrong id or password                                          |
-| 403    | `FORBIDDEN`           | Wrong role, wrong tournament, not a matchday                                         |
-| 404    | `NOT_FOUND`           | Unknown tournament, list or game                                                     |
-| 409    | `CONFLICT`            | Duplicate matchday, frozen list, unknown player, a game that violates the Skat rules |
-| 413    | `PAYLOAD_TOO_LARGE`   | Body larger than 100 kb                                                              |
-| 422    | `VALIDATION_ERROR`    | Payload or path/query validation failed                                              |
-| 429    | `TOO_MANY_REQUESTS`   | Rate limit of the endpoints without a token                                          |
-| 500    | `INTERNAL_ERROR`      | Unexpected server error                                                              |
-| 503    | `SERVICE_UNAVAILABLE` | Database not reachable                                                               |
+| Status | Code                  | Meaning                                                                                          |
+| ------ | --------------------- | ------------------------------------------------------------------------------------------------ |
+| 400    | `BAD_REQUEST`         | Malformed JSON body                                                                              |
+| 401    | `UNAUTHORIZED`        | Missing/invalid token, wrong id or password                                                      |
+| 403    | `FORBIDDEN`           | Wrong role, wrong tournament, not a matchday                                                     |
+| 404    | `NOT_FOUND`           | Unknown tournament, list or game                                                                 |
+| 409    | `CONFLICT`            | Duplicate Serie/Tisch of a day, frozen list, unknown player, a game that violates the Skat rules |
+| 413    | `PAYLOAD_TOO_LARGE`   | Body larger than 100 kb                                                                          |
+| 422    | `VALIDATION_ERROR`    | Payload or path/query validation failed                                                          |
+| 429    | `TOO_MANY_REQUESTS`   | Rate limit of the endpoints without a token                                                      |
+| 500    | `INTERNAL_ERROR`      | Unexpected server error                                                                          |
+| 503    | `SERVICE_UNAVAILABLE` | Database not reachable                                                                           |
 
 Every response carries an `X-Request-Id` header (echoing a caller-provided
 `X-Request-Id` when it is a sane value) that also appears in the logs. Quote it
@@ -1406,20 +1421,29 @@ surrogate key for the join table of a lineup; it is never returned.
 
 ### List
 
+A list is the sheet of one table: its head is **Datum, Serie und Tisch**, its body
+is the lineup and the games.
+
 | Field                    | Type                  | Notes                                                   |
 | ------------------------ | --------------------- | ------------------------------------------------------- |
-| `id`                     | string                | uuid                                                    |
+| `id`                     | string                | uuid – this is what `:listId` in every path is          |
 | `tournamentId`           | string                |                                                         |
-| `matchday`               | string                | `YYYY-MM-DD`                                            |
+| `matchday`               | string                | `YYYY-MM-DD` – "Datum" of the head                      |
+| `series`                 | number                | "Serie" of the head, from 1                             |
+| `table`                  | number                | "Tisch" of the head, from 1                             |
 | `status`                 | `OPEN` \| `SUBMITTED` |                                                         |
 | `submittedAt`            | string \| null        |                                                         |
 | `locked`                 | boolean               | relative to the requesting role                         |
 | `lockReasons`            | string[]              | empty while unlocked, see [Locked lists](#locked-lists) |
-| `players`                | object[]              | `{ name, position }` in seating order                   |
+| `players`                | object[]              | `{ name, position }` in seating order – Platz 1 … n     |
 | `gameCount`              | number                |                                                         |
 | `totalGameValue`         | number                | sum of the `gameValue` of all its games                 |
 | `games`                  | Game[]                | only on the detail endpoint                             |
 | `createdAt`, `updatedAt` | string                | ISO 8601                                                |
+
+`matchday`, `series` and `table` are required when a list is created and identify
+the sheet among all others of the tournament: one table of a series has exactly one
+sheet per evening.
 
 ### Game
 
@@ -1492,13 +1516,13 @@ See [Results](#results-ergebnistabelle) for the rules and a worked example.
 
 The tournament standing of one player, as an entry of the `players` array of
 `GET …/tournaments/:tournamentId/standings`. It is the sum of the rows above over
-all submitted matchdays.
+all submitted lists – several of which may belong to the same matchday.
 
 | Field           | Type           | Notes                                                             |
 | --------------- | -------------- | ----------------------------------------------------------------- |
 | `rank`          | number \| null | `1` is the best; `null` while the player has no game              |
 | `name`          | string         |                                                                   |
-| `gamesPlayed`   | number         | Σ `gamesPlayed` of the counted matchdays                          |
+| `gamesPlayed`   | number         | Σ `gamesPlayed` of the counted lists                              |
 | `points`        | number         | Σ `points` – the Spielwerte of the player's own Alleinspiele      |
 | `opponentBonus` | number         | Σ `opponentBonus` – for the Alleinspiele the others lost          |
 | `score`         | number         | `points + opponentBonus`                                          |
@@ -1568,8 +1592,9 @@ Known limitations:
 | `403 … is not a matchday of …`                                          | the weekday of that date is not in `matchdays`                                                                          |
 | `403 Lists can only be created or changed on the current matchday`      | members may only touch today's list – use the admin password                                                            |
 | `409 This list has already been submitted`                              | reopen it as an admin before changing or submitting it again                                                            |
-| `409 The players of the matchday cannot be changed any more`            | the list already contains games                                                                                         |
-| `409 … does not play this round because … deals`                        | step 1: that player sits out – check `dealer`                                                                           |
+| `409 The players of this list cannot be changed any more`               | the list already contains games                                                                                         |
+| `409 … sits out this round because … deals`                             | step 1: that player is one of the ones who sit out – check `dealer`                                                     |
+| `409 Serie … Tisch … already has a list for …`                          | that table of the series already has a sheet that evening – see [Lists](#lists)                                         |
 | `409 Every player of a list has to be part of the tournament`           | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
 | `409 … plays in a submitted list, so the name can no longer be changed` | correct the name with the admin password, or reopen the list first                                                      |
 | `409 A list consists of 3, 4 or 5 players`                              | the lineup has the wrong size                                                                                           |

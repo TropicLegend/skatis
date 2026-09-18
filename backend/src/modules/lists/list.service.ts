@@ -42,7 +42,7 @@ export interface ListDto {
   locked: boolean;
   /** Why it is locked – empty while `locked` is false. */
   lockReasons: ListLockReason[];
-  /** The lineup of the matchday in seating order. */
+  /** The lineup of the table in seating order. */
   players: ListPlayerDto[];
   gameCount: number;
   /** Sum of the Spielwerte of all games of the list. */
@@ -300,7 +300,7 @@ export async function setListPlayers(
 
   if (list.games.length > 0) {
     throw conflict(
-      'The players of the matchday cannot be changed any more – the list already contains games',
+      'The players of this list cannot be changed any more – it already contains games',
       { gameCount: list.games.length },
     );
   }

@@ -10,7 +10,7 @@ import { MAX_LINEUP, MIN_LINEUP, playingPlayers, sittingOutPlayers } from './gam
 /** A list has to be complete before games can be entered for it. */
 export function assertLineupComplete(playerCount: number): void {
   if (playerCount === 0) {
-    throw conflict('The list has no players yet – add the players of the matchday first');
+    throw conflict('The list has no players yet – add the players of this table first');
   }
   if (playerCount < MIN_LINEUP || playerCount > MAX_LINEUP) {
     throw conflict(`A list consists of ${MIN_LINEUP}, ${MIN_LINEUP + 1} or ${MAX_LINEUP} players`, {
