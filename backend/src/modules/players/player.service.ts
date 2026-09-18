@@ -1,6 +1,7 @@
 import type { Player } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
 import { prisma } from '../../lib/prisma.js';
+import type { TournamentRole } from '../../lib/tokens.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import type { CreatePlayerInput } from './player.schemas.js';
 
@@ -70,6 +71,77 @@ export async function deletePlayer(tournamentId: string, name: string): Promise<
   }
 
   await prisma.player.deleteMany({ where: { id: player.id } });
+}
+
+/**
+ * Corrects the name of a player. A name is the identity of a player, so a typo
+ * would otherwise be permanent – and a player cannot be removed once they play.
+ *
+ * Games store the names of the lineup, team, so a rename has to rewrite them.
+ * Lists that were already submitted are frozen for members, therefore a rename
+ * that touches one of them is reserved for an admin – the same rule as for the
+ * list itself.
+ */
+export async function renamePlayer(
+  tournamentId: string,
+  name: string,
+  newName: string,
+  role: TournamentRole,
+): Promise<PlayerDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const player = await findPlayerOrThrow(tournament.id, name);
+
+  if (player.name === newName) {
+    return toPlayerDto(player);
+  }
+
+  const existing = await prisma.player.findUnique({
+    where: { tournamentId_name: { tournamentId: tournament.id, name: newName } },
+    select: { id: true },
+  });
+  if (existing) {
+    throw conflict(`"${newName}" is already a player of this tournament`);
+  }
+
+  const lists = await prisma.gameList.findMany({
+    where: { tournamentId: tournament.id, lineup: { some: { playerId: player.id } } },
+    select: { matchday: true, status: true },
+    orderBy: { matchday: 'asc' },
+  });
+
+  if (role !== 'ADMIN') {
+    const submitted = lists.filter((list) => list.status === 'SUBMITTED');
+    if (submitted.length > 0) {
+      throw conflict(
+        `"${player.name}" plays in a submitted list, so the name can no longer be changed. ` +
+          'Ask an admin to correct it.',
+        { submittedLists: submitted.map((list) => list.matchday.toISOString().slice(0, 10)) },
+      );
+    }
+  }
+
+  const games = await prisma.game.findMany({
+    where: { list: { lineup: { some: { playerId: player.id } } } },
+    select: { id: true, players: true, declarer: true },
+  });
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.player.update({ where: { id: player.id }, data: { name: newName } });
+
+    // The lineup is a relation and follows the new name by itself; the names
+    // recorded in the games are denormalised and have to be rewritten.
+    for (const game of games) {
+      await transaction.game.update({
+        where: { id: game.id },
+        data: {
+          players: game.players.map((entry) => (entry === name ? newName : entry)),
+          ...(game.declarer === name ? { declarer: newName } : {}),
+        },
+      });
+    }
+  });
+
+  return { name: newName };
 }
 
 /**

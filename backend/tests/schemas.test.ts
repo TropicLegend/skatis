@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createTournamentSchema,
   listTournamentsQuery,
-  loginTournamentSchema,
+  openSessionSchema,
   tournamentIdSchema,
   updateTournamentSchema,
 } from '../src/modules/tournaments/tournament.schemas.js';
@@ -92,16 +92,14 @@ describe('tournamentIdSchema', () => {
   });
 });
 
-describe('loginTournamentSchema', () => {
-  it('accepts the id and the password', () => {
-    expect(loginTournamentSchema.parse({ tournamentId: 'k7m2p4qx', password: 'secret' })).toEqual({
-      tournamentId: 'K7M2P4QX',
-      password: 'secret',
-    });
+describe('openSessionSchema', () => {
+  it('accepts the password on its own – the tournament comes from the path', () => {
+    expect(openSessionSchema.parse({ password: 'secret' })).toEqual({ password: 'secret' });
   });
 
-  it('rejects a missing password', () => {
-    expect(() => loginTournamentSchema.parse({ tournamentId: 'K7M2P4QX' })).toThrow();
+  it('rejects a missing or empty password', () => {
+    expect(() => openSessionSchema.parse({})).toThrow();
+    expect(() => openSessionSchema.parse({ password: '' })).toThrow();
   });
 });
 

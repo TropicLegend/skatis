@@ -14,7 +14,11 @@ describe('api', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.name).toBe('skatis-api');
-    expect(response.body.data.endpoints.createTournament).toBe('POST /api/createTournament');
+    expect(response.body.data.endpoints.createTournament).toBe('POST /api/tournaments');
+    expect(response.body.data.endpoints.openSession).toContain('/session');
+    expect(response.body.data.endpoints.results).toContain('/results');
+    expect(response.body.data.endpoints.standings).toContain('/standings');
+    expect(response.body.data.endpoints.game).toContain('DELETE');
   });
 
   it('reports liveness without touching the database', async () => {
@@ -42,7 +46,7 @@ describe('api', () => {
 
   it('answers malformed json with 400', async () => {
     const response = await request(app)
-      .post('/api/createTournament')
+      .post('/api/tournaments')
       .set('Content-Type', 'application/json')
       .send('{"name": ');
 
@@ -51,7 +55,7 @@ describe('api', () => {
   });
 
   it('validates the create payload before touching the database', async () => {
-    const response = await request(app).post('/api/createTournament').send({ name: 'x' });
+    const response = await request(app).post('/api/tournaments').send({ name: 'x' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
@@ -60,8 +64,8 @@ describe('api', () => {
 
   it('validates the login payload before touching the database', async () => {
     const response = await request(app)
-      .post('/api/loginTournament')
-      .send({ tournamentId: '', password: '' });
+      .post(`/api/tournaments/${TOURNAMENT_ID}/session`)
+      .send({ password: '' });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
@@ -168,6 +172,42 @@ describe('api', () => {
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(response.body.error.details.issues[0].path).toBe('playerNames');
+  });
+
+  it('validates the matchday of the results endpoint before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists/nonsense/results`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.details.issues[0].path).toBe('matchday');
+  });
+
+  it('validates the rename payload before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const response = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Anna`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: '   ' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.details.issues[0].path).toBe('name');
+  });
+
+  it('protects the endpoints that were added last', async () => {
+    const paths = [
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/results`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/2026-09-16/games/game-1`],
+      ['patch', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
+      ['delete', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
+    ] as const;
+
+    for (const [method, path] of paths) {
+      const response = await request(app)[method](path);
+      expect(response.status, `${method.toUpperCase()} ${path}`).toBe(401);
+      expect(response.body.error.code).toBe('UNAUTHORIZED');
+    }
   });
 
   it('validates the properties of a game before touching the database', async () => {

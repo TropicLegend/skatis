@@ -98,13 +98,19 @@ export function nextDealer(lineup: readonly string[], previousDealer: string | n
 }
 
 /**
- * Players that may not be the Alleinspieler of this round:
+ * The players who sit out a game of this round ("Geber-Regel"). Skat is played
+ * by three people, so a bigger lineup always leaves players at the side:
  *
- * * 3 players – everyone plays, so there is no restriction
- * * 4 players – the dealer does not play
- * * 5 players – neither the dealer nor the players before and after them play
+ * * 3 players – nobody, everyone plays
+ * * 4 players – the Geber
+ * * 5 players – the player before and the player after the Geber
+ *
+ * With five players the Geber **does** play, they are only left out with four
+ * players. The README of the repository is explicit about it ("Bei 5 Spielern
+ * kann der Spieler vor und der Spieler nach dem Geber nicht ausgewählt
+ * werden"), and it is the only way to end up with three players.
  */
-export function excludedDeclarers(lineup: readonly string[], dealer: string): string[] {
+export function sittingOutPlayers(lineup: readonly string[], dealer: string): string[] {
   const index = lineup.indexOf(dealer);
   if (index === -1) return [];
 
@@ -115,16 +121,20 @@ export function excludedDeclarers(lineup: readonly string[], dealer: string): st
   if (count === 5) {
     const before = lineup[(index - 1 + count) % count];
     const after = lineup[(index + 1) % count];
-    return [dealer, before, after].filter((name): name is string => name !== undefined);
+    return [before, after].filter((name): name is string => name !== undefined);
   }
 
+  // 3 players (the smallest lineup) – everyone is dealt in.
   return [];
 }
 
-/** Players that may be chosen as Alleinspieler in this round. */
-export function eligibleDeclarers(lineup: readonly string[], dealer: string): string[] {
-  const excluded = new Set(excludedDeclarers(lineup, dealer));
-  return lineup.filter((name) => !excluded.has(name));
+/**
+ * The players who take part in a game of this round, in seating order. Always
+ * exactly three of them, and exactly the ones who may be the Alleinspieler.
+ */
+export function playingPlayers(lineup: readonly string[], dealer: string): string[] {
+  const sittingOut = new Set(sittingOutPlayers(lineup, dealer));
+  return lineup.filter((name) => !sittingOut.has(name));
 }
 
 export interface MatadorInput {

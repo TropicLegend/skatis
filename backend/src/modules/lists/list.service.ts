@@ -14,7 +14,8 @@ import {
 import type { CreateListInput, ListListsQuery } from './list.schemas.js';
 import { toGameCreateData, toGameDto, toGameProperties, type GameDto } from './game.mapper.js';
 import { assertDeclarerAllowed, assertLineupComplete } from './game-entry.js';
-import { nextDealer } from './game-rules.js';
+import { nextDealer, playingPlayers } from './game-rules.js';
+import { scoreList, type ListResultsDto } from './scoring.js';
 
 /** A player of a list together with their seat in the lineup. */
 export interface ListPlayerDto {
@@ -178,6 +179,23 @@ export async function getList(
   return toListDto(list, listViewContext(tournament, role), true);
 }
 
+/**
+ * The result table of a list: one row per player with the account, the number
+ * of won and lost Alleinspiele and the final result. It is derived from the
+ * games, so it is always up to date – also while the list is being filled.
+ *
+ * Reading is allowed for both roles, like every other read.
+ */
+export async function getListResults(
+  tournamentId: string,
+  matchday: string,
+): Promise<ListResultsDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const list = await findListOrThrow(tournament.id, matchday);
+
+  return scoreList(lineupNames(list), list.games, toIsoDate(list.matchday));
+}
+
 export async function createList(
   tournamentId: string,
   input: CreateListInput,
@@ -213,7 +231,11 @@ export async function createList(
     assertDeclarerAllowed(game, lineup, dealer);
 
     return toGameCreateData(
-      toGameProperties(game, { position: index + 1, dealer, players: lineup }),
+      toGameProperties(game, {
+        position: index + 1,
+        dealer,
+        players: playingPlayers(lineup, dealer),
+      }),
     );
   });
 

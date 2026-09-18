@@ -13,7 +13,7 @@ import {
   type GameDto,
 } from './game.mapper.js';
 import type { GameInput } from './game.schemas.js';
-import { nextDealer } from './game-rules.js';
+import { nextDealer, playingPlayers } from './game-rules.js';
 
 /** Rounds are appended, so a new game gets the next free position. */
 function nextFreePosition(positions: readonly number[]): number {
@@ -30,6 +30,23 @@ export async function listGames(tournamentId: string, matchday: string): Promise
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, matchday);
   return list.games.map(toGameDto);
+}
+
+/** One game of a list – reading needs no role, like the other reads. */
+export async function getGame(
+  tournamentId: string,
+  matchday: string,
+  gameId: string,
+): Promise<GameDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const list = await findListOrThrow(tournament.id, matchday);
+
+  const game = list.games.find((candidate) => candidate.id === gameId);
+  if (!game) {
+    throw notFound(`Game ${gameId} does not exist in the list for ${matchday}`);
+  }
+
+  return toGameDto(game);
 }
 
 /**
@@ -58,7 +75,11 @@ export async function createGame(
   assertDeclarerAllowed(input, lineup, dealer);
 
   const position = nextFreePosition(list.games.map((game) => game.position));
-  const properties = toGameProperties(input, { position, dealer, players: lineup });
+  const properties = toGameProperties(input, {
+    position,
+    dealer,
+    players: playingPlayers(lineup, dealer),
+  });
 
   const game = await prisma.game.create({
     data: { ...toGameCreateData(properties), listId: list.id },
@@ -96,7 +117,7 @@ export async function replaceGame(
   const properties = toGameProperties(input, {
     position: game.position,
     dealer: game.dealer,
-    players: lineup,
+    players: playingPlayers(lineup, game.dealer),
   });
 
   const updated = await prisma.game.update({

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
-import { createGame, deleteGame, listGames, replaceGame } from './game.service.js';
+import { createGame, deleteGame, getGame, listGames, replaceGame } from './game.service.js';
 import { gameParams, gameSchema, gamesParams } from './game.schemas.js';
 
 export const gameRouter = Router({ mergeParams: true });
@@ -10,6 +10,13 @@ gameRouter.get('/', authenticate(), async (req, res) => {
   const games = await listGames(tournamentId, matchday);
 
   res.json({ data: games });
+});
+
+gameRouter.get('/:gameId', authenticate(), async (req, res) => {
+  const { tournamentId, matchday, gameId } = gameParams.parse(req.params);
+  const game = await getGame(tournamentId, matchday, gameId);
+
+  res.json({ data: game });
 });
 
 gameRouter.post('/', authenticate(), async (req, res) => {

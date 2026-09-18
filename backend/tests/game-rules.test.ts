@@ -6,10 +6,10 @@ import {
   NULL_VALUES,
   calculateGameValue,
   countLevels,
-  eligibleDeclarers,
-  excludedDeclarers,
   maxMatadors,
   nextDealer,
+  playingPlayers,
+  sittingOutPlayers,
 } from '../src/modules/lists/game-rules.js';
 import { playedGameSchema, type PlayedGameInput } from '../src/modules/lists/game.schemas.js';
 
@@ -55,25 +55,42 @@ describe('nextDealer', () => {
   });
 });
 
-describe('who may play a round', () => {
-  it('restricts nobody when 3 players are on the list', () => {
-    expect(excludedDeclarers(LINEUP_3, 'Anna')).toEqual([]);
-    expect(eligibleDeclarers(LINEUP_3, 'Anna')).toEqual(LINEUP_3);
+describe('who plays a round', () => {
+  it('lets everyone play when 3 players are on the list', () => {
+    expect(sittingOutPlayers(LINEUP_3, 'Anna')).toEqual([]);
+    expect(playingPlayers(LINEUP_3, 'Anna')).toEqual(LINEUP_3);
   });
 
-  it('excludes the dealer when 4 players are on the list', () => {
-    expect(excludedDeclarers(LINEUP_4, 'Bert')).toEqual(['Bert']);
-    expect(eligibleDeclarers(LINEUP_4, 'Bert')).toEqual(['Anna', 'Clara', 'Dora']);
+  it('sits out the Geber when 4 players are on the list', () => {
+    expect(sittingOutPlayers(LINEUP_4, 'Bert')).toEqual(['Bert']);
+    expect(playingPlayers(LINEUP_4, 'Bert')).toEqual(['Anna', 'Clara', 'Dora']);
   });
 
-  it('excludes the dealer and both neighbours when 5 players are on the list', () => {
-    expect(excludedDeclarers(LINEUP_5, 'Bert')).toEqual(['Bert', 'Anna', 'Clara']);
-    expect(eligibleDeclarers(LINEUP_5, 'Bert')).toEqual(['Dora', 'Emil']);
+  it('sits out both neighbours of the Geber when 5 players are on the list', () => {
+    // The Geber plays – otherwise only two of the five would be left.
+    expect(sittingOutPlayers(LINEUP_5, 'Bert')).toEqual(['Anna', 'Clara']);
+    expect(playingPlayers(LINEUP_5, 'Bert')).toEqual(['Bert', 'Dora', 'Emil']);
   });
 
   it('wraps around at the ends of the seating order', () => {
-    expect(excludedDeclarers(LINEUP_5, 'Anna')).toEqual(['Anna', 'Emil', 'Bert']);
-    expect(eligibleDeclarers(LINEUP_5, 'Anna')).toEqual(['Clara', 'Dora']);
+    expect(sittingOutPlayers(LINEUP_5, 'Anna')).toEqual(['Emil', 'Bert']);
+    expect(playingPlayers(LINEUP_5, 'Anna')).toEqual(['Anna', 'Clara', 'Dora']);
+  });
+
+  it('always leaves exactly three players at the table', () => {
+    for (const me of LINEUP_3) expect(playingPlayers(LINEUP_3, me)).toHaveLength(3);
+    for (const me of LINEUP_4) expect(playingPlayers(LINEUP_4, me)).toHaveLength(3);
+    for (const me of LINEUP_5) expect(playingPlayers(LINEUP_5, me)).toHaveLength(3);
+  });
+
+  it('keeps the seating order of the players of the game', () => {
+    // Dora sits in the middle, so Clara and Emil sit out around her.
+    expect(playingPlayers(LINEUP_5, 'Dora')).toEqual(['Anna', 'Bert', 'Dora']);
+  });
+
+  it('restricts nobody when the Geber is not in the lineup', () => {
+    expect(sittingOutPlayers(LINEUP_5, 'Unbekannt')).toEqual([]);
+    expect(playingPlayers(LINEUP_5, 'Unbekannt')).toEqual(LINEUP_5);
   });
 });
 
@@ -105,19 +122,23 @@ describe('assertDeclarerAllowed', () => {
     );
   });
 
-  it('rejects the dealer of a 4 player list', () => {
+  it('rejects the Geber of a 4 player list', () => {
     expect(() => assertDeclarerAllowed(game({ declarer: 'Bert' }), LINEUP_4, 'Bert')).toThrow(
-      /does not play this round/,
+      /sits out this round/,
     );
   });
 
-  it('rejects the neighbours of the dealer of a 5 player list', () => {
+  it('rejects the neighbours of the Geber of a 5 player list', () => {
     expect(() => assertDeclarerAllowed(game({ declarer: 'Anna' }), LINEUP_5, 'Bert')).toThrow(
       HttpError,
     );
     expect(() => assertDeclarerAllowed(game({ declarer: 'Clara' }), LINEUP_5, 'Bert')).toThrow(
       HttpError,
     );
+  });
+
+  it('accepts the Geber of a 5 player list', () => {
+    expect(() => assertDeclarerAllowed(game({ declarer: 'Bert' }), LINEUP_5, 'Bert')).not.toThrow();
   });
 
   it('accepts a player that is allowed to play', () => {

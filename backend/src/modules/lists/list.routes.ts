@@ -5,6 +5,7 @@ import {
   createList,
   deleteList,
   getList,
+  getListResults,
   listLists,
   reopenList,
   setListPlayers,
@@ -44,6 +45,17 @@ listRouter.get('/:matchday', authenticate(), async (req, res) => {
   const list = await getList(tournamentId, matchday, currentAuth(req).role);
 
   res.json({ data: list });
+});
+
+/**
+ * The result table of the list, derived from its games. Readable by both
+ * roles, also after the list was submitted.
+ */
+listRouter.get('/:matchday/results', authenticate(), async (req, res) => {
+  const { tournamentId, matchday } = listParams.parse(req.params);
+  const results = await getListResults(tournamentId, matchday);
+
+  res.json({ data: results });
 });
 
 /** Admin only: deletes the list including all its games. */

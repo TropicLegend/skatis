@@ -17,6 +17,11 @@ export const createPlayerSchema = z.object({
   name: playerNameSchema,
 });
 
+/** Corrects the name of an existing player. */
+export const renamePlayerSchema = z.object({
+  name: playerNameSchema,
+});
+
 export const playerParams = z.object({
   tournamentId: tournamentIdSchema,
   playerName: playerNameSchema,

@@ -55,9 +55,11 @@ export const createTournamentSchema = z.object({
   matchdays: matchdaysSchema,
 });
 
-/** Logs in with the tournament id and one of the two tournament passwords. */
-export const loginTournamentSchema = z.object({
-  tournamentId: tournamentIdSchema,
+/**
+ * Opens a session. The tournament is identified by the path, so the body only
+ * carries the password – the same body works for both roles.
+ */
+export const openSessionSchema = z.object({
   password: z.string().min(1, 'Password is required').max(128),
 });
 
@@ -79,6 +81,6 @@ export const listTournamentsQuery = z.object({
 });
 
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>;
-export type LoginTournamentInput = z.infer<typeof loginTournamentSchema>;
+export type OpenSessionInput = z.infer<typeof openSessionSchema>;
 export type UpdateTournamentInput = z.infer<typeof updateTournamentSchema>;
 export type ListTournamentsQuery = z.infer<typeof listTournamentsQuery>;

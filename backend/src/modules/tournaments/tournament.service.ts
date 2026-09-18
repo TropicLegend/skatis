@@ -9,6 +9,7 @@ import type {
   ListTournamentsQuery,
   UpdateTournamentInput,
 } from './tournament.schemas.js';
+import { tournamentStandings, type TournamentStandingsDto } from './standings.js';
 
 /** Number of attempts to find a free tournament id. */
 const MAX_ID_ATTEMPTS = 5;
@@ -152,6 +153,41 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
     throw notFound(`Tournament "${tournamentId}" does not exist`);
   }
   return tournament;
+}
+
+/**
+ * The standing of the tournament, built from the **submitted** matchdays only.
+ * A list that is still open is not part of the tournament result yet, and one
+ * that was reopened drops out of it again – so the standing always describes
+ * what has actually been handed in.
+ */
+export async function getTournamentStandings(
+  tournamentId: string,
+): Promise<TournamentStandingsDto> {
+  const tournament = await getTournamentRow(tournamentId);
+
+  const [roster, lists] = await Promise.all([
+    prisma.player.findMany({
+      where: { tournamentId: tournament.id },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.gameList.findMany({
+      where: { tournamentId: tournament.id, status: 'SUBMITTED' },
+      select: {
+        games: { select: { players: true, declarer: true, won: true, gameValue: true } },
+      },
+    }),
+  ]);
+
+  const games = lists.flatMap((list) => list.games);
+
+  return tournamentStandings(
+    tournament.id,
+    roster.map((player) => player.name),
+    games,
+    lists.length,
+  );
 }
 
 export async function updateTournament(

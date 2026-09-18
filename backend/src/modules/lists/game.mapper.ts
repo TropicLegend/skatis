@@ -23,6 +23,17 @@ export interface GameDto {
   won: boolean | null;
   /** Spielwert, computed from the properties above. */
   gameValue: number;
+  /**
+   * Spielwert credited to the Alleinspieler – the "Positiver Spielwert"
+   * column of the result table. `0` unless the game was won.
+   */
+  positiveGameValue: number;
+  /**
+   * Spielwert debited to the Alleinspieler, always **doubled** – the
+   * "Negativer Spielwert" column of the result table. `0` unless the game was
+   * lost.
+   */
+  negativeGameValue: number;
   note: string | null;
   createdAt: string;
   updatedAt: string;
@@ -49,6 +60,8 @@ export function toGameDto(game: Game): GameDto {
     schwarz: game.schwarz,
     won: game.won,
     gameValue: game.gameValue,
+    positiveGameValue: game.won === true ? game.gameValue : 0,
+    negativeGameValue: game.won === false ? game.gameValue * 2 : 0,
     note: game.note,
     createdAt: game.createdAt.toISOString(),
     updatedAt: game.updatedAt.toISOString(),

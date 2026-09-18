@@ -9,8 +9,10 @@ request. A tournament owns its **players** (just names); one **list** exists per
 matchday and holds the lineup of that evening in seating order – 3, 4 or 5
 players. Every **game** in the list is played by those players and follows the
 four steps of the Skat rules in the [README](../README.md) of the repository.
-There are no user accounts – access is granted by the normal or the admin
-password together with the tournament id.
+From the games the API derives the **result table** of the evening: what every
+player won, lost and is credited with, including the final result. There are no
+user accounts – access is granted by the normal or the admin password together
+with the tournament id.
 
 ## Stack
 
@@ -96,11 +98,11 @@ sequenceDiagram
     participant A as API
     participant D as PostgreSQL
 
-    F->>A: POST /api/createTournament {name, password, adminPassword, matchdays}
+    F->>A: POST /api/tournaments {name, password, adminPassword, matchdays}
     A->>D: INSERT tournament (id = K7M2P4QX)
     A-->>F: 201 {id: "K7M2P4QX", name, matchdays, …}
     Note over F: show the id so users can log in later
-    F->>A: POST /api/loginTournament {tournamentId, password}
+    F->>A: POST /api/tournaments/K7M2P4QX/session {password}
     A->>D: SELECT password hashes
     A-->>F: 200 {token, role: "MEMBER"|"ADMIN", expiresAt, tournament}
     F->>A: POST /api/tournaments/K7M2P4QX/players {name: "Anna"}
@@ -132,7 +134,11 @@ tournament once and can then be put on a list:
   while the list has **no games** yet – afterwards the request is rejected with
   `409`.
 - A player can only be deleted while they are not part of any list.
-- Renaming is not supported. Delete the player and add the new name instead.
+- `PATCH …/players/:playerName` corrects a name. That is the only way to fix a
+  typo, because a player who plays in a list cannot be deleted. The names recorded
+  in already entered games are rewritten as well. A rename that touches a
+  **submitted** list is reserved for an `ADMIN`, like every other change to a
+  submitted list.
 
 ### Entering a game
 
@@ -140,11 +146,22 @@ A game follows the four steps of README.md. The API checks every one of them:
 
 1. **Alleinspieler or Eingepasst** – `declarer` plus `passedOut`. When the game
    was passed out (`{"passedOut": true}`) nothing else may be sent – the flow is
-   over. Which players may be the Alleinspieler depends on the lineup and the
-   dealer of the round:
-   - 3 players – everyone may play
-   - 4 players – the dealer does not play
-   - 5 players – neither the dealer nor the players before and after them play
+   over.
+
+   Skat is played by three people, so a bigger lineup always leaves players at
+   the side. Which players sit out a round follows the Geber ("Geber-Regel"):
+
+   | Players on the list | Sit out                               |
+   | ------------------- | ------------------------------------- |
+   | 3                   | nobody – everyone plays               |
+   | 4                   | the Geber                             |
+   | 5                   | the player before and after the Geber |
+
+   With five players the Geber **does** play, and only the two seats around them
+   sit out – that is the only way to end up with three players, and it is what
+   the README of the repository says ("Bei 5 Spielern kann der Spieler vor und
+   der Spieler nach dem Geber nicht ausgewählt werden").
+
 2. **Spieltyp** – exactly one of `KARO`, `HERZ`, `PIK`, `KREUZ`, `GRAND`, `NULL`,
    plus the announced levels (`hand`, `schneiderAnnounced`, `schwarzAnnounced`,
    `offen`).
@@ -162,7 +179,10 @@ The API derives the remaining properties:
 
 - `position` – the round, counted from 1. Games are appended.
 - `dealer` – the next player of the seating order, starting with player 1.
-- `players` – the lineup of the list.
+- `players` – the three players of the round: the lineup minus the ones who sit
+  out according to the table above. These are exactly the players who may be the
+  Alleinspieler, and exactly the players who take part in the round – also in a
+  game that was Eingepasst, where nobody actually played.
 - `gameValue` – the Spielwert, see below. It is never sent by a client.
 
 #### Spielwert
@@ -193,6 +213,85 @@ A game is replaced as a whole (`PUT …/games/:gameId`) – a partial update wou
 have to satisfy the rules above in combination with the stored values. The round
 and the dealer stay, everything else is taken from the request.
 
+### Results (Ergebnistabelle)
+
+(`src/modules/lists/scoring.ts`)
+
+This is the table of **one matchday**, and the parts below are deliberately
+per evening: the flat bonuses and the bonus for the losses of the others are
+**not** carried over to the next matchday. How the tournament combines the
+evenings is described under [Tournament standings](#tournament-standings).
+
+Every game is credited to its Alleinspieler, starting from an account of 0:
+
+- a **won** Alleinspiel credits the Spielwert → `positiveGameValue`
+- a **lost** Alleinspiel debits **twice** the Spielwert → `negativeGameValue`
+- an Eingepasst game changes nothing; it only increments `passedOutCount`
+
+The final result (`total`) adds two more parts to that account:
+
+| Part            | Rule                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| `wonBonus`      | `+50` per won Alleinspiel (`Gew`)                                                                   |
+| `lossPenalty`   | `-50` per lost Alleinspiel (`Verl`)                                                                 |
+| `opponentBonus` | `+40` / `+30` / `+24` per lost Alleinspiel **of another player**, for a lineup of 3 / 4 / 5 players |
+
+So `total = points + wonBonus + lossPenalty + opponentBonus`, where
+`points = wonGameValue - lostGameValue`. Each part is reported separately, so a
+frontend can show where a result comes from instead of only the sum.
+
+Worked example – 4 players, three games:
+
+| Round | Dealer | Declarer | Game                   | Spielwert | Effect               |
+| ----- | ------ | -------- | ---------------------- | --------- | -------------------- |
+| 1     | Anna   | Bert     | Grand Hand, 2 Mit, won | 120       | Bert `+120`, `won 1` |
+| 2     | Bert   | Clara    | Null, won              | 23        | Clara `+23`, `won 1` |
+| 3     | Clara  | Dora     | Herz Ohne 1, lost      | 20        | Dora `-40`, `lost 1` |
+| 4     | Dora   | –        | Eingepasst             | 0         | nothing              |
+
+| Player | points | wonBonus | lossPenalty | opponentBonus | `total` |
+| ------ | ------ | -------- | ----------- | ------------- | ------- |
+| Anna   | 0      | 0        | 0           | 30            | **30**  |
+| Bert   | 120    | 50       | 0           | 30            | **200** |
+| Clara  | 23     | 50       | 0           | 30            | **103** |
+| Dora   | -40    | 0        | -50         | 0             | **-90** |
+
+`GET …/lists/:matchday/results` answers exactly this table, always derived from
+the current games – so it is up to date while the list is still being filled.
+
+### Tournament standings
+
+(`src/modules/tournaments/standings.ts`)
+
+The table above belongs to one evening, and its bonuses are not carried over to
+the next one. Across matchdays only two numbers are tracked per player, and both
+are added up when a list is **submitted**:
+
+1. **`gamesPlayed`** – how many games of the matchday the player took part in.
+   A player takes part in a game when they are in its `players` array, which is
+   decided by the [Geber-Regel](#entering-a-game). So a player collects the games
+   of every list they are on, and a player who deals all evening still collects
+   them – an Eingepasst round counts too, it was played through to the end of
+   step 1.
+2. **`points`** – what the account of the matchday added up to: a won Alleinspiel
+   credits its Spielwert, a lost one debits twice of it.
+
+The **ranking value** is the average of the two, `points / gamesPlayed`, which
+makes players comparable who played a different number of games. The standings
+sorts by it, best first. The unrounded average decides the order, so rounding the
+output to two decimals can never change who is in front.
+
+- Players with the **same average share a rank**, and the next rank skips the
+  ones taken (1, 1, 3).
+- A player without a single game keeps a row but has `rank: null` and
+  `averagePoints: null`, and is listed after everyone who played.
+- A list that is still `OPEN` does not count, and one that was reopened drops out
+  again. Reopening and submitting a corrected list therefore updates the standing
+  right away, and deleting a list removes its games from it.
+
+`GET …/tournaments/:tournamentId/standings` answers it, with `matchdaysCounted`
+telling how many submitted lists went into the numbers.
+
 ### Passwords and roles
 
 A tournament has two passwords:
@@ -211,7 +310,7 @@ passwords are stored as scrypt hashes; a password can never be read back.
 
 The id is generated by the API: **8 characters**, digits and upper case letters
 without the easily confused ones (`0`, `1`, `I`, `L`, `O`), e.g. `K7M2P4QX`. It is
-**case insensitive** on input and is returned by `createTournament` so that the
+**case insensitive** on input and is returned by `POST /tournaments` so that the
 frontend can display it right away. Only the id identifies a tournament – names
 are allowed to be ambiguous.
 
@@ -221,8 +320,9 @@ requires a token, and no endpoint reveals which tournaments exist.
 
 ### Tokens
 
-`loginTournament` returns a JWT that is valid for `JWT_EXPIRES_IN` (default 12 h)
-and is bound to exactly one tournament. Send it with every protected request:
+`POST /tournaments/:tournamentId/session` returns a JWT that is valid for
+`JWT_EXPIRES_IN` (default 12 h) and is bound to exactly one tournament. Send it
+with every protected request:
 
 ```http
 Authorization: Bearer <token>
@@ -289,24 +389,26 @@ submitted list and `403` for another day.
 ## Quickstart
 
 One Skat evening from an empty database to a submitted list. `BASE` is the API
-root; `jq` is only used to pick values out of the answers.
+root; `jq` is only used to pick values out of the answers. `TODAY` has to be a
+matchday of the tournament – for the example it is simply derived from today.
 
 ```bash
 BASE=http://localhost:3000/api
 TODAY=$(date +%F)
+WD=$(date +%u)                          # ISO weekday of today
 
 # 1. create the tournament – note the id from the answer
-curl -s -X POST $BASE/createTournament -H 'Content-Type: application/json' -d '{
+curl -s -X POST $BASE/tournaments -H 'Content-Type: application/json' -d '{
   "name": "Mittwochsrunde",
   "password": "member-secret",
   "adminPassword": "admin-secret",
-  "matchdays": [3]
+  "matchdays": [$WD]
 }'
 # => {"data":{"id":"K7M2P4QX","name":"Mittwochsrunde", …}}
 
-# 2. log in as a member
-TOKEN=$(curl -s -X POST $BASE/loginTournament -H 'Content-Type: application/json' \
-  -d '{"tournamentId":"K7M2P4QX","password":"member-secret"}' | jq -r .data.token)
+# 2. open a session as a member – the id comes from the path, the body is the password
+TOKEN=$(curl -s -X POST $BASE/tournaments/K7M2P4QX/session \
+  -H 'Content-Type: application/json' -d '{"password":"member-secret"}' | jq -r .data.token)
 
 # 3. add the players of the tournament
 for NAME in Anna Bert Clara Dora; do
@@ -336,37 +438,77 @@ curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$TODAY/games \
   }'
 # => {"data":{"position":1,"dealer":"Anna","gameValue":120, …}}
 
-# 6. hand the list in – from now on members can only read it
+# 6. look at the table at any time – it is derived from the games
+curl -s $BASE/tournaments/K7M2P4QX/lists/$TODAY/results -H "Authorization: Bearer $TOKEN" | jq .data.players
+# => [ {"name":"Anna","points":0,"wonBonus":0,"lossPenalty":0,"opponentBonus":0,"total":0, …} ]
+
+# 7. hand the list in – from now on members can only read it. Submitting is what
+#    makes the matchday count for the tournament standing.
 curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$TODAY/submit \
   -H "Authorization: Bearer $TOKEN"
 
-# 7. correct something afterwards, as an admin
-ADMIN=$(curl -s -X POST $BASE/loginTournament -H 'Content-Type: application/json' \
-  -d '{"tournamentId":"K7M2P4QX","password":"admin-secret"}' | jq -r .data.token)
+# 8. the standing of the tournament over all submitted matchdays
+curl -s $BASE/tournaments/K7M2P4QX/standings -H "Authorization: Bearer $TOKEN" | jq .data
+# => {"tournamentId":"K7M2P4QX","matchdaysCounted":1,"players":[ … ]}
+
+# 9. correct something afterwards, as an admin
+ADMIN=$(curl -s -X POST $BASE/tournaments/K7M2P4QX/session \
+  -H 'Content-Type: application/json' -d '{"password":"admin-secret"}' | jq -r .data.token)
 curl -s -X POST $BASE/tournaments/K7M2P4QX/lists/$TODAY/reopen -H "Authorization: Bearer $ADMIN"
 ```
 
 `date +%F` is only today from the API's point of view when both run in the same
 timezone – the server decides the current matchday by its own `TZ`.
 
+## Conventions
+
+The whole API follows the same handful of rules.
+
+**Envelope.** A successful answer is always `{ "data": … }`, a paginated one is
+`{ "data": […], "meta": { total, limit, offset } }`. An error is always
+`{ "error": { code, message, details?, requestId } }` – never a bare string and
+never a different key. The full list of codes is under
+[Response format](#response-format).
+
+**Naming.** Paths are lower case and use `:camelCase` parameters. Bodies and
+answers use `camelCase` fields. Enumerations are `UPPER_SNAKE_CASE` values
+(`GRAND`, `SUBMITTED`, `NOT_CURRENT_MATCHDAY`). Dates in paths and bodies are
+`YYYY-MM-DD`, all timestamps in answers are ISO 8601 in UTC.
+
+**Pagination.** Collections that grow over the life of a tournament are
+paginated (`/lists`, `/tournaments`); collections that are naturally small are
+not (a roster, the games of one evening, the players of a lineup, the
+`lockReasons`).
+
+**Two endpoints before the first token.** `POST /tournaments` and
+`POST /tournaments/:tournamentId/session` are the only ones without a token, so
+they are [rate limited](#rate-limits). Everything else hangs off
+`/tournaments/:tournamentId` and needs a bearer token. The tournament id is
+always part of the path, never of a body.
+
+**Reads need no role.** Every `GET` is allowed for both roles on any day, also
+for a submitted list: the role only decides _changes_. Which changes are refused
+is reported per list in `locked`/`lockReasons`, so a frontend can hide buttons
+instead of provoking a `409`.
+
 ## Endpoints
 
 Base URL: `http://localhost:3000/api`
 
 Legend: **–** = no token required, **any** = token of any role, **ADMIN** = admin
-token required. `:tournamentId` is the id returned by `createTournament`;
+token required. `:tournamentId` is the id returned by `POST /tournaments`;
 `:matchday` is always a date in the format `YYYY-MM-DD`.
 
-### Setup and login
+### Creating a tournament and opening a session
 
-| Method | Path                | Auth | Description                                                    |
-| ------ | ------------------- | ---- | -------------------------------------------------------------- |
-| POST   | `/createTournament` | –    | Creates a tournament and returns the generated `id`            |
-| POST   | `/loginTournament`  | –    | Logs in with `tournamentId` + password, returns token + `role` |
+| Method | Path                                 | Auth | Description                                         |
+| ------ | ------------------------------------ | ---- | --------------------------------------------------- |
+| POST   | `/tournaments`                       | –    | Creates a tournament and returns the generated `id` |
+| POST   | `/tournaments/:tournamentId/session` | –    | Opens a session with one of the two passwords       |
 
 Both need no token, so both are [rate limited](#rate-limits) per caller address.
 
-`POST /createTournament`
+#### `POST /tournaments`
 
 | Field           | Type     | Rules                                                |
 | --------------- | -------- | ---------------------------------------------------- |
@@ -374,6 +516,8 @@ Both need no token, so both are [rate limited](#rate-limits) per caller address.
 | `password`      | string   | 8–128 characters – the normal password               |
 | `adminPassword` | string   | 8–128 characters – the admin password                |
 | `matchdays`     | number[] | 1–7 unique ISO weekdays, `1` = Monday … `7` = Sunday |
+
+**Request**
 
 ```json
 {
@@ -384,45 +528,75 @@ Both need no token, so both are [rate limited](#rate-limits) per caller address.
 }
 ```
 
-→ `201` with the new [tournament object](#tournament). **Show the `id` to the
-user** – it is the only handle for the tournament from now on, and together with
-a password the only thing needed to log in. Names may repeat, so the id is what
-counts.
-
-Errors: `422` invalid payload, `429` too many requests.
-
-`POST /loginTournament`
-
-| Field          | Type   | Rules                                      |
-| -------------- | ------ | ------------------------------------------ |
-| `tournamentId` | string | the id of the tournament, case insensitive |
-| `password`     | string | the normal **or** the admin password       |
+**Response** `201`
 
 ```json
-{ "tournamentId": "K7M2P4QX", "password": "member-secret" }
+{
+  "data": {
+    "id": "K7M2P4QX",
+    "name": "Mittwochsrunde",
+    "matchdays": [3],
+    "listCount": 0,
+    "createdAt": "2026-09-18T17:05:12.431Z",
+    "updatedAt": "2026-09-18T17:05:12.431Z"
+  }
+}
 ```
 
-→ `200`
+**Show the `id` to the user** – it is the only handle for the tournament from now
+on, and together with a password the only thing needed to log in. Names may
+repeat, so the id is what counts.
+
+**Errors:** `422` invalid payload, `429` too many requests.
+
+#### `POST /tournaments/:tournamentId/session`
+
+The tournament comes from the path, so the body is just the password – the same
+body works for both roles.
+
+| Field      | Type   | Rules                                |
+| ---------- | ------ | ------------------------------------ |
+| `password` | string | the normal **or** the admin password |
+
+**Request**
+
+```http
+POST /api/tournaments/k7m2p4qx/session
+Content-Type: application/json
+
+{ "password": "member-secret" }
+```
+
+**Response** `200`
 
 ```json
 {
   "data": {
     "tournamentId": "K7M2P4QX",
     "role": "MEMBER",
-    "token": "eyJhbGciOi…",
-    "expiresAt": "2026-09-19T03:00:00.000Z",
-    "tournament": { "id": "K7M2P4QX", "name": "Mittwochsrunde", "matchdays": [3], "listCount": 0 }
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.…",
+    "expiresAt": "2026-09-19T05:05:12.000Z",
+    "tournament": {
+      "id": "K7M2P4QX",
+      "name": "Mittwochsrunde",
+      "matchdays": [3],
+      "listCount": 0,
+      "createdAt": "2026-09-18T17:05:12.431Z",
+      "updatedAt": "2026-09-18T17:05:12.431Z"
+    }
   }
 }
 ```
 
 `role` is `ADMIN` when the admin password was used and `MEMBER` for the normal
-one – that is the only difference between the two roles. Keep the `token` and
-send it with every further request as `Authorization: Bearer <token>`.
+one – that is the only difference between the two roles. Keep the `token` and send
+it with every further request as `Authorization: Bearer <token>`. The `tournament`
+is included so a frontend needs no second request after logging in. The id in the
+answer is the normalised one, so a client that sent a lower case id gets the
+canonical spelling back.
 
-Errors: `401` for an unknown id **and** for a wrong password (the endpoint does
-not reveal which tournaments exist), `422` invalid payload, `429` too many
-requests.
+**Errors:** `401` for an unknown id **and** for a wrong password (the endpoint does
+not reveal which tournaments exist), `422` invalid payload, `429` too many requests.
 
 ### Health and meta
 
@@ -432,30 +606,114 @@ requests.
 | GET    | `/health`       | –    | Liveness; does not touch the database |
 | GET    | `/health/ready` | –    | Readiness incl. DB connectivity       |
 
+**`GET /health`** → `200`
+
+```json
+{ "data": { "status": "ok", "uptimeSeconds": 412, "timestamp": "2026-09-18T17:05:12.431Z" } }
+```
+
+**`GET /health/ready`** → `200` when the database answers, otherwise `503`
+(`{"error":{"code":"SERVICE_UNAVAILABLE","message":"Database is not reachable"}}`).
+
+```json
+{ "data": { "status": "ready", "database": "up" } }
+```
+
 ### Tournaments
 
-| Method | Path                                 | Auth  | Description                                             |
-| ------ | ------------------------------------ | ----- | ------------------------------------------------------- |
-| GET    | `/tournaments`                       | any   | The token's tournament                                  |
-| GET    | `/tournaments/:tournamentId`         | any   | Tournament details                                      |
-| GET    | `/tournaments/:tournamentId/session` | any   | Role behind the presented token                         |
-| PATCH  | `/tournaments/:tournamentId`         | ADMIN | Change `name`, `matchdays`, `password`, `adminPassword` |
-| DELETE | `/tournaments/:tournamentId`         | ADMIN | Delete incl. players, lists and games                   |
+| Method | Path                                   | Auth  | Description                                             |
+| ------ | -------------------------------------- | ----- | ------------------------------------------------------- |
+| GET    | `/tournaments`                         | any   | The token's tournament                                  |
+| GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
+| GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
+| GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all submitted matchdays               |
+| PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays`, `password`, `adminPassword` |
+| DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
 
-`GET /tournaments` takes `?search=` (name contains), `?limit=` (1–100, default 20) and `?offset=` (default 0) and answers with `{ data, meta: { total, limit,
-offset } }`.
+#### `GET /tournaments`
+
+Query: `?search=` (name contains), `?limit=` (1–100, default 20), `?offset=`
+(default 0). Newest first.
+
+**Request**
+
+```http
+GET /api/tournaments
+Authorization: Bearer <token>
+```
+
+**Response** `200`
+
+```json
+{
+  "data": [
+    {
+      "id": "K7M2P4QX",
+      "name": "Mittwochsrunde",
+      "matchdays": [3],
+      "listCount": 4,
+      "createdAt": "2026-09-18T17:05:12.431Z",
+      "updatedAt": "2026-09-18T17:05:12.431Z"
+    }
+  ],
+  "meta": { "total": 1, "limit": 20, "offset": 0 }
+}
+```
 
 It exists so a frontend that holds a token can fetch its tournament without
 knowing the id again. Because a token is bound to one tournament the result never
 contains more than that single entry – no endpoint enumerates all tournaments,
 and an unauthenticated caller learns nothing about them.
 
-`GET /tournaments/:tournamentId/session` answers `{ "data": { "tournamentId", "role" } }`
-and is the cheapest way for a frontend to check a token it has in storage: `401`
-means “log in again”.
+#### `GET /tournaments/:tournamentId/session`
 
-`PATCH /tournaments/:tournamentId` – every field is optional, at least one is
-required:
+**Response** `200`
+
+```json
+{ "data": { "tournamentId": "K7M2P4QX", "role": "ADMIN" } }
+```
+
+The cheapest way for a frontend to check a token it has in storage: `401` means
+“log in again”.
+
+#### `GET /tournaments/:tournamentId/standings`
+
+The standing of the tournament over all matchdays that were **submitted**, best
+player first. See [Tournament standings](#tournament-standings) for the rules.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "tournamentId": "K7M2P4QX",
+    "matchdaysCounted": 1,
+    "players": [
+      { "rank": 1, "name": "Bert", "gamesPlayed": 2, "points": 72, "averagePoints": 36 },
+      { "rank": 2, "name": "Anna", "gamesPlayed": 2, "points": 23, "averagePoints": 11.5 },
+      { "rank": 3, "name": "Clara", "gamesPlayed": 2, "points": 0, "averagePoints": 0 },
+      { "rank": 3, "name": "Dora", "gamesPlayed": 3, "points": 0, "averagePoints": 0 },
+      {
+        "rank": null,
+        "name": "Emil",
+        "gamesPlayed": 0,
+        "points": 0,
+        "averagePoints": null
+      }
+    ]
+  }
+}
+```
+
+A list that is still `OPEN` does not count, and one that was reopened drops out
+again – the standing always describes what has actually been handed in. Reading
+is allowed for both roles.
+
+**Errors:** `404` unknown tournament.
+
+#### `PATCH /tournaments/:tournamentId`
+
+Every field is optional, at least one is required.
 
 | Field           | Type     | Rules                                   |
 | --------------- | -------- | --------------------------------------- |
@@ -464,11 +722,33 @@ required:
 | `password`      | string   | 8–128 characters, sets a new normal one |
 | `adminPassword` | string   | 8–128 characters, sets a new admin one  |
 
+An admin uses `matchdays` to steer **when** members may work on lists: a member
+can only create, change and submit the list of a day that is in `matchdays` _and_
+today. `password` is how the normal password is reset.
+
+**Request**
+
+```http
+PATCH /api/tournaments/K7M2P4QX
+Authorization: Bearer <admin token>
+Content-Type: application/json
+
+{ "matchdays": [3, 6], "password": "neues-geheimnis" }
+```
+
+**Response** `200` – the updated [tournament object](#tournament).
+
 Tokens that are already out there stay valid until they expire, also after a
 password was changed – see [Security notes](#security-notes).
 
-`DELETE /tournaments/:tournamentId` → `204` and removes the tournament together
-with its players, lists and games.
+**Errors:** `403` member token, `422` invalid payload.
+
+#### `DELETE /tournaments/:tournamentId`
+
+**Response** `204` – no body. Removes the tournament together with its players,
+lists and games (cascade).
+
+**Errors:** `403` member token, `404` unknown tournament.
 
 ### Players
 
@@ -476,19 +756,59 @@ with its players, lists and games.
 | ------ | ------------------------------------------------ | ---- | ---------------------------------------------------------- |
 | GET    | `/tournaments/:tournamentId/players`             | any  | All players of the tournament, sorted by name              |
 | POST   | `/tournaments/:tournamentId/players`             | any  | `{ name }` – 1–64 characters, unique inside the tournament |
+| PATCH  | `/tournaments/:tournamentId/players/:playerName` | any  | `{ name }` – correct the name of a player                  |
 | DELETE | `/tournaments/:tournamentId/players/:playerName` | any  | Remove a player (only while not on any list)               |
-
-```json
-{ "name": "Anna" }
-```
 
 Players are the roster of the tournament: they are created once and then put on
 a list, which is what makes a game possible at all. A player is identified by
 their name inside the tournament, so there is no id to remember – the `:playerName`
 path parameter is the name itself (URL-encoded, e.g. `players/Anna%20M%C3%BCller`).
+Names are compared exactly: `anna` and `Anna` are two different players.
 
-Errors: `409` the name already exists, `409` the player is part of a list and
-cannot be deleted, `404` unknown player.
+**`GET /tournaments/:tournamentId/players`** → `200`, sorted by name, not paginated.
+
+```json
+{ "data": [{ "name": "Anna" }, { "name": "Bert" }, { "name": "Clara" }] }
+```
+
+**`POST /tournaments/:tournamentId/players`**
+
+```http
+POST /api/tournaments/K7M2P4QX/players
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "name": "Bert" }
+```
+
+**Response** `201` → `{ "data": { "name": "Bert" } }`
+
+**Errors:** `409` the name already exists, `422` invalid name.
+
+**`PATCH /tournaments/:tournamentId/players/:playerName`**
+
+```http
+PATCH /api/tournaments/K7M2P4QX/players/Betr
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "name": "Bert" }
+```
+
+**Response** `200` → `{ "data": { "name": "Bert" } }`
+
+Corrects a typo – the only way to fix one, because a player who plays in a list
+cannot be deleted. The names recorded in already entered games are rewritten as
+well, and a rename to the same name is a no-op.
+
+**Errors:** `404` unknown player, `409` the new name is already taken, `409` the
+player plays in a submitted list and the token is a member token (answer contains
+`details.submittedLists`).
+
+**`DELETE /tournaments/:tournamentId/players/:playerName`** → `204`, no body.
+
+**Errors:** `404` unknown player, `409` the player plays in a list (answer
+contains the number of lists in `details`).
 
 ### Lists
 
@@ -500,16 +820,47 @@ seating order, and every game in it is played by exactly those players.
 | GET    | `/tournaments/:tournamentId/lists`                   | any   | All lists of the tournament                      |
 | POST   | `/tournaments/:tournamentId/lists`                   | any   | Create the list of a matchday                    |
 | GET    | `/tournaments/:tournamentId/lists/:matchday`         | any   | One list incl. lineup and games                  |
+| GET    | `/tournaments/:tournamentId/lists/:matchday/results` | any   | The result table of the list                     |
 | PUT    | `/tournaments/:tournamentId/lists/:matchday/players` | any   | Replace the lineup                               |
 | DELETE | `/tournaments/:tournamentId/lists/:matchday`         | ADMIN | Delete the list incl. its games                  |
 | POST   | `/tournaments/:tournamentId/lists/:matchday/submit`  | any   | Hand the list in – it becomes locked for members |
 | POST   | `/tournaments/:tournamentId/lists/:matchday/reopen`  | ADMIN | Give a submitted list back to the members        |
 
-`GET …/lists` takes `?from=`, `?to=` (dates), `?status=OPEN|SUBMITTED`,
-`?limit=` (1–100, default 20) and `?offset=` (default 0); it answers with
-`{ data: [list], meta: { total, limit, offset } }`, newest matchday first.
+#### `GET /tournaments/:tournamentId/lists`
 
-`POST …/lists`
+Query: `?from=`, `?to=` (dates), `?status=OPEN|SUBMITTED`, `?limit=` (1–100,
+default 20), `?offset=` (default 0). Newest matchday first.
+
+**Response** `200` – no `games` in the collection, see the detail endpoint.
+
+```json
+{
+  "data": [
+    {
+      "id": "3b6f1c8a-9d24-4c31-9a5f-6f5f0f2c1b77",
+      "tournamentId": "K7M2P4QX",
+      "matchday": "2026-09-18",
+      "status": "OPEN",
+      "submittedAt": null,
+      "locked": false,
+      "lockReasons": [],
+      "players": [
+        { "name": "Anna", "position": 1 },
+        { "name": "Bert", "position": 2 },
+        { "name": "Clara", "position": 3 },
+        { "name": "Dora", "position": 4 }
+      ],
+      "gameCount": 4,
+      "totalGameValue": 163,
+      "createdAt": "2026-09-18T18:00:00.000Z",
+      "updatedAt": "2026-09-18T19:42:11.000Z"
+    }
+  ],
+  "meta": { "total": 1, "limit": 20, "offset": 0 }
+}
+```
+
+#### `POST /tournaments/:tournamentId/lists`
 
 | Field         | Type     | Rules                                                                      |
 | ------------- | -------- | -------------------------------------------------------------------------- |
@@ -517,42 +868,273 @@ seating order, and every game in it is played by exactly those players.
 | `playerNames` | string[] | optional: 3–5 names of this tournament **in seating order**, no duplicates |
 | `games`       | game[]   | optional: entered in order, they become rounds 1…n                         |
 
-`PUT …/lists/:matchday/players` – `{ "playerNames": ["Anna", "Bert", "Clara"] }`
-with 3–5 names of this tournament in seating order; `playerNames[0]` deals in
-round 1. The request is rejected once the list contains games, because the lineup
-decides who deals in which round.
+Lineup and first games may be sent in one request, which saves a round trip when
+an evening is entered at once.
 
-`GET …/lists/:matchday` → `200`
+**Request**
+
+```json
+{
+  "matchday": "2026-09-18",
+  "playerNames": ["Anna", "Bert", "Clara", "Dora"],
+  "games": [{ "passedOut": false, "declarer": "Bert", "gameType": "NULL", "won": true }]
+}
+```
+
+**Response** `201` – the list as above, plus `games`.
+
+**Errors:** `403` the day is not a matchday, or the token is a member token and
+the day is not today, `409` a list for that day already exists, `409` a name in
+`playerNames` is not a player of this tournament (`details.unknownPlayers`),
+`422` lineup of the wrong size, duplicate name or an invalid game.
+
+#### `GET /tournaments/:tournamentId/lists/:matchday`
+
+**Response** `200`
 
 ```json
 {
   "data": {
-    "id": "3b6f…",
+    "id": "3b6f1c8a-9d24-4c31-9a5f-6f5f0f2c1b77",
     "tournamentId": "K7M2P4QX",
-    "matchday": "2026-09-16",
-    "status": "SUBMITTED",
-    "submittedAt": "2026-09-16T19:42:11.000Z",
-    "locked": true,
-    "lockReasons": ["SUBMITTED"],
+    "matchday": "2026-09-18",
+    "status": "OPEN",
+    "submittedAt": null,
+    "locked": false,
+    "lockReasons": [],
     "players": [
       { "name": "Anna", "position": 1 },
-      { "name": "Bert", "position": 2 }
+      { "name": "Bert", "position": 2 },
+      { "name": "Clara", "position": 3 },
+      { "name": "Dora", "position": 4 }
     ],
-    "gameCount": 24,
-    "totalGameValue": 811,
-    "games": [],
-    "createdAt": "2026-09-16T18:00:00.000Z",
-    "updatedAt": "2026-09-16T19:42:11.000Z"
+    "gameCount": 4,
+    "totalGameValue": 163,
+    "games": [
+      {
+        "id": "99815b69-7e3b-4e37-a4a5-eecbadcc6ffe",
+        "position": 1,
+        "players": ["Bert", "Clara", "Dora"],
+        "dealer": "Anna",
+        "passedOut": false,
+        "declarer": "Bert",
+        "gameType": "GRAND",
+        "hand": true,
+        "schneiderAnnounced": true,
+        "schwarzAnnounced": false,
+        "offen": false,
+        "matadors": { "suit": "WITH", "count": 2 },
+        "schneider": false,
+        "schwarz": false,
+        "won": true,
+        "gameValue": 120,
+        "positiveGameValue": 120,
+        "negativeGameValue": 0,
+        "note": null,
+        "createdAt": "2026-09-18T18:12:03.114Z",
+        "updatedAt": "2026-09-18T18:12:03.114Z"
+      },
+      {
+        "id": "d19f5d5d-90a7-4062-9f82-81eabce45199",
+        "position": 2,
+        "players": ["Anna", "Clara", "Dora"],
+        "dealer": "Bert",
+        "passedOut": false,
+        "declarer": "Clara",
+        "gameType": "NULL",
+        "hand": false,
+        "schneiderAnnounced": false,
+        "schwarzAnnounced": false,
+        "offen": false,
+        "matadors": null,
+        "schneider": false,
+        "schwarz": false,
+        "won": true,
+        "gameValue": 23,
+        "positiveGameValue": 23,
+        "negativeGameValue": 0,
+        "note": null,
+        "createdAt": "2026-09-18T18:14:20.031Z",
+        "updatedAt": "2026-09-18T18:14:20.031Z"
+      },
+      {
+        "id": "c7038ab0-6620-42fb-ac5f-5fd6f92152b3",
+        "position": 3,
+        "players": ["Anna", "Bert", "Dora"],
+        "dealer": "Clara",
+        "passedOut": false,
+        "declarer": "Dora",
+        "gameType": "HERZ",
+        "hand": false,
+        "schneiderAnnounced": false,
+        "schwarzAnnounced": false,
+        "offen": false,
+        "matadors": { "suit": "WITHOUT", "count": 1 },
+        "schneider": false,
+        "schwarz": false,
+        "won": false,
+        "gameValue": 20,
+        "positiveGameValue": 0,
+        "negativeGameValue": 40,
+        "note": null,
+        "createdAt": "2026-09-18T18:20:44.712Z",
+        "updatedAt": "2026-09-18T18:20:44.712Z"
+      },
+      {
+        "id": "52197cd3-3d3f-4d27-ab84-1fccc4dcc0f4",
+        "position": 4,
+        "players": ["Anna", "Bert", "Clara"],
+        "dealer": "Dora",
+        "passedOut": true,
+        "declarer": null,
+        "gameType": null,
+        "hand": false,
+        "schneiderAnnounced": false,
+        "schwarzAnnounced": false,
+        "offen": false,
+        "matadors": null,
+        "schneider": false,
+        "schwarz": false,
+        "won": null,
+        "gameValue": 0,
+        "positiveGameValue": 0,
+        "negativeGameValue": 0,
+        "note": "alle eingepasst",
+        "createdAt": "2026-09-18T18:26:09.220Z",
+        "updatedAt": "2026-09-18T18:26:09.220Z"
+      }
+    ],
+    "createdAt": "2026-09-18T18:00:00.000Z",
+    "updatedAt": "2026-09-18T18:26:09.220Z"
   }
 }
 ```
 
-`locked` and `lockReasons` describe the **requesting** role – see
+The four games are the worked example of [Results](#results-ergebnistabelle): a
+Grand won with 120, a Null won with 23, a Herz lost with 20 and one Eingepasst
+game. `locked` and `lockReasons` describe the **requesting** role – see
 [Locked lists](#locked-lists).
 
-Errors: `403` another matchday (members only), `409` a list for that day already
-exists, `409` the list is locked (submitted), `409` the lineup can no longer be
-changed, `409` already submitted, `404` unknown list.
+**Errors:** `404` unknown list, `422` invalid matchday.
+
+#### `GET /tournaments/:tournamentId/lists/:matchday/results`
+
+The result table ("Ergebnistabelle") of the list, always derived from the current
+games – see [Results](#results-ergebnistabelle). Reading is allowed for both
+roles, also after the list was submitted.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "matchday": "2026-09-18",
+    "playerCount": 4,
+    "gameCount": 4,
+    "playedCount": 3,
+    "passedOutCount": 1,
+    "totalGameValue": 163,
+    "opponentBonusPerGame": 30,
+    "players": [
+      {
+        "name": "Anna",
+        "position": 1,
+        "won": 0,
+        "lost": 0,
+        "wonGameValue": 0,
+        "lostGameValue": 0,
+        "points": 0,
+        "wonBonus": 0,
+        "lossPenalty": 0,
+        "opponentBonus": 30,
+        "total": 30
+      },
+      {
+        "name": "Bert",
+        "position": 2,
+        "won": 1,
+        "lost": 0,
+        "wonGameValue": 120,
+        "lostGameValue": 0,
+        "points": 120,
+        "wonBonus": 50,
+        "lossPenalty": 0,
+        "opponentBonus": 30,
+        "total": 200
+      },
+      {
+        "name": "Clara",
+        "position": 3,
+        "won": 1,
+        "lost": 0,
+        "wonGameValue": 23,
+        "lostGameValue": 0,
+        "points": 23,
+        "wonBonus": 50,
+        "lossPenalty": 0,
+        "opponentBonus": 30,
+        "total": 103
+      },
+      {
+        "name": "Dora",
+        "position": 4,
+        "won": 0,
+        "lost": 1,
+        "wonGameValue": 0,
+        "lostGameValue": 40,
+        "points": -40,
+        "wonBonus": 0,
+        "lossPenalty": -50,
+        "opponentBonus": 0,
+        "total": -90
+      }
+    ]
+  }
+}
+```
+
+**Errors:** `404` unknown list, `422` invalid matchday.
+
+#### `PUT /tournaments/:tournamentId/lists/:matchday/players`
+
+Replaces the lineup. `playerNames[0]` deals in round 1.
+
+```json
+{ "playerNames": ["Anna", "Bert", "Clara"] }
+```
+
+**Response** `200` – the list including its games.
+
+**Errors:** `403` day not allowed for this role, `404` unknown list, `409` the
+list is locked or already contains games (the lineup decides who deals in which
+round), `409` unknown player, `422` wrong size or duplicate name.
+
+#### `POST …/lists/:matchday/submit` and `POST …/lists/:matchday/reopen`
+
+`submit` freezes the list for members, `reopen` (admin only) gives it back.
+
+**Response** `200` – the list including its games, with the new `status`. Excerpt:
+
+```json
+{
+  "data": {
+    "matchday": "2026-09-18",
+    "status": "SUBMITTED",
+    "submittedAt": "2026-09-18T19:42:11.008Z",
+    "locked": true,
+    "lockReasons": ["SUBMITTED"]
+  }
+}
+```
+
+**Errors:** `404` unknown list, `403` day not allowed / member token on
+`reopen`, `409` already submitted (`submit`) or not submitted (`reopen`).
+
+#### `DELETE /tournaments/:tournamentId/lists/:matchday`
+
+**Response** `204` – no body, removes the list and all its games.
+
+**Errors:** `403` member token, `404` unknown list.
 
 ### Games
 
@@ -560,15 +1142,18 @@ changed, `409` already submitted, `404` unknown list.
 | ------ | ---------------------------------------------------------- | ---- | --------------------------- |
 | GET    | `/tournaments/:tournamentId/lists/:matchday/games`         | any  | All games, ordered by round |
 | POST   | `/tournaments/:tournamentId/lists/:matchday/games`         | any  | Enter a game                |
+| GET    | `/tournaments/:tournamentId/lists/:matchday/games/:gameId` | any  | One game                    |
 | PUT    | `/tournaments/:tournamentId/lists/:matchday/games/:gameId` | any  | Replace a game              |
 | DELETE | `/tournaments/:tournamentId/lists/:matchday/games/:gameId` | any  | Delete a game               |
 
 Send exactly the fields of the four steps – the rules are described under
-[Entering a game](#entering-a-game), the fields under
-[Game](#game). Games are appended: `position` (the round), `dealer`, `players`
-and `gameValue` are answered by the API and never sent by a client.
+[Entering a game](#entering-a-game), the fields under [Game](#game). Games are
+appended: `position` (the round), `dealer`, `players` and `gameValue` are
+answered by the API and never sent by a client.
 
 A game that was played (`POST` or `PUT`):
+
+**Request**
 
 ```json
 {
@@ -587,16 +1172,62 @@ A game that was played (`POST` or `PUT`):
 }
 ```
 
+**Response** `201`
+
+```json
+{
+  "data": {
+    "id": "99815b69-7e3b-4e37-a4a5-eecbadcc6ffe",
+    "position": 1,
+    "players": ["Bert", "Clara", "Dora"],
+    "dealer": "Anna",
+    "passedOut": false,
+    "declarer": "Bert",
+    "gameType": "GRAND",
+    "hand": true,
+    "schneiderAnnounced": true,
+    "schwarzAnnounced": false,
+    "offen": false,
+    "matadors": { "suit": "WITH", "count": 2 },
+    "schneider": false,
+    "schwarz": false,
+    "won": true,
+    "gameValue": 120,
+    "positiveGameValue": 120,
+    "negativeGameValue": 0,
+    "note": null,
+    "createdAt": "2026-09-18T18:12:03.114Z",
+    "updatedAt": "2026-09-18T18:12:03.114Z"
+  }
+}
+```
+
+`(2 Spitzen + Hand + Schneider Ang. + 1) * 24 = 120`.
+
 A game that was passed out needs nothing else – the flow ends after step 1:
 
 ```json
-{ "passedOut": true }
+{ "passedOut": true, "note": "alle eingepasst" }
 ```
 
-`PUT …/games/:gameId` replaces the game completely (the round and the dealer
-stay), which is why there is no `PATCH` – a partial update would have to satisfy
-all the rules in combination with the stored values. The answer of a `GET` can be
-sent back as it is: fields the API derives itself are ignored.
+→ `201` with `declarer: null`, `gameType: null`, `won: null`, `gameValue: 0`,
+`positiveGameValue: 0`, `negativeGameValue: 0`.
+
+**Errors:** `403` day not allowed for this role, `404` unknown list, `409` the
+list is locked, the lineup is not complete yet, or the declarer does not play this
+round (`details.dealer`, `details.sittingOutPlayers`, `details.playingPlayers`),
+`422` the game breaks the
+rules of the steps above (`details.issues` names the field).
+
+`GET …/games` answers `{ "data": [ …game… ] }` ordered by `position`;
+`GET …/games/:gameId` answers a single game. `PUT …/games/:gameId` replaces the
+game completely (the round and the dealer stay), which is why there is no `PATCH`
+– a partial update would have to satisfy all the rules in combination with the
+stored values. The answer of a `GET` can be sent back as it is: fields the API
+derives itself are ignored. `DELETE …/games/:gameId` → `204`.
+
+**Errors (single game):** `404` unknown game in that list, `422` invalid
+`:gameId` or payload.
 
 Errors: `422` a property is missing or contradicts another one – `details.issues`
 names the field; `409` a rule that depends on the list (the lineup is incomplete,
@@ -683,26 +1314,67 @@ surrogate key for the join table of a lineup; it is never returned.
 
 ### Game
 
-| Field                                                     | Type                                                              | Who sets it                              |
-| --------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------- |
-| `id`                                                      | string                                                            | API                                      |
-| `position`                                                | number                                                            | API – the round, counted from 1          |
-| `dealer`                                                  | string                                                            | API – follows the seating order          |
-| `players`                                                 | string[]                                                          | API – the lineup of the list             |
-| `passedOut`                                               | boolean                                                           | client – step 1                          |
-| `declarer`                                                | string \| null                                                    | client – step 1, `null` when passed out  |
-| `gameType`                                                | `KARO` \| `HERZ` \| `PIK` \| `KREUZ` \| `GRAND` \| `NULL` \| null | client – step 2, `null` when passed out  |
-| `hand`, `schneiderAnnounced`, `schwarzAnnounced`, `offen` | boolean                                                           | client – step 2                          |
-| `matadors`                                                | `{ suit: WITH \| WITHOUT, count }` \| null                        | client – step 3                          |
-| `schneider`, `schwarz`                                    | boolean                                                           | client – step 4                          |
-| `won`                                                     | boolean \| null                                                   | client – step 4, `null` when passed out  |
-| `gameValue`                                               | number                                                            | API – the Spielwert, `0` when passed out |
-| `note`                                                    | string \| null                                                    | client, free text, max 500 characters    |
+| Field                                                     | Type                                                              | Who sets it                                   |
+| --------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| `id`                                                      | string                                                            | API                                           |
+| `position`                                                | number                                                            | API – the round, counted from 1               |
+| `dealer`                                                  | string                                                            | API – follows the seating order               |
+| `players`                                                 | string[]                                                          | API – the three players of the round          |
+| `passedOut`                                               | boolean                                                           | client – step 1                               |
+| `declarer`                                                | string \| null                                                    | client – step 1, `null` when passed out       |
+| `gameType`                                                | `KARO` \| `HERZ` \| `PIK` \| `KREUZ` \| `GRAND` \| `NULL` \| null | client – step 2, `null` when passed out       |
+| `hand`, `schneiderAnnounced`, `schwarzAnnounced`, `offen` | boolean                                                           | client – step 2                               |
+| `matadors`                                                | `{ suit: WITH \| WITHOUT, count }` \| null                        | client – step 3                               |
+| `schneider`, `schwarz`                                    | boolean                                                           | client – step 4                               |
+| `won`                                                     | boolean \| null                                                   | client – step 4, `null` when passed out       |
+| `gameValue`                                               | number                                                            | API – the Spielwert, `0` when passed out      |
+| `positiveGameValue`                                       | number                                                            | API – `gameValue` if won, else `0`            |
+| `negativeGameValue`                                       | number                                                            | API – **twice** `gameValue` if lost, else `0` |
+| `note`                                                    | string \| null                                                    | client, free text, max 500 characters         |
 
-`dealer`, `position`, `players` and `gameValue` are not part of a request –
-sending them is ignored, so the answer of a `GET` can be sent back unchanged. A
-game that was passed out is a complete record with `declarer: null` and nothing
-else.
+`dealer`, `position`, `players`, `gameValue` and the two result columns are not
+part of a request – sending them is ignored, so the answer of a `GET` can be sent
+back unchanged. `players` always has exactly **three** entries: the lineup minus
+the players who sit out this round (see [Entering a game](#entering-a-game)),
+which is also what the [standings](#tournament-standings) counts as a played
+game. `positiveGameValue` and `negativeGameValue` are the
+"Positiver/Negativer Spielwert" columns of the result table; exactly one of them
+is non-zero for a game that was played. A game that was passed out is a complete
+record with `declarer: null` and nothing else – `players` still names the three
+who were dealt in.
+
+### Results
+
+The result table of one list, as answered by
+`GET …/lists/:matchday/results`.
+
+| Field                  | Type     | Notes                                              |
+| ---------------------- | -------- | -------------------------------------------------- |
+| `matchday`             | string   | `YYYY-MM-DD`                                       |
+| `playerCount`          | number   | size of the lineup, decides `opponentBonusPerGame` |
+| `gameCount`            | number   | all games of the list                              |
+| `playedCount`          | number   | games that were played                             |
+| `passedOutCount`       | number   | Eingepasst games                                   |
+| `totalGameValue`       | number   | sum of the `gameValue` of all games                |
+| `opponentBonusPerGame` | number   | `40` / `30` / `24` for 3 / 4 / 5 players           |
+| `players`              | Result[] | one row per player, in seating order               |
+
+A `Result` row:
+
+| Field              | Type   | Notes                                                             |
+| ------------------ | ------ | ----------------------------------------------------------------- |
+| `name`, `position` | –      | as on the list                                                    |
+| `won`              | number | `Gew` – Alleinspiele the player won                               |
+| `lost`             | number | `Verl` – Alleinspiele the player lost                             |
+| `wonGameValue`     | number | Σ Spielwerte of the won Alleinspiele                              |
+| `lostGameValue`    | number | Σ **doubled** Spielwerte of the lost Alleinspiele                 |
+| `points`           | number | `wonGameValue - lostGameValue`                                    |
+| `wonBonus`         | number | `+50` per win                                                     |
+| `lossPenalty`      | number | `-50` per loss                                                    |
+| `opponentBonus`    | number | `opponentBonusPerGame` per lost Alleinspiel of **another** player |
+| `total`            | number | `points + wonBonus + lossPenalty + opponentBonus`                 |
+
+See [Results](#results-ergebnistabelle) for the rules and a worked example.
 
 ## Rate limits
 
@@ -760,21 +1432,23 @@ Known limitations:
 
 ## Troubleshooting
 
-| Symptom                                                            | Cause                                                                                                                   |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `401 Missing bearer token`                                         | header missing or not `Authorization: Bearer <token>`                                                                   |
-| `401 Invalid or expired session token`                             | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
-| `403 The session token does not grant access to this tournament`   | the token belongs to another tournament id                                                                              |
-| `403 … is not a matchday of …`                                     | the weekday of that date is not in `matchdays`                                                                          |
-| `403 Lists can only be created or changed on the current matchday` | members may only touch today's list – use the admin password                                                            |
-| `409 This list has already been submitted`                         | reopen it as an admin before changing or submitting it again                                                            |
-| `409 The players of the matchday cannot be changed any more`       | the list already contains games                                                                                         |
-| `409 … does not play this round because … deals`                   | step 1: that player sits out – check `dealer`                                                                           |
-| `409 Every player of a list has to be part of the tournament`      | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
-| `422` with `details.issues[].path`                                 | the field named in `path` is wrong                                                                                      |
-| `429 Too many requests`                                            | wait for `Retry-After` seconds                                                                                          |
-| `503 Database is unavailable`                                      | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
-| startup aborts with `database schema could not be prepared`        | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
+| Symptom                                                                 | Cause                                                                                                                   |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `401 Missing bearer token`                                              | header missing or not `Authorization: Bearer <token>`                                                                   |
+| `401 Invalid or expired session token`                                  | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
+| `403 The session token does not grant access to this tournament`        | the token belongs to another tournament id                                                                              |
+| `403 … is not a matchday of …`                                          | the weekday of that date is not in `matchdays`                                                                          |
+| `403 Lists can only be created or changed on the current matchday`      | members may only touch today's list – use the admin password                                                            |
+| `409 This list has already been submitted`                              | reopen it as an admin before changing or submitting it again                                                            |
+| `409 The players of the matchday cannot be changed any more`            | the list already contains games                                                                                         |
+| `409 … does not play this round because … deals`                        | step 1: that player sits out – check `dealer`                                                                           |
+| `409 Every player of a list has to be part of the tournament`           | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
+| `409 … plays in a submitted list, so the name can no longer be changed` | correct the name with the admin password, or reopen the list first                                                      |
+| `409 A list consists of 3, 4 or 5 players`                              | the lineup has the wrong size                                                                                           |
+| `422` with `details.issues[].path`                                      | the field named in `path` is wrong                                                                                      |
+| `429 Too many requests`                                                 | wait for `Retry-After` seconds                                                                                          |
+| `503 Database is unavailable`                                           | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
+| startup aborts with `database schema could not be prepared`             | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
 
 ## Configuration
 
@@ -810,12 +1484,13 @@ backend/
 │   ├── middleware/             # auth, cors, error handler, request context
 │   ├── modules/
 │   │   ├── tournaments/        # schemas, service, routes
-│   │   │   ├── tournament-actions.routes.ts  # createTournament, loginTournament
-│   │   │   └── tournament.routes.ts          # /tournaments/:tournamentId
+│   │   │   ├── tournament.routes.ts   # /tournaments, /tournaments/:id
+│   │   │   └── standings.ts           # the standing over all matchdays
 │   │   ├── players/            # players of a tournament
 │   │   ├── lists/              # lists + games
 │   │   │   ├── game-rules.ts     # pure Skat rules: dealer, Spielwert, Spitzen
 │   │   │   ├── game-entry.ts     # rules of the entry flow that need a list
+│   │   │   ├── scoring.ts        # the result table of an evening
 │   │   │   ├── game.schemas.ts   # the properties of a game
 │   │   │   └── game.mapper.ts    # request -> stored game -> DTO
 │   │   └── health/

@@ -1,6 +1,6 @@
 import { conflict } from '../../lib/http-error.js';
 import type { GameInput } from './game.schemas.js';
-import { MAX_LINEUP, MIN_LINEUP, excludedDeclarers } from './game-rules.js';
+import { MAX_LINEUP, MIN_LINEUP, playingPlayers, sittingOutPlayers } from './game-rules.js';
 
 /**
  * Steps of the game entry flow that need the data of a list. Kept apart from
@@ -21,8 +21,8 @@ export function assertLineupComplete(playerCount: number): void {
 
 /**
  * Step 1 of the entry flow: the Alleinspieler has to be part of the lineup and
- * has to be allowed to play this round – the dealer sits out with 4 players,
- * and with 5 players their neighbours sit out as well.
+ * has to be one of the three players of this round – the Geber sits out with 4
+ * players, their neighbours sit out with 5 players.
  */
 export function assertDeclarerAllowed(
   input: GameInput,
@@ -38,12 +38,12 @@ export function assertDeclarerAllowed(
     });
   }
 
-  const excluded = excludedDeclarers(lineup, dealer);
-  if (excluded.includes(input.declarer)) {
-    throw conflict(`${input.declarer} does not play this round because ${dealer} deals`, {
+  const sittingOut = sittingOutPlayers(lineup, dealer);
+  if (sittingOut.includes(input.declarer)) {
+    throw conflict(`${input.declarer} sits out this round because ${dealer} deals`, {
       dealer,
-      excludedDeclarers: excluded,
-      eligibleDeclarers: lineup.filter((name) => !excluded.includes(name)),
+      sittingOutPlayers: sittingOut,
+      playingPlayers: playingPlayers(lineup, dealer),
     });
   }
 }
