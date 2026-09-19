@@ -11,3 +11,65 @@
 
 /* Readability and ranking surfaces */
 :root{font-size:17px}main{width:min(1380px,calc(100% - 56px))}.topbar{padding-left:clamp(24px,5vw,90px);padding-right:clamp(24px,5vw,90px)}.role-chip{font:11px 'DM Mono';letter-spacing:.7px;padding:8px 10px;border-radius:6px;color:#667068;background:#e7ece5}.role-chip.admin{color:#9a4a2f;background:#f5dfd5;border:1px solid #e9b9a6}.workspace-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.icon-button.danger{color:#b6503c}.list-card{min-height:310px}.mini-ranking{border-top:1px solid var(--line);margin:14px 0 10px;padding-top:10px;font:11px 'DM Mono';color:var(--muted)}.mini-ranking>span{display:block;text-transform:uppercase;font-size:9px;letter-spacing:1px;margin-bottom:5px}.mini-ranking div{display:flex;justify-content:space-between;padding:3px 0;color:var(--ink)}.mini-ranking strong{font-weight:500}.tournament-ranking{margin-top:52px;background:rgba(251,250,246,.8);border:1px solid var(--line);border-radius:9px;padding:24px}.ranking-heading{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}.ranking-heading h2{font-size:27px;letter-spacing:-1px;margin:8px 0 0}.ranking-heading>span{font:10px 'DM Mono';color:var(--muted)}.ranking-table{overflow:auto}.ranking-header,.ranking-row{display:grid;grid-template-columns:70px minmax(160px,1fr) 100px 110px 100px;gap:15px;align-items:center}.ranking-header{padding:15px 8px 9px;color:#9b9c92;font:10px 'DM Mono';text-transform:uppercase}.ranking-row{padding:14px 8px;border-top:1px solid #ebe7de;font-size:13px}.ranking-row strong:last-child,.ranking-row span:nth-last-child(-n+2){font-family:'DM Mono';font-size:12px}.ranking-row>strong:first-child{color:var(--orange-dark)}
+
+/* ---------------------------------------------------------------------------
+   Passwortfeld, Spielerauswahl, Spieldetails und Diagramme
+   --------------------------------------------------------------------------- */
+.password-field{position:relative;display:block}
+.password-field input{padding-right:46px}
+.password-toggle{position:absolute;right:6px;top:calc(50% + 3px);transform:translateY(-50%);background:transparent;padding:7px;border-radius:6px;color:#7c8178}
+.password-toggle:hover{background:#ece7dc;color:var(--ink)}
+.lineup-picker{border:0;border-top:1px solid var(--line);padding:15px 0 0;margin:4px 0 18px}
+.lineup-picker legend{font-size:11px;font-weight:800;color:#535c54;padding:0}
+.lineup-picker p{font-size:10px;color:var(--muted);margin:5px 0 11px}
+.lineup-choices{display:flex;flex-wrap:wrap;gap:6px}
+.lineup-choice{display:inline-flex;align-items:center;gap:6px;background:#f1eee6;border:1px solid #e0dbd0;border-radius:6px;padding:8px 10px;font-size:11px;color:#5d665e}
+.lineup-choice:hover:not(:disabled){border-color:#d9a385;background:#f8eee7}
+.lineup-choice.selected{background:#f6dfd3;border-color:var(--orange);color:var(--orange-dark);font-weight:800}
+.lineup-choice b{display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--orange);color:#fff;font:10px 'DM Mono'}
+.lineup-choice svg{color:#a2a095}
+.lineup-status{display:flex;justify-content:space-between;align-items:center;margin-top:11px;font:10px 'DM Mono';color:var(--muted)}
+.lineup-status .ok{color:#4d7957}
+.game-row{cursor:pointer}
+.game-row:hover td{background:#f7f3ea}
+.game-row:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+.game-type-cell{white-space:normal}
+.game-type-cell>strong{font-weight:800;color:var(--ink);margin-right:7px}
+.level-badge{display:inline-block;margin:0 4px 3px 0;font:9px 'DM Mono';letter-spacing:.3px;background:#e7ece5;color:#4d6255;border-radius:4px;padding:3px 5px}
+.level-badge.announced{background:transparent;border:1px dashed #c2c8bd;color:#68746a}
+.chart-block{border-top:1px solid var(--line);padding:20px 22px 22px}
+.chart-head{display:flex;justify-content:space-between;align-items:end;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.chart-head h3{font-size:19px;letter-spacing:-.7px;margin:7px 0 0}
+.chart-scale{display:block;margin:0;font-size:10px;color:var(--muted);font-family:'DM Mono'}
+.chart-scale select{width:auto;min-width:155px;height:34px;margin-top:5px;font-size:11px}
+.chart{display:block;margin:0}
+.chart-canvas{display:block;width:100%;height:auto;overflow:visible}
+.chart-grid{stroke:#e6e2d8;stroke-width:1}
+.chart-zero{stroke:#c9c3b6;stroke-width:1.2;stroke-dasharray:4 3}
+.chart-tick{font:9px 'DM Mono';fill:#9b9c92}
+.chart-line{fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.chart-point{stroke:#fbfaf6;stroke-width:1.4}
+.chart-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:11px;color:#4d574f}
+.chart-legend-item{display:inline-flex;align-items:center;gap:6px}
+.chart-legend-item i{width:10px;height:3px;border-radius:2px}
+.chart-legend-item strong{font-family:'DM Mono';font-size:11px;font-weight:500;color:var(--ink)}
+.chart-note{font-size:10px;color:var(--muted);line-height:1.6;margin:10px 0 0}
+.chart-empty{text-align:center;color:var(--muted);font-size:12px;border:1px dashed #d5cfc1;border-radius:7px;padding:34px 16px}
+.tournament-ranking .chart-block{border-top:1px solid var(--line);margin-top:20px;padding:20px 0 0}
+.detail-modal{max-width:680px}
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 22px}
+.detail-item{border-top:2px solid var(--ink);padding:10px 2px;display:flex;flex-direction:column;gap:6px}
+.detail-item>span{font:9px 'DM Mono';text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.detail-item>strong{font-size:16px;letter-spacing:-.4px}
+.detail-table{border-collapse:collapse;width:100%;font-size:12px;min-width:0}
+.detail-table th{font:9px 'DM Mono';padding:9px 10px}
+.detail-table td,.detail-table th{white-space:normal}
+.detail-table td{padding:11px 10px;font-family:'DM Mono';font-size:11px}
+.detail-table td:first-child{font-family:'Manrope';font-size:12px;color:var(--ink)}
+.detail-table tr.declarer td{background:#fdf1e9}
+.declarer-flag{display:inline-block;margin-left:7px;font:9px 'DM Mono';color:var(--orange-dark);letter-spacing:.4px}
+.delta-up{color:#4d7957}
+.delta-down{color:var(--red)}
+.detail-note{font-size:11px;line-height:1.6;color:var(--muted);margin:16px 0 0}
+@media(max-width:800px){.detail-grid{grid-template-columns:1fr 1fr}.chart-block{padding:17px 14px}}
+@media(max-width:560px){.detail-grid{grid-template-columns:1fr}.chart-scale select{width:100%}}
