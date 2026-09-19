@@ -3,6 +3,7 @@ import { conflict, notFound } from '../../lib/http-error.js';
 import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { recordAudit } from '../audit/audit-log.js';
 import { countsForStanding } from '../lists/list-access.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import type { CreatePlayerInput } from './player.schemas.js';
@@ -29,6 +30,7 @@ export async function listPlayers(tournamentId: string): Promise<PlayerDto[]> {
 export async function createPlayer(
   tournamentId: string,
   input: CreatePlayerInput,
+  role: TournamentRole,
 ): Promise<PlayerDto> {
   const tournament = await getTournamentRow(tournamentId);
 
@@ -45,6 +47,13 @@ export async function createPlayer(
     data: { tournamentId: tournament.id, name: input.name },
   });
 
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'player.added',
+    details: { name: player.name },
+  });
+
   return toPlayerDto(player);
 }
 
@@ -59,7 +68,11 @@ export async function findPlayerOrThrow(tournamentId: string, name: string): Pro
 }
 
 /** Removes a player – only while they are not part of any list. */
-export async function deletePlayer(tournamentId: string, name: string): Promise<void> {
+export async function deletePlayer(
+  tournamentId: string,
+  name: string,
+  role: TournamentRole,
+): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
   const player = await findPlayerOrThrow(tournament.id, name);
 
@@ -73,6 +86,13 @@ export async function deletePlayer(tournamentId: string, name: string): Promise<
   }
 
   await prisma.player.deleteMany({ where: { id: player.id } });
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'player.removed',
+    details: { name: player.name },
+  });
 }
 
 /**
@@ -141,6 +161,13 @@ export async function renamePlayer(
         },
       });
     }
+  });
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'player.renamed',
+    details: { from: name, to: newName },
   });
 
   return { name: newName };

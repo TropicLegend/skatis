@@ -21,6 +21,14 @@ function niceStep(rough) {
   return 10 * power
 }
 
+/** The last value that is not a gap – what the legend shows for a series. */
+function lastValue(values) {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (values[index] !== null) return values[index]
+  }
+  return 0
+}
+
 /** Tick values that cover `min..max` with a readable step. */
 function niceTicks(min, max, count = 4) {
   const step = niceStep((max - min) / count)
@@ -34,7 +42,12 @@ function niceTicks(min, max, count = 4) {
 }
 
 function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = 'Punkte', emptyHint }) {
-  const drawn = series.filter((serie) => Array.isArray(serie.values) && serie.values.length === labels.length)
+  // A series may have gaps (`null`) – a player without a game has no average.
+  // A series without a single value would draw nothing, so it is dropped.
+  const drawn = series
+    .filter((serie) => Array.isArray(serie.values) && serie.values.length === labels.length)
+    .map((serie) => ({ ...serie, values: serie.values.map((value) => (Number.isFinite(value) ? value : null)) }))
+    .filter((serie) => serie.values.some((value) => value !== null))
   const values = drawn.flatMap((serie) => serie.values).filter((value) => Number.isFinite(value))
   const format = (value) => Number(value).toLocaleString('de-DE')
 
@@ -95,10 +108,10 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
           <g key={serie.name}>
             <polyline
               className="chart-line"
-              points={serie.values.map((value, index) => `${x(index)},${y(value)}`).join(' ')}
+              points={serie.values.flatMap((value, index) => (value === null ? [] : [`${x(index)},${y(value)}`])).join(' ')}
               style={{ stroke: serie.color }}
             />
-            {serie.values.map((value, index) => (
+            {serie.values.map((value, index) => value === null ? null : (
               <circle key={index} className="chart-point" cx={x(index)} cy={y(value)} style={{ fill: serie.color }}>
                 <title>{`${serie.name} · ${labels[index]}: ${format(value)} ${unit}`}</title>
               </circle>
@@ -112,7 +125,7 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
           <span className="chart-legend-item" key={serie.name}>
             <i style={{ background: serie.color }} />
             {serie.name}
-            <strong>{format(serie.values[serie.values.length - 1])}</strong>
+            <strong>{format(lastValue(serie.values))}</strong>
           </span>
         ))}
       </figcaption>

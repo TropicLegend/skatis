@@ -3,6 +3,7 @@ import { conflict, notFound } from '../../lib/http-error.js';
 import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { resolveTournamentPlayers } from '../players/player.service.js';
 import {
@@ -11,6 +12,7 @@ import {
   assertMatchdayAllowed,
   countsForStanding,
   listLockReasons,
+  takesSlot,
   type ListLockReason,
 } from './list-access.js';
 import type { CreateListInput, ListListsQuery } from './list.schemas.js';
@@ -87,6 +89,18 @@ export type ListWithGames = Prisma.GameListGetPayload<{ include: typeof listWith
 /** The players of a list in seating order. */
 export function lineupNames(list: ListWithGames): string[] {
   return list.lineup.map((entry) => entry.player.name);
+}
+
+/** The place of a list – what a log entry about it has to repeat. */
+function listDetails(
+  list: Pick<ListWithGames, 'id' | 'matchday' | 'series' | 'table'>,
+): AuditDetails {
+  return {
+    listId: list.id,
+    matchday: toIsoDate(list.matchday),
+    series: list.series,
+    table: list.table,
+  };
 }
 
 export function toListDto(
@@ -236,23 +250,26 @@ export async function createList(
 
   const matchday = parseIsoDate(input.matchday);
 
-  // A table of a series can only have one sheet per evening. The unique index
-  // backs this up; the check is here to answer with a helpful message.
-  const existing = await prisma.gameList.findUnique({
+  // A table of a series is taken while its list is still open: a second sheet
+  // for "Serie 1, Tisch 3" can only be created once the first one was handed in
+  // (or its day is over – then it no longer needs to be handed in). The check is
+  // here instead of a unique index, because a constraint could not tell an open
+  // list of a past evening from an open list that is still being played.
+  const blocking = await prisma.gameList.findFirst({
     where: {
-      tournamentId_matchday_series_table: {
-        tournamentId: tournament.id,
-        matchday,
-        series: input.series,
-        table: input.table,
-      },
+      tournamentId: tournament.id,
+      matchday,
+      series: input.series,
+      table: input.table,
+      status: 'OPEN',
     },
-    select: { id: true },
+    select: { matchday: true, id: true },
   });
-  if (existing) {
+  if (takesSlot(blocking)) {
     throw conflict(
-      `Serie ${input.series}, Tisch ${input.table} already has a list for ${input.matchday}`,
-      { listId: existing.id },
+      `Serie ${input.series}, Tisch ${input.table} is still playing on ${input.matchday} – ` +
+        'hand that list in before starting another one, or use another table or series',
+      { listId: blocking?.id },
     );
   }
 
@@ -298,6 +315,19 @@ export async function createList(
     include: listWithGamesInclude,
   });
 
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'list.created',
+    details: {
+      listId: list.id,
+      matchday: input.matchday,
+      series: input.series,
+      table: input.table,
+      playerNames: lineup,
+    },
+  });
+
   return toListDto(list, listViewContext(tournament, role), true);
 }
 
@@ -339,15 +369,31 @@ export async function setListPlayers(
   });
 
   const updated = await findListOrThrow(tournament.id, list.id);
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'list.lineup_changed',
+    details: { ...listDetails(list), playerNames: [...playerNames] },
+  });
+
   return toListDto(updated, listViewContext(tournament, role), true);
 }
 
 /** Admin only (enforced by the route). */
-export async function deleteList(tournamentId: string, listId: string): Promise<void> {
+export async function deleteList(
+  tournamentId: string,
+  listId: string,
+  role: TournamentRole,
+): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
+  const details = { ...listDetails(list), gameCount: list.games.length };
+
   await prisma.gameList.deleteMany({ where: { id: list.id } });
+
+  await recordAudit({ tournamentId: tournament.id, role, action: 'list.deleted', details });
 }
 
 export async function submitList(
@@ -377,6 +423,13 @@ export async function submitList(
     include: listWithGamesInclude,
   });
 
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'list.submitted',
+    details: listDetails(list),
+  });
+
   return toListDto(updated, listViewContext(tournament, role), true);
 }
 
@@ -402,6 +455,13 @@ export async function reopenList(
     where: { id: list.id },
     data: { status: 'OPEN', submittedAt: null },
     include: listWithGamesInclude,
+  });
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'list.reopened',
+    details: listDetails(list),
   });
 
   return toListDto(updated, listViewContext(tournament, role), true);

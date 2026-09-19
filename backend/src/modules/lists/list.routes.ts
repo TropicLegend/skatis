@@ -57,7 +57,7 @@ listRouter.get('/:listId/results', authenticate(), async (req, res) => {
 /** Admin only: deletes the list including all its games. */
 listRouter.delete('/:listId', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
-  await deleteList(tournamentId, listId);
+  await deleteList(tournamentId, listId, currentAuth(req).role);
 
   res.status(204).end();
 });

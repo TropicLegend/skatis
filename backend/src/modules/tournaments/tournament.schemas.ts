@@ -63,15 +63,22 @@ export const openSessionSchema = z.object({
   password: z.string().min(1, 'Password is required').max(128),
 });
 
+/**
+ * Admin changes of the tournament settings.
+ *
+ * Only the normal ("Spieler-") password can be changed here: the admin password
+ * is the one that grants these changes, so it is fixed for the lifetime of a
+ * tournament. Sending `adminPassword` is therefore rejected instead of being
+ * ignored silently – the schema is strict.
+ */
 export const updateTournamentSchema = z
-  .object({
+  .strictObject({
     name: tournamentNameSchema.optional(),
     matchdays: matchdaysSchema.optional(),
     password: passwordSchema.optional(),
-    adminPassword: passwordSchema.optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
-    message: 'Provide at least one of name, matchdays, password or adminPassword',
+    message: 'Provide at least one of name, matchdays or password',
   });
 
 export const listTournamentsQuery = z.object({

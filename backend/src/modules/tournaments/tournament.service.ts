@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { recordAudit } from '../audit/audit-log.js';
 import { scoreList } from '../lists/scoring.js';
 import type {
   CreateTournamentInput,
@@ -215,27 +216,38 @@ export async function getTournamentStandings(
 export async function updateTournament(
   tournamentId: string,
   input: UpdateTournamentInput,
+  role: TournamentRole,
 ): Promise<TournamentDto> {
   await getTournamentRow(tournamentId);
 
   const data: Prisma.TournamentUpdateInput = {};
+  const changed: string[] = [];
+
   if (input.name !== undefined) {
     data.name = input.name;
+    changed.push('name');
   }
   if (input.matchdays !== undefined) {
     data.matchdays = sortedDays(input.matchdays);
+    changed.push('matchdays');
   }
   if (input.password !== undefined) {
     data.passwordHash = await hashPassword(input.password);
-  }
-  if (input.adminPassword !== undefined) {
-    data.adminPasswordHash = await hashPassword(input.adminPassword);
+    changed.push('password');
   }
 
   const updated = await prisma.tournament.update({
     where: { id: tournamentId },
     data,
     select: tournamentPublicSelect,
+  });
+
+  await recordAudit({
+    tournamentId,
+    role,
+    action: 'tournament.updated',
+    // Only *which* fields changed – never the password itself.
+    details: { changed, name: updated.name, matchdays: updated.matchdays },
   });
 
   return toTournamentDto(updated);

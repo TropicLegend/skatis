@@ -151,6 +151,26 @@ export function withStep(chart, step = 1) {
   }
 }
 
+/**
+ * The scales of a list chart: every round, one point per seat in the lineup (a
+ * full round at the table) or any number of rounds the user picks.
+ */
+export function listScaleOptions(playerCount) {
+  const options = [{ id: 'round', label: 'Jede Runde' }]
+  if (playerCount > 1) {
+    options.push({ id: 'lineup', label: `Alle ${playerCount} Runden` })
+  }
+  options.push({ id: 'custom', label: 'Eigene Anzahl Runden' })
+  return options
+}
+
+/** The step behind a chosen scale – `custom` uses the number the user entered. */
+export function scaleStep(scale, playerCount, custom) {
+  if (scale === 'lineup') return Math.max(1, Number(playerCount) || 1)
+  if (scale === 'custom') return Math.max(1, Math.min(99, Number(custom) || 1))
+  return 1
+}
+
 /** "2026-09-19" → "19.09." */
 export function shortDate(iso) {
   const [year, month, day] = String(iso ?? '').split('-')
@@ -187,7 +207,8 @@ export const PROGRESS_SCALES = [
 /**
  * The counted lists of a tournament per matchday: what every player collected
  * on that evening. `lists` are the list DTOs of `/lists` (they carry `counted`),
- * `resultsById` the result tables of `/lists/:id/results`.
+ * `resultsById` the result tables of `/lists/:id/results`. Score and games are
+ * kept apart, because the chart draws the average score per game.
  */
 export function tournamentProgress(lists, resultsById, names) {
   const totalsByMatchday = new Map()
@@ -205,7 +226,10 @@ export function tournamentProgress(lists, resultsById, names) {
 
     const bucket = totalsByMatchday.get(matchday) ?? new Map()
     for (const player of results.players) {
-      bucket.set(player.name, (bucket.get(player.name) ?? 0) + (player.total ?? 0))
+      const collected = bucket.get(player.name) ?? { points: 0, gamesPlayed: 0 }
+      collected.points += player.total ?? 0
+      collected.gamesPlayed += player.gamesPlayed ?? 0
+      bucket.set(player.name, collected)
     }
     totalsByMatchday.set(matchday, bucket)
   }
@@ -215,10 +239,11 @@ export function tournamentProgress(lists, resultsById, names) {
 
   return {
     names: names?.length ? names : derived,
-    matchdays: matchdays.map((matchday) => ({
-      matchday,
-      points: Object.fromEntries(totalsByMatchday.get(matchday)),
-    })),
+    matchdays: matchdays.map((matchday) => {
+      const bucket = totalsByMatchday.get(matchday)
+      const pick = (field) => Object.fromEntries([...bucket].map(([name, entry]) => [name, entry[field]]))
+      return { matchday, points: pick('points'), gamesPlayed: pick('gamesPlayed') }
+    }),
   }
 }
 
@@ -237,37 +262,49 @@ function scaleLabel(matchday, scale) {
   return shortDate(matchday)
 }
 
-/** The cumulative tournament score as chart data, grouped by the chosen scale. */
-export function progressChart(progress, scale = 'matchday') {
+/**
+ * The average score per game of every player, grouped by the chosen scale – the
+ * "Ø Punkte" column of the standing as a line. A player without a game has no
+ * average, so the line has a gap there (`null`).
+ */
+export function progressAverageChart(progress, scale = 'matchday') {
   const entries = progress?.matchdays ?? []
   const names = progress?.names ?? []
   if (entries.length === 0 || names.length === 0) return { labels: [], series: [] }
 
-  const running = Object.fromEntries(names.map((name) => [name, 0]))
-  const cumulative = entries.map((entry) => {
-    for (const name of names) running[name] += entry.points[name] ?? 0
-    return { ...running }
+  const running = Object.fromEntries(names.map((name) => [name, { points: 0, gamesPlayed: 0 }]))
+  const averages = entries.map((entry) => {
+    for (const name of names) {
+      running[name].points += entry.points[name] ?? 0
+      running[name].gamesPlayed += entry.gamesPlayed?.[name] ?? 0
+    }
+    return Object.fromEntries(
+      names.map((name) => {
+        const { points, gamesPlayed } = running[name]
+        return [name, gamesPlayed === 0 ? null : Math.round((points / gamesPlayed) * 100) / 100]
+      }),
+    )
   })
 
-  // One point per bucket, holding the score reached at the end of that bucket.
+  // One point per bucket, holding the average reached at the end of that bucket.
   const buckets = []
   let previousKey = null
   entries.forEach((entry, index) => {
     const key = scaleKey(entry.matchday, scale)
     if (key !== previousKey) {
       previousKey = key
-      buckets.push({ label: scaleLabel(entry.matchday, scale), snapshot: cumulative[index] })
+      buckets.push({ label: scaleLabel(entry.matchday, scale), snapshot: averages[index] })
       return
     }
-    buckets[buckets.length - 1].snapshot = cumulative[index]
+    buckets[buckets.length - 1].snapshot = averages[index]
   })
 
   return {
-    labels: ['Start', ...buckets.map((bucket) => bucket.label)],
+    labels: buckets.map((bucket) => bucket.label),
     series: names.map((name, index) => ({
       name,
       color: SERIES_COLORS[index % SERIES_COLORS.length],
-      values: [0, ...buckets.map((bucket) => bucket.snapshot[name] ?? 0)],
+      values: buckets.map((bucket) => bucket.snapshot[name] ?? null),
     })),
   }
 }

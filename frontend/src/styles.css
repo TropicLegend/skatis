@@ -73,3 +73,24 @@
 .detail-note{font-size:11px;line-height:1.6;color:var(--muted);margin:16px 0 0}
 @media(max-width:800px){.detail-grid{grid-template-columns:1fr 1fr}.chart-block{padding:17px 14px}}
 @media(max-width:560px){.detail-grid{grid-template-columns:1fr}.chart-scale select{width:100%}}
+
+/* ---------------------------------------------------------------------------
+   Änderungsprotokoll, eigene Skalierung und Diagramm-Bedienung
+   --------------------------------------------------------------------------- */
+.footer-right{display:inline-flex;align-items:center;gap:12px}
+.footer-button{display:inline-flex;align-items:center;gap:5px;background:transparent;color:#9a988f;font:10px 'DM Mono';letter-spacing:1px;padding:5px 7px;border-radius:5px}
+.footer-button:hover{background:#ece7dc;color:var(--ink)}
+.chart-controls{display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.chart-custom{display:block;margin:0;font-size:10px;color:var(--muted);font-family:'DM Mono'}
+.chart-custom input{width:90px;height:34px;margin-top:5px;font-size:11px}
+.field-hint{display:block;margin-top:6px;color:#a2a095;font-weight:400}
+.log-modal{max-width:620px}
+.log-list{list-style:none;margin:0;padding:0;max-height:min(60vh,520px);overflow:auto}
+.log-entry{border-top:1px solid #ebe7de;padding:12px 0}
+.log-entry-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.log-entry-head strong{font-size:13px}
+.log-entry p{margin:5px 0 0;font-size:11px;color:#5d665e;line-height:1.55}
+.log-entry time{display:block;margin-top:5px;font:10px 'DM Mono';color:var(--muted)}
+.log-entry.admin .role-chip{color:#9a4a2f;background:#f5dfd5}
+.log-empty{margin:0;color:var(--muted);font-size:12px}
+@media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}}

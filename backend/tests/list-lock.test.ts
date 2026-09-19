@@ -7,6 +7,7 @@ import {
   assertMatchdayAllowed,
   countsForStanding,
   listLockReasons,
+  takesSlot,
   type ListState,
 } from '../src/modules/lists/list-access.js';
 import type { TournamentRole } from '../src/lib/tokens.js';
@@ -163,5 +164,29 @@ describe('the lock and the rejection of the API agree', () => {
     expect(() => assertMatchdayAllowed({ ...tournament, matchdays }, TODAY, 'MEMBER')).toThrow(
       HttpError,
     );
+  });
+});
+
+/** The place of a table ("Serie, Tisch") while its list is still open. */
+describe('takesSlot', () => {
+  it('is taken by an open list of today', () => {
+    expect(takesSlot({ matchday: parseIsoDate(TODAY) })).toBe(true);
+  });
+
+  it('is taken by an open list of a future matchday', () => {
+    expect(takesSlot({ matchday: parseIsoDate(shiftDays(1)) })).toBe(true);
+  });
+
+  it('is free once the day of the open list is over', () => {
+    expect(takesSlot({ matchday: parseIsoDate(OTHER_DAY) })).toBe(false);
+  });
+
+  it('is free when there is no open list at all', () => {
+    expect(takesSlot(null)).toBe(false);
+  });
+
+  it('decides against the day that is given, not against the real today', () => {
+    expect(takesSlot({ matchday: parseIsoDate(TODAY) }, shiftDays(1))).toBe(false);
+    expect(takesSlot({ matchday: parseIsoDate(shiftDays(1)) }, TODAY)).toBe(true);
   });
 });

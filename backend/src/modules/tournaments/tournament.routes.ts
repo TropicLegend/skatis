@@ -4,6 +4,7 @@ import { unauthorized } from '../../lib/http-error.js';
 import { issueSessionToken } from '../../lib/tokens.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
+import { auditRouter } from '../audit/audit.routes.js';
 import { listRouter } from '../lists/list.routes.js';
 import { playerRouter } from '../players/player.routes.js';
 import {
@@ -116,11 +117,15 @@ tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res
   res.json({ data: standings });
 });
 
-/** Admin only: change the name, the matchdays and/or the passwords. */
+/**
+ * Admin only: change the name, the matchdays and the normal ("Spieler-")
+ * password. The admin password is fixed for the lifetime of the tournament –
+ * see `updateTournamentSchema`.
+ */
 tournamentRouter.patch('/:tournamentId', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = updateTournamentSchema.parse(req.body ?? {});
-  const tournament = await updateTournament(tournamentId, body);
+  const tournament = await updateTournament(tournamentId, body, currentAuth(req).role);
 
   res.json({ data: tournament });
 });
@@ -135,3 +140,5 @@ tournamentRouter.delete('/:tournamentId', authenticate('ADMIN'), async (req, res
 
 tournamentRouter.use('/:tournamentId/players', playerRouter);
 tournamentRouter.use('/:tournamentId/lists', listRouter);
+/** The change log ("Protokoll") – readable by both roles. */
+tournamentRouter.use('/:tournamentId/log', auditRouter);

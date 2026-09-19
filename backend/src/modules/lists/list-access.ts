@@ -70,6 +70,22 @@ export function countsForStanding(list: ListState, today: string = todayIso()): 
 }
 
 /**
+ * Whether an open list still takes its place ("Serie, Tisch").
+ *
+ * While a list is open *and* its day is not over, its round is still being
+ * played: another sheet for the same table of the same series would be a second
+ * list for one table, so it is refused. As soon as the day is over the sheet is
+ * final by itself – it counts for the standing and nobody could hand it in any
+ * more – and the table is free for the next series.
+ */
+export function takesSlot(
+  openList: { matchday: Date } | null,
+  today: string = todayIso(),
+): boolean {
+  return openList !== null && !isMatchdayOver(openList.matchday, today);
+}
+
+/**
  * Refuses to hand in or reopen a list of a past day: it already counts, no
  * matter what its stored status says, so both actions would be a lie.
  */

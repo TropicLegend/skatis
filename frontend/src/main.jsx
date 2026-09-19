@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, LogOut, Pencil, Plus, RotateCcw, Trophy, Users, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, Users, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
-import { GAME_TYPES, gameTypeLabel, levelsOf, listProgress, matadorsLabel, maxMatadors, outcomeLabel, progressChart, PROGRESS_SCALES, runningAccounts, tournamentProgress, withStep } from './lib/skat.js'
+import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
+import { GAME_TYPES, gameTypeLabel, levelsOf, listProgress, matadorsLabel, maxMatadors, outcomeLabel, progressAverageChart, PROGRESS_SCALES, listScaleOptions, scaleStep, runningAccounts, tournamentProgress, withStep } from './lib/skat.js'
 import './styles.css'
 
 const API = 'https://skatis.online/api'
@@ -23,13 +24,6 @@ async function request(path, options = {}) {
 const initialGame = { passedOut: false, declarer: '', gameType: '', hand: false, schneiderAnnounced: false, schwarzAnnounced: false, offen: false, matadors: { suit: 'WITH', count: 1 }, schneider: false, schwarz: false, won: true, note: '' }
 /** Spielarten des Wizards – Regeln und Grundwerte kommen aus `lib/skat.js`. */
 const gameTypes = GAME_TYPES
-
-/** Skalierungen des Diagramms einer Liste – nach wie vielen Runden ein Punkt gesetzt wird. */
-const ROUND_SCALES = [
-  { id: '1', label: 'Jede Runde' },
-  { id: '5', label: 'Alle 5 Runden' },
-  { id: '10', label: 'Alle 10 Runden' },
-]
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('skatis-token'))
@@ -87,7 +81,8 @@ function App() {
   return <ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} />
 }
 
-function Shell({ children, tournament, role, onLogout, eyebrow = 'Turnierbüro' }) {
+function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnierbüro' }) {
+  const [showLog, setShowLog] = useState(false)
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">S</span><span>skatis</span></div>
@@ -99,7 +94,9 @@ function Shell({ children, tournament, role, onLogout, eyebrow = 'Turnierbüro' 
       </div>
     </header>
     <main>{children}</main>
-    <footer className="site-footer"><span>SKATIS</span><span>{eyebrow} · {new Date().getFullYear()}</span></footer>
+    <footer className="site-footer"><span>SKATIS</span><span className="footer-right"><button className="footer-button" title="Protokoll der Änderungen" onClick={() => setShowLog(true)}><History size={13} /> Protokoll</button>{eyebrow} · {new Date().getFullYear()}</span></footer>
+    {showLog && <TournamentLog tournament={tournament} token={token} onClose={() => setShowLog(false)} />}
+
   </div>
 }
 
@@ -155,14 +152,14 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   }, [lists, tournament?.id, token])
   const counted = lists.filter((list) => list.counted !== false)
   const progress = tournamentProgress(counted, listRankings, standing?.players?.map((player) => player.name))
-  return <Shell tournament={tournament} role={role} onLogout={onLogout} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
+  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
     <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniermodus</span><strong>{tournament?.matchdays?.length || 1}× / Woche</strong><Users size={19} /></div></div>
     <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
     <div className="list-grid">{filtered.length ? filtered.map((list) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
     {standing && <TournamentRanking standing={standing} progress={progress} />} 
     <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}<button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button></span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div><form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form>{playerError && <div className="error-message">{playerError}</div>}</div></section>
-    {showCreate && <CreateListModal token={token} tournament={tournament} players={players} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
+    {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated) => { onTournamentUpdated(updated); setShowSettings(false) }} />}
   </Shell>
 }
@@ -176,29 +173,33 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  async function submit(event) { event.preventDefault(); setError(''); try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, ...(password ? { adminPassword: password } : {}) } }); onUpdated(updated) } catch (problem) { setError(problem.message) } }
-  return <div className="modal-backdrop"><div className="modal settings-modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Admin-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" />{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
+  async function submit(event) { event.preventDefault(); setError(''); try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, ...(password ? { password } : {}) } }); onUpdated(updated) } catch (problem) { setError(problem.message) } }
+  return <div className="modal-backdrop"><div className="modal settings-modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
 function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>Aktueller Stand</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
 function TournamentRanking({ standing, progress }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
-  const chart = progressChart(progress, scale)
+  const chart = progressAverageChart(progress, scale)
   return <section className="tournament-ranking">
     <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen</span></div>
     <div className="ranking-table">
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span>Spiele</span><span>Ø Punkte</span><span>Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name}><strong>{player.rank ?? '–'}</strong><span>{player.name}</span><span>{player.gamesPlayed}</span><span>{player.averageScore ?? '–'}</span><strong>{player.score}</strong></div>)}
     </div>
-    <ProgressChart eyebrow="Punkteentwicklung" title="Verlauf des Turniers" note="Gesamtpunkte der Rangliste nach jedem Spieltag, inklusive Boni." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
+    <ProgressChart eyebrow="Punkteentwicklung" title="Durchschnittspunkte im Turnier" note="Ø Punkte je Spiel – dieselben Zahlen wie die Spalte „Ø Punkte“ der Rangliste. Die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
   </section>
 }
 
-function CreateListModal({ token, tournament, players = [], onClose, onCreated }) {
+function CreateListModal({ token, tournament, players = [], lists = [], onClose, onCreated }) {
   const [form, setForm] = useState({ matchday: today, series: 1, table: 1 }); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  // Ein Tisch spielt immer nur eine Liste: solange die Liste zu diesem Spieltag,
+  // dieser Serie und diesem Tisch offen ist, darf keine zweite entstehen. Der
+  // Server prüft dasselbe noch einmal – hier spart es nur den Fehlversuch.
+  const blocking = lists.find((list) => list.status === 'OPEN' && !list.counted && list.matchday === form.matchday && Number(list.series) === Number(form.series) && Number(list.table) === Number(form.table))
   async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), playerNames: lineup } }); await onCreated() } catch (err) { setError(err.message) } finally { setBusy(false) } }
-  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} />{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || lineup.length < 3}>{busy ? 'Wird angelegt …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
+  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} />{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen andere || Boolean(blocking)n Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || lineup.length < 3}>{busy ? 'Wird angelegt …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
 }
 
 function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpdated }) {
@@ -207,7 +208,8 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   const [detailGame, setDetailGame] = useState(null)
   const [notice, setNotice] = useState('')
   const [results, setResults] = useState(null)
-  const [scale, setScale] = useState(ROUND_SCALES[0].id)
+  const [scale, setScale] = useState('round')
+  const [customScale, setCustomScale] = useState(5)
 
   async function loadResults() { const result = await request(`/tournaments/${tournament.id}/lists/${list.id}/results`, { token }); setResults(result) }
 
@@ -241,10 +243,12 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
 
   const lineup = (list.players || []).map((player) => player.name)
   const { rounds } = runningAccounts(lineup, list.games || [])
-  const chart = withStep(listProgress(lineup, list.games || []), Number(scale))
+  const scaleOptions = listScaleOptions(lineup.length)
+  const roundsPerPoint = scaleStep(scale, lineup.length, customScale)
+  const chart = withStep(listProgress(lineup, list.games || []), roundsPerPoint)
   const detailRound = detailGame ? rounds.find((round) => round.game.id === detailGame.id) : null
 
-  return <Shell tournament={tournament} role={role} onLogout={onLogout} eyebrow="Tischliste">
+  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Tischliste">
     <div className="workspace-head">
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
       <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Geschlossen' : 'Offen'}</span></div>
@@ -257,7 +261,9 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     {notice && <div className="success-message">{notice}</div>}
     <div className="workspace-grid">
       <GameTable list={list} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
-        <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Kontostand nach jedem Spiel dieser Liste – eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={ROUND_SCALES} />
+        <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Kontostand nach jedem Spiel dieser Liste – eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
+          {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
+        </ProgressChart>
       </GameTable>
       <aside className="score-card">
         <div className="score-card-head"><span className="eyebrow">Ergebnistabelle</span><Trophy size={20} /></div>
@@ -326,12 +332,14 @@ function LineupPicker({ players = [], value = [], onChange }) {
   </fieldset>
 }
 
-/** Punkteentwicklung mit wählbarer Skalierung der Zeitachse. */
-function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, scales }) {
+function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, scales, children }) {
   return <div className="chart-block">
     <div className="chart-head">
       <div><span className="eyebrow">{eyebrow}</span><h3>{title}</h3></div>
-      <label className="chart-scale">Skalierung<select value={scale} onChange={(event) => onScale(event.target.value)}>{scales.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+      <div className="chart-controls">
+        <label className="chart-scale">Skalierung<select value={scale} onChange={(event) => onScale(event.target.value)}>{scales.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+        {children}
+      </div>
     </div>
     <LineChart labels={labels} series={series} />
     {note && <p className="chart-note">{note}</p>}
@@ -476,6 +484,44 @@ function GameWizard({ list, existingGame, onClose, onSave }) {
         <button className="secondary-button" onClick={() => step > 1 ? setStep(step - 1) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
         <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || (step === 2 && game.gameType === 'NULL') || game.passedOut ? 'Spiel eintragen' : 'Weiter'} <ArrowRight size={16} /></button>
       </div>
+    </div>
+  </div>
+}
+
+/**
+ * Das Änderungsprotokoll des Turniers – unten im Footer erreichbar und für
+ * Mitglieder und Admins gleichermaßen einsehbar.
+ */
+function TournamentLog({ tournament, token, onClose }) {
+  const [entries, setEntries] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!tournament?.id) return
+    request(`/tournaments/${tournament.id}/log?limit=100`, { token })
+      .then((result) => setEntries(result || []))
+      .catch((problem) => setError(problem.message))
+  }, [tournament?.id, token])
+
+  if (!tournament?.id) return null
+
+  return <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal log-modal" onClick={(event) => event.stopPropagation()}>
+      <button className="modal-close" onClick={onClose}><X size={18} /></button>
+      <span className="eyebrow">Protokoll</span>
+      <h2>Was geändert wurde</h2>
+      <p className="modal-copy">Jede Änderung im Turnier, neueste zuerst. Einträge mit „Admin“ stammen aus dem Admin-Passwort.</p>
+      {error && <div className="error-message">{error}</div>}
+      {!entries && !error && <p className="log-empty">Wird geladen …</p>}
+      {entries?.length === 0 && <p className="log-empty">Noch keine Änderungen protokolliert.</p>}
+      <ol className="log-list">{entries?.map((entry) => {
+        const { title, detail } = describeAuditEntry(entry)
+        return <li key={entry.id} className={`log-entry ${entry.role === 'ADMIN' ? 'admin' : ''}`}>
+          <div className="log-entry-head"><strong>{title}</strong><span className={`role-chip ${entry.role === 'ADMIN' ? 'admin' : ''}`}>{auditRoleLabel(entry.role)}</span></div>
+          {detail && <p>{detail}</p>}
+          <time>{formatTimestamp(entry.createdAt)}</time>
+        </li>
+      })}</ol>
     </div>
   </div>
 }

@@ -1,7 +1,9 @@
+import type { Game } from '@prisma/client';
 import { notFound } from '../../lib/http-error.js';
 import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
+import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { assertListEditable, assertMatchdayAllowed } from './list-access.js';
 import { findListOrThrow, lineupNames, type ListWithGames } from './list.service.js';
@@ -25,6 +27,22 @@ function nextFreePosition(positions: readonly number[]): number {
 function lastDealer(list: ListWithGames): string | null {
   const last = list.games.at(-1);
   return last ? last.dealer : null;
+}
+
+/** The place of a game – what a log entry about it has to repeat. */
+function gameDetails(
+  list: ListWithGames,
+  game: Pick<Game, 'id' | 'position' | 'declarer' | 'gameType' | 'gameValue' | 'won'>,
+): AuditDetails {
+  return {
+    listId: list.id,
+    gameId: game.id,
+    position: game.position,
+    declarer: game.declarer,
+    gameType: game.gameType,
+    gameValue: game.gameValue,
+    won: game.won,
+  };
 }
 
 export async function listGames(tournamentId: string, listId: string): Promise<GameDto[]> {
@@ -86,6 +104,13 @@ export async function createGame(
     data: { ...toGameCreateData(properties), listId: list.id },
   });
 
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'game.created',
+    details: gameDetails(list, game),
+  });
+
   return toGameDto(game);
 }
 
@@ -126,6 +151,13 @@ export async function replaceGame(
     data: toGameUpdateData(properties),
   });
 
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'game.updated',
+    details: gameDetails(list, updated),
+  });
+
   return toGameDto(updated);
 }
 
@@ -145,4 +177,13 @@ export async function deleteGame(
   if (result.count === 0) {
     throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
+
+  // The row is gone now, so the details come from the copy the list carried.
+  const deleted = list.games.find((candidate) => candidate.id === gameId);
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'game.deleted',
+    details: deleted ? gameDetails(list, deleted) : { listId: list.id, gameId },
+  });
 }

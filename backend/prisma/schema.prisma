@@ -38,6 +38,7 @@ model Tournament {
   updatedAt         DateTime   @updatedAt
   lists             GameList[]
   players           Player[]
+  auditLogs         AuditLog[]
 
   @@index([name])
   @@map("tournaments")
@@ -77,10 +78,11 @@ model GameList {
   /// The players of the table in their seating order (3, 4 or 5 players).
   lineup       GameListPlayer[]
 
-  // A table of a series is unique per evening – two sheets cannot claim the same
-  // "Serie 1, Tisch 3". Several lists still share a matchday, they only have to
-  // differ in series or table. The list itself is addressed by its id.
-  @@unique([tournamentId, matchday, series, table], map: "game_lists_matchday_series_table_key")
+  // Several lists may share a matchday and even the same table: a second sheet
+  // for "Serie 2, Tisch 3" is allowed as soon as the first one is submitted.
+  // Only *one* list per "Serie, Tisch" may be open at a time, which the service
+  // checks – a unique index on the slot would also block the second series of an
+  // evening whose day is over.
   @@index([tournamentId, matchday])
   @@map("game_lists")
 }
@@ -156,4 +158,30 @@ model Game {
 
   @@unique([listId, position])
   @@map("games")
+}
+
+/// Who made a logged change – the role of the session that was used.
+enum ActorRole {
+  ADMIN
+  MEMBER
+}
+
+/// The change log ("Protokoll") of a tournament. Every change that goes through
+/// the API is recorded together with the role that made it, so members can see
+/// what an admin changed and when. Both roles may read it.
+model AuditLog {
+  id           String     @id @default(uuid())
+  tournamentId String
+  /// Role the caller had – `ADMIN` entries come from the admin password.
+  role         ActorRole
+  /// Machine readable action, e.g. `list.deleted`. The frontend turns it into a
+  /// sentence; the numbers behind it are in `details`.
+  action       String     @db.VarChar(64)
+  /// What exactly changed – never contains passwords or password hashes.
+  details      Json?
+  createdAt    DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
+  @@map("audit_logs")
 }

@@ -19,7 +19,7 @@ playerRouter.get('/', authenticate(), async (req, res) => {
 playerRouter.post('/', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = createPlayerSchema.parse(req.body ?? {});
-  const player = await createPlayer(tournamentId, body);
+  const player = await createPlayer(tournamentId, body, currentAuth(req).role);
 
   res.status(201).json({ data: player });
 });
@@ -39,7 +39,7 @@ playerRouter.patch('/:playerName', authenticate(), async (req, res) => {
 /** Removes a player – only while they are not part of any list. */
 playerRouter.delete('/:playerName', authenticate(), async (req, res) => {
   const { tournamentId, playerName } = playerParams.parse(req.params);
-  await deletePlayer(tournamentId, playerName);
+  await deletePlayer(tournamentId, playerName, currentAuth(req).role);
 
   res.status(204).end();
 });

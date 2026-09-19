@@ -59,8 +59,24 @@ describe('updateTournamentSchema', () => {
     expect(updateTournamentSchema.parse({ matchdays: [1, 4] })).toEqual({ matchdays: [1, 4] });
   });
 
+  it('accepts a new player password', () => {
+    expect(updateTournamentSchema.parse({ password: 'neues-geheimnis' })).toEqual({
+      password: 'neues-geheimnis',
+    });
+  });
+
   it('rejects an empty update', () => {
     expect(() => updateTournamentSchema.parse({})).toThrow();
+  });
+
+  it('rejects a new admin password – it is fixed for the lifetime of a tournament', () => {
+    expect(() => updateTournamentSchema.parse({ adminPassword: 'neues-admin-secret' })).toThrow();
+  });
+
+  it('rejects unknown fields instead of ignoring them', () => {
+    expect(() =>
+      updateTournamentSchema.parse({ matchdays: [3], adminPassword: 'neues-admin-secret' }),
+    ).toThrow();
   });
 });
 

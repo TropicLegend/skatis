@@ -378,11 +378,17 @@ A tournament has two passwords:
   matchday, enter games and submit that list. Nothing else, and only on matchdays
   of the tournament.
 - **admin password** → role `ADMIN`. May change matchdays, rename the tournament,
-  reset the normal password, and modify or delete lists – at any time, including
+  reset the player password, and modify or delete lists – at any time, including
   past matchdays.
 
 Which password was used decides the role inside the returned token. Both
 passwords are stored as scrypt hashes; a password can never be read back.
+
+Both passwords are chosen when the tournament is created. Afterwards only the
+player password can be replaced (`PATCH /tournaments/:tournamentId`); the admin
+password is fixed for the lifetime of the tournament. Every change is written to
+the [change log](#get-tournamentstournamentidlog), so members can see what an
+admin did.
 
 ### Tournament id
 
@@ -416,6 +422,11 @@ stored token is still valid can be checked with
   for a matchday of its tournament.
 - A list belongs to **exactly one day** – there are no lists that stay open over
   several days. Its head is the date, the Serie and the Tisch.
+- **One table plays one list at a time**: while a list is open and its day is not
+  over, a second list for the same matchday, series and table is refused with
+  `409` (`details.listId` is the open one). Once that list is submitted – or its
+  day is over, which makes it final by itself – the table is free again and the
+  next series can be created.
 - There can be **several lists per matchday** – one evening is often played at
   several tables with different players (90 players mean 30 tables of three).
   Each list has its own id and is addressed by it; the matchday is an attribute
@@ -732,7 +743,8 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
 | GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
-| PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays`, `password`, `adminPassword` |
+| GET    | `/tournaments/:tournamentId/log`       | any   | The change log of the tournament, newest first          |
+| PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays` and/or the player password   |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
 
 #### `GET /tournaments`
@@ -865,20 +877,76 @@ for both roles.
 
 **Errors:** `404` unknown tournament.
 
+#### `GET /tournaments/:tournamentId/log`
+
+The **change log** ("Protokoll") of the tournament, newest first. Both roles may
+read it, so a member can follow what an admin changed and an admin can see who
+entered which game.
+
+Query: `?limit=` (1–200, default 50), `?offset=` (default 0).
+
+`action` is a stable key and `details` carries the numbers of the change; the
+wording lives in the frontend, so it can change without touching stored entries.
+Passwords never appear in the log – only the fact that one was changed.
+
+| Action                | Recorded when                            | `details`                                                                  |
+| --------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `tournament.updated`  | tournament settings were changed         | `changed` (`name` / `matchdays` / `password`), `name`, `matchdays`          |
+| `list.created`        | a list was created                       | `listId`, `matchday`, `series`, `table`, `playerNames`                       |
+| `list.deleted`        | an admin deleted a list                  | `listId`, `matchday`, `series`, `table`, `gameCount`                         |
+| `list.submitted`      | a list was handed in                     | `listId`, `matchday`, `series`, `table`                                      |
+| `list.reopened`       | an admin handed a list back              | `listId`, `matchday`, `series`, `table`                                      |
+| `list.lineup_changed` | the players of a list were replaced      | `listId`, `matchday`, `series`, `table`, `playerNames`                       |
+| `game.created`        | a game was entered                       | `listId`, `gameId`, `position`, `declarer`, `gameType`, `gameValue`, `won`   |
+| `game.updated`        | a game was replaced                      | like `game.created`                                                         |
+| `game.deleted`        | a game was removed                       | like `game.created`, without the game fields when the row was already gone    |
+| `player.added`        | a player joined the roster               | `name`                                                                      |
+| `player.renamed`      | a player was renamed                     | `from`, `to`                                                                |
+| `player.removed`      | a player left the roster                 | `name`                                                                      |
+
+**Response** `200`
+
+```json
+{
+  "data": [
+    {
+      "id": "9f1c2d3e-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+      "createdAt": "2026-09-19T20:15:04.000Z",
+      "role": "ADMIN",
+      "action": "list.deleted",
+      "details": {
+        "listId": "3b6f1c8a-9d24-4c31-9a5f-6f5f0f2c1b77",
+        "matchday": "2026-09-18",
+        "series": 1,
+        "table": 3,
+        "gameCount": 5
+      }
+    }
+  ],
+  "meta": { "total": 42, "limit": 50, "offset": 0 }
+}
+```
+
+**Errors:** `404` unknown tournament.
+
 #### `PATCH /tournaments/:tournamentId`
 
 Every field is optional, at least one is required.
 
-| Field           | Type     | Rules                                   |
-| --------------- | -------- | --------------------------------------- |
-| `name`          | string   | same rules as on creation               |
-| `matchdays`     | number[] | 1–7 unique weekdays                     |
-| `password`      | string   | 8–128 characters, sets a new normal one |
-| `adminPassword` | string   | 8–128 characters, sets a new admin one  |
+| Field       | Type     | Rules                                   |
+| ----------- | -------- | --------------------------------------- |
+| `name`      | string   | same rules as on creation               |
+| `matchdays` | number[] | 1–7 unique weekdays                     |
+| `password`  | string   | 8–128 characters, sets a new player one |
 
 An admin uses `matchdays` to steer **when** members may work on lists: a member
 can only create, change and submit the list of a day that is in `matchdays` _and_
-today. `password` is how the normal password is reset.
+today. `password` resets the **player password**, the one members log in with.
+
+The **admin password cannot be changed** through the API: it is the password that
+grants these changes, so it stays as it was set when the tournament was created.
+A request that sends `adminPassword` (or any other unknown field) is rejected
+with `422` instead of silently ignoring it – the schema is strict.
 
 **Request**
 
@@ -1726,6 +1794,7 @@ backend/
 │   │                           # prisma, tokens, tournament id generation
 │   ├── middleware/             # auth, cors, error handler, request context
 │   ├── modules/
+│   │   ├── audit/              # the change log ("Protokoll") of a tournament
 │   │   ├── tournaments/        # schemas, service, routes
 │   │   │   ├── tournament.routes.ts   # /tournaments, /tournaments/:id
 │   │   │   └── standings.ts           # the standing over all matchdays
