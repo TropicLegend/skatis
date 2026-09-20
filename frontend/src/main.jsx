@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, Users, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, PROGRESS_SCALES, roundAccounts, scaleStep, standingsProgressChart, withStep } from './lib/skat.js'
@@ -9,6 +9,18 @@ import './styles.css'
 const API = 'https://skatis.online/api'
 const today = new Date().toISOString().slice(0, 10)
 const weekdays = [['1', 'Montag'], ['2', 'Dienstag'], ['3', 'Mittwoch'], ['4', 'Donnerstag'], ['5', 'Freitag'], ['6', 'Samstag'], ['7', 'Sonntag']]
+
+/** "1" → "Montag" – die Tage, an denen ein Turnier gespielt wird. */
+function weekdayLabel(day) {
+  return weekdays.find(([value]) => Number(value) === Number(day))?.[1] ?? ''
+}
+
+/** Punkte mit Vorzeichen – `+170`, `−98`, `0`. */
+function signedValue(value) {
+  if (value > 0) return `+${value}`
+  if (value < 0) return `−${Math.abs(value)}`
+  return '0'
+}
 
 async function request(path, options = {}) {
   const response = await fetch(`${API}${path}`, {
@@ -169,6 +181,8 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [filter, setFilter] = useState('all')
   const filtered = lists.filter((list) => filter === 'all' || list.matchday === filter)
   const days = [...new Set(lists.map((list) => list.matchday))]
+  // An welchen Wochentagen gespielt werden kann – Namen statt einer Zahl.
+  const matchdayNames = [...(tournament?.matchdays || [])].sort((a, b) => a - b).map((day) => weekdayLabel(day)).filter(Boolean)
   async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })) }
   async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(error.message) } }
   function startEditing(player) { setEditingPlayer(player.name); setEditedPlayerName(player.name); setPlayerError('') }
@@ -182,7 +196,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   }, [lists, tournament?.id, token])
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
-    <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniermodus</span><strong>{tournament?.matchdays?.length || 1}× / Woche</strong><Users size={19} /></div></div>
+    <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>
     <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
     <div className="list-grid">{filtered.length ? filtered.map((list) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
     {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} />} 
@@ -205,7 +219,7 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   return <div className="modal-backdrop"><div className="modal settings-modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
-function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>Aktueller Stand</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
+function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
 function TournamentRanking({ standing, tournament, token }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
@@ -347,7 +361,14 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
   const classic = style === 'classic'
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
-  const columns = 7 + (classic ? lineup.length * 3 : 0) + (role === 'ADMIN' ? 1 : 0)
+  const columns = (classic ? 5 + lineup.length * 3 : 7) + (role === 'ADMIN' ? 1 : 0)
+  const gameTypeCell = (game) => <td className="game-type-cell">{game.passedOut ? '—' : <><strong>{gameTypeLabel(game.gameType)}</strong>{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</td>
+  // Die "+/-"-Spalte der modernen Tabelle: was das Spiel dem Alleinspieler
+  // bringt (+50 / −50 inklusive) – die Zahl kommt aus dem Verlauf des Servers.
+  const signedCell = (game) => {
+    const value = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
+    return <td className={`value-cell num signed ${value === null ? '' : value > 0 ? 'up' : 'down'}`}>{value === null ? '' : signedValue(value)}</td>
+  }
   return <section className="games-panel">
     <div className="panel-heading">
       <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
@@ -359,7 +380,11 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
     <div className="table-wrap"><table>
       <thead>
         <tr>
-          <th rowSpan={classic ? 2 : undefined}>#</th><th rowSpan={classic ? 2 : undefined}>Geber</th><th rowSpan={classic ? 2 : undefined}>Alleinspieler</th><th rowSpan={classic ? 2 : undefined}>Spielart</th><th rowSpan={classic ? 2 : undefined}>Spitzen</th><th rowSpan={classic ? 2 : undefined}>Wert</th><th rowSpan={classic ? 2 : undefined}>Ausgang</th>
+          {classic ? <>
+            <th rowSpan={2}>#</th><th rowSpan={2}>Spielart</th><th rowSpan={2}>Spitzen</th><th rowSpan={2} className="num">+</th><th rowSpan={2} className="num">−</th>
+          </> : <>
+            <th>#</th><th>Geber</th><th>Alleinspieler</th><th>Spielart</th><th>Spitzen</th><th className="num">+/−</th><th>Ausgang</th>
+          </>}
           {classic && lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
           {role === 'ADMIN' && <th rowSpan={classic ? 2 : undefined} />}
         </tr>
@@ -367,13 +392,21 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
       </thead>
       <tbody>
         {games.length ? games.map((game) => <tr key={game.id} className="game-row" role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
-          <td className="round">{game.position}</td>
-          <td>{game.dealer}</td>
-          <td>{game.passedOut ? <span className="muted">Eingepasst</span> : game.declarer}</td>
-          <td className="game-type-cell">{game.passedOut ? '—' : <><strong>{gameTypeLabel(game.gameType)}</strong>{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</td>
-          <td>{matadorsLabel(game)}</td>
-          <td className="value-cell">{game.gameValue || 0}</td>
-          <td>{game.passedOut ? '—' : <span className={`result-dot ${game.won ? 'won' : 'lost'}`}>{outcomeLabel(game)}</span>}</td>
+          {classic ? <>
+            <td className="round">{game.position}</td>
+            {gameTypeCell(game)}
+            <td>{matadorsLabel(game)}</td>
+            <td className="value-cell num plus">{game.positiveGameValue || ''}</td>
+            <td className="value-cell num minus">{game.negativeGameValue || ''}</td>
+          </> : <>
+            <td className="round">{game.position}</td>
+            <td>{game.dealer}</td>
+            <td>{game.passedOut ? <span className="muted">Eingepasst</span> : game.declarer}</td>
+            {gameTypeCell(game)}
+            <td>{matadorsLabel(game)}</td>
+            {signedCell(game)}
+            <td>{game.passedOut ? '—' : <span className={`result-dot ${game.won ? 'won' : 'lost'}`}>{outcomeLabel(game)}</span>}</td>
+          </>}
           {classic && lineup.map((name) => {
             const declarer = !game.passedOut && game.declarer === name
             return <React.Fragment key={name}>
@@ -454,7 +487,12 @@ function GameDetail({ list, game, round, onClose, onEdit }) {
   const { delta = {}, before = {}, after = {} } = round ?? {}
   const lineup = (list.players || []).map((player) => player.name)
   const levels = levelsOf(game)
-  const signed = (value) => (value > 0 ? `+${value}` : `${value}`)
+  // Die "+/-"-Zahl des Spielprotokolls ist der Betrag, den die Runde dem
+  // Alleinspieler bringt; der Bonus darin ist die Differenz zum Spielwert, damit
+  // hier keine Regel doppelt steht.
+  const ownValue = game.positiveGameValue || game.negativeGameValue || 0
+  const ownResult = game.passedOut || !game.declarer || !(game.declarer in delta) ? null : delta[game.declarer]
+  const ownBonus = ownResult === null ? 0 : Math.abs(ownResult) - ownValue
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="modal detail-modal" onClick={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose}><X size={18} /></button>
@@ -467,11 +505,13 @@ function GameDetail({ list, game, round, onClose, onEdit }) {
         <div className="detail-item"><span>Spielwert</span><strong>{game.passedOut ? '—' : game.gameValue}</strong></div>
         <div className="detail-item"><span>Positiver Wert</span><strong>{game.positiveGameValue ? `+${game.positiveGameValue}` : '—'}</strong></div>
         <div className="detail-item"><span>Negativer Wert</span><strong>{game.negativeGameValue ? `−${game.negativeGameValue}` : '—'}</strong></div>
+        <div className="detail-item"><span>Ergebnis dieser Runde</span><strong>{ownResult === null ? '—' : signedValue(ownResult)}</strong></div>
         <div className="detail-item"><span>Am Tisch</span><strong>{game.players?.join(', ') || '—'}</strong></div>
         <div className="detail-item"><span>Setzt aus</span><strong>{game.sittingOutPlayers?.length ? game.sittingOutPlayers.join(', ') : '—'}</strong></div>
       </div>
-      {!game.passedOut && round && <table className="detail-table"><thead><tr><th>Spieler</th><th>Konto vorher</th><th>Diese Runde</th><th>Konto nachher</th></tr></thead><tbody>{lineup.map((name) => <tr key={name} className={name === game.declarer ? 'declarer' : ''}><td>{name}{name === game.declarer && <span className="declarer-flag">Alleinspieler</span>}</td><td>{before[name] ?? 0}</td><td className={delta[name] > 0 ? 'delta-up' : delta[name] < 0 ? 'delta-down' : 'muted'}>{delta[name] === 0 ? '0' : signed(delta[name])}</td><td><strong>{after[name] ?? 0}</strong></td></tr>)}</tbody></table>}
+      {!game.passedOut && round && <table className="detail-table"><thead><tr><th>Spieler</th><th>Konto vorher</th><th>Diese Runde</th><th>Konto nachher</th></tr></thead><tbody>{lineup.map((name) => <tr key={name} className={name === game.declarer ? 'declarer' : ''}><td>{name}{name === game.declarer && <span className="declarer-flag">Alleinspieler</span>}</td><td>{before[name] ?? 0}</td><td className={delta[name] > 0 ? 'delta-up' : delta[name] < 0 ? 'delta-down' : 'muted'}>{delta[name] === 0 ? '0' : signedValue(delta[name])}</td><td><strong>{after[name] ?? 0}</strong></td></tr>)}</tbody></table>}
       {!game.passedOut && !round && <p className="detail-note">Der Spielstand dieser Runde wird gerade vom Server geladen …</p>}
+      {ownResult !== null && <p className="detail-note">{`${game.won ? `Spielwert ${ownValue}` : `Doppelter Spielwert ${ownValue}`} plus ${ownBonus} = ${signedValue(ownResult)} für ${game.declarer} – das ist die Zahl aus der "+/−"-Spalte des Spielprotokolls.`}</p>}
       <p className="detail-note">{game.passedOut ? 'Ein eingepasstes Spiel verändert kein Konto.' : 'Ein gewonnenes Alleinspiel bringt den Spielwert plus 50, ein verlorenes kostet den doppelten Spielwert plus 50. Der Gegnerbonus für ein verlorenes Alleinspiel eines Mitspielers ist schon eingerechnet.'}</p>
       {game.note && <p className="detail-note"><strong>Notiz:</strong> {game.note}</p>}
       <p className="detail-note">Eingetragen am {new Date(game.createdAt).toLocaleString('de-DE')}.</p>

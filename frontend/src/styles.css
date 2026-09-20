@@ -106,6 +106,10 @@ td.spielpunkte,td.spiel-count{text-align:center;font-family:'DM Mono';padding:14
 td.spielpunkte{color:#4d574f}
 td.spielpunkte.declarer{font-weight:500;color:var(--ink)}
 td.spiel-count{font-size:10px;color:var(--muted)}
+/* "+"- und "−"-Spalten des Protokolls (klassisch: zwei Spalten, modern: eine) */
+th.num,td.num{text-align:right}
+td.value-cell.plus,td.value-cell.up{color:#3f7a55}
+td.value-cell.minus,td.value-cell.down{color:var(--red)}
 .score-legend{margin:9px 0 0;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
 .score-bills{font-family:'DM Mono';font-size:10px;color:var(--muted);min-width:46px;text-align:center}
 /* Umschalter der Protokoll-Darstellung (modern / klassisch) */
@@ -117,4 +121,14 @@ td.spiel-count{font-size:10px;color:var(--muted)}
 .table-style .switch i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fbfaf6;box-shadow:0 1px 2px rgba(62,53,39,.25);transition:left .15s}
 .table-style.classic .switch{background:var(--mint)}
 .table-style.classic .switch i{left:18px}
+/* Hover über einen Zeitpunkt in den Diagrammen */
+.chart-band{fill:transparent}
+.chart-band:hover{fill:rgba(37,48,43,.04)}
+.chart-guide{stroke:#c6c0b2;stroke-width:1;stroke-dasharray:3 3}
+.chart-hover-point{stroke:#fbfaf6;stroke-width:1.5}
+.chart-tooltip>rect{fill:#fbfaf6;stroke:var(--line);filter:drop-shadow(0 8px 18px rgba(62,53,39,.16))}
+.chart-tooltip-title{font:500 9px 'DM Mono';letter-spacing:.6px;fill:var(--muted);text-transform:uppercase}
+.chart-tooltip-row{font-size:10.5px;fill:#4d574f}
+.chart-tooltip-value{font:500 10.5px 'DM Mono';fill:var(--ink)}
+.stat strong.days{font-size:14px;letter-spacing:-.2px;line-height:1.35}
 @media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}.panel-heading{flex-direction:column;align-items:flex-start;gap:12px}.panel-tools{justify-content:flex-start}}

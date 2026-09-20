@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 
 /**
  * A small line chart in plain SVG – no charting library, no extra dependency.
@@ -6,6 +6,7 @@ import React from 'react'
  * `labels` are the points of the time axis ("Start", "R1", "KW 38", …) and every
  * series carries one value per label. Lines are drawn with the colours of the
  * series, the zero line is emphasised because a Skat account can go negative.
+ * Hovering a time point shows a box with the value every series reached there.
  */
 
 const WIDTH = 720
@@ -42,6 +43,7 @@ function niceTicks(min, max, count = 4) {
 }
 
 function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = 'Punkte', emptyHint }) {
+  const [hover, setHover] = useState(null)
   // A series may have gaps (`null`) – a player without a game has no average.
   // A series without a single value would draw nothing, so it is dropped.
   const drawn = series
@@ -67,6 +69,23 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
   const labelEvery = Math.max(1, Math.ceil(labels.length / 9))
   const showLabel = (_, index) => index === 0 || index === labels.length - 1 || index % labelEvery === 0
 
+  // Gehovert wird eine ganze Spalte der Zeitachse: dann steht im Kästchen, welche
+  // Punkte bzw. Durchschnittspunkte die Spieler zu diesem Zeitpunkt hatten.
+  const step = labels.length === 1 ? plotWidth : plotWidth / (labels.length - 1)
+  const hovered = hover !== null && hover < labels.length ? hover : null
+  const hoverRows = hovered === null
+    ? []
+    : drawn
+        .filter((serie) => serie.values[hovered] !== null)
+        .map((serie) => ({ name: serie.name, color: serie.color, value: serie.values[hovered] }))
+  const tooltipLines = [String(labels[hovered] ?? ''), ...hoverRows.map((row) => `${row.name}  ${format(row.value)}`)]
+  const tooltipWidth = Math.min(240, Math.max(112, Math.max(0, ...tooltipLines.map((line) => line.length)) * 6 + 26))
+  const tooltipHeight = 26 + hoverRows.length * 15
+  const tooltipLeft = Math.min(
+    Math.max(x(hovered ?? 0) - tooltipWidth / 2, MARGIN.left - 12),
+    WIDTH - MARGIN.right + 12 - tooltipWidth,
+  )
+
   return (
     <figure className="chart">
       <svg
@@ -74,6 +93,7 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
         viewBox={`0 0 ${WIDTH} ${height}`}
         role="img"
         aria-label={`Punkteentwicklung von ${drawn.map((serie) => serie.name).join(', ')}`}
+        onPointerLeave={() => setHover(null)}
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -112,12 +132,68 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
               style={{ stroke: serie.color }}
             />
             {serie.values.map((value, index) => value === null ? null : (
-              <circle key={index} className="chart-point" cx={x(index)} cy={y(value)} style={{ fill: serie.color }}>
-                <title>{`${serie.name} · ${labels[index]}: ${format(value)} ${unit}`}</title>
-              </circle>
+              <circle key={index} className="chart-point" cx={x(index)} cy={y(value)} style={{ fill: serie.color }} />
             ))}
           </g>
         ))}
+
+        {labels.map((label, index) => {
+          // Ein unsichtbares Band je Zeitpunkt fängt den Zeiger ein.
+          const left = Math.max(MARGIN.left - 12, x(index) - step / 2)
+          const right = Math.min(WIDTH - MARGIN.right + 12, x(index) + step / 2)
+          return (
+            <rect
+              key={`hover-${index}`}
+              className="chart-band"
+              x={left}
+              y={MARGIN.top}
+              width={Math.max(8, right - left)}
+              height={plotHeight}
+              onPointerEnter={() => setHover(index)}
+            />
+          )
+        })}
+
+        {hovered !== null && (
+          <g className="chart-hover" pointerEvents="none">
+            <line
+              className="chart-guide"
+              x1={x(hovered)}
+              x2={x(hovered)}
+              y1={MARGIN.top}
+              y2={MARGIN.top + plotHeight}
+            />
+            {hoverRows.map((row) => (
+              <circle key={row.name} className="chart-hover-point" cx={x(hovered)} cy={y(row.value)} r={4} style={{ fill: row.color }} />
+            ))}
+            <g className="chart-tooltip">
+              <rect x={tooltipLeft} y={MARGIN.top} width={tooltipWidth} height={tooltipHeight} rx={7} />
+              <text className="chart-tooltip-title" x={tooltipLeft + 12} y={MARGIN.top + 17}>{labels[hovered]}</text>
+              {hoverRows.map((row, index) => (
+                <g key={row.name}>
+                  <rect
+                    className="chart-tooltip-swatch"
+                    x={tooltipLeft + 12}
+                    y={MARGIN.top + 27 + index * 15}
+                    width={7}
+                    height={7}
+                    rx={2}
+                    style={{ fill: row.color }}
+                  />
+                  <text className="chart-tooltip-row" x={tooltipLeft + 25} y={MARGIN.top + 34 + index * 15}>{row.name}</text>
+                  <text
+                    className="chart-tooltip-value"
+                    x={tooltipLeft + tooltipWidth - 12}
+                    y={MARGIN.top + 34 + index * 15}
+                    textAnchor="end"
+                  >
+                    {format(row.value)}
+                  </text>
+                </g>
+              ))}
+            </g>
+          </g>
+        )}
       </svg>
 
       <figcaption className="chart-legend">
