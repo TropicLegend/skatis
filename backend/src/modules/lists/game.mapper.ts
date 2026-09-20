@@ -6,8 +6,13 @@ export interface GameDto {
   id: string;
   /** Round within the list, starts at 1. */
   position: number;
-  /** The lineup of the list at the time the game was entered. */
+  /** The three players of the round – the lineup minus the ones who sit out. */
   players: string[];
+  /**
+   * The players of the lineup who sit out this round ("Geber-Regel"): none with
+   * three players, the Geber with four, the seats around the Geber with five.
+   */
+  sittingOutPlayers: string[];
   /** Geber of the round. */
   dealer: string;
   passedOut: boolean;
@@ -39,11 +44,12 @@ export interface GameDto {
   updatedAt: string;
 }
 
-export function toGameDto(game: Game): GameDto {
+export function toGameDto(game: Game, lineup: readonly string[]): GameDto {
   return {
     id: game.id,
     position: game.position,
     players: [...game.players],
+    sittingOutPlayers: lineup.filter((name) => !game.players.includes(name)),
     dealer: game.dealer,
     passedOut: game.declarer === null,
     declarer: game.declarer,

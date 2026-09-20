@@ -1,3 +1,4 @@
+import { parseIsoDate } from '../../lib/dates.js';
 import type { ListResultsDto } from '../lists/scoring.js';
 
 /**
@@ -162,4 +163,128 @@ export function tournamentStandings(
     listsCounted: lists.length,
     players,
   };
+}
+
+/** How the time axis of the standing history is grouped. */
+export type StandingsGroupBy = 'matchday' | 'week' | 'month';
+
+/**
+ * The standing at the end of one bucket of the time axis. Every map holds one
+ * entry per player, in the order of `players`.
+ */
+export interface StandingsHistoryBucketDto {
+  /** Stable key of the bucket: `2026-09-16`, `2026-W38` or `2026-09`. */
+  key: string;
+  /** First and last matchday of the bucket (`YYYY-MM-DD`). */
+  from: string;
+  to: string;
+  /** How many different matchdays went into the bucket. */
+  matchdayCount: number;
+  /** `score / gamesPlayed` as at the end of the bucket; `null` without a game. */
+  averageScore: Record<string, number | null>;
+  /** The `score` of the standing up to the end of the bucket: Spielwerte plus bonuses. */
+  score: Record<string, number>;
+  /** The games the player took part in up to the end of the bucket. */
+  gamesPlayed: Record<string, number>;
+}
+
+export interface StandingsHistoryDto {
+  tournamentId: string;
+  groupBy: StandingsGroupBy;
+  /** The players in the order they are handed in – the order of the series. */
+  players: string[];
+  /** The buckets in time order, oldest first. */
+  buckets: StandingsHistoryBucketDto[];
+}
+
+/** ISO-8601 calendar week of a `YYYY-MM-DD` date, as `2026-W38`. */
+function isoWeekKey(matchday: string): string {
+  const date = parseIsoDate(matchday);
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - weekday);
+
+  const year = date.getUTCFullYear();
+  const startOfYear = Date.UTC(year, 0, 1);
+  const week = Math.ceil(((date.getTime() - startOfYear) / 86_400_000 + 1) / 7);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+/** The bucket a matchday belongs to – one date, one week or one month. */
+function bucketKey(matchday: string, groupBy: StandingsGroupBy): string {
+  if (groupBy === 'week') return isoWeekKey(matchday);
+  if (groupBy === 'month') return matchday.slice(0, 7);
+  return matchday;
+}
+
+/** The ranking value of one player: the same average the table shows. */
+function averageScoreOf(score: number, gamesPlayed: number): number | null {
+  return gamesPlayed === 0 ? null : round2(score / gamesPlayed);
+}
+
+/**
+ * The standing at the end of every bucket of the time axis – the history of the
+ * ranking, as the average score per game.
+ *
+ * A bucket always shows where it **ended**: all its lists are added up, so the
+ * last bucket matches the standing, and its `averageScore` is the one the table
+ * ranks by. That is what keeps a tournament over months comparable – a player who
+ * missed an evening keeps their own average instead of falling behind.
+ *
+ * `names` also decides the order of the series: the service hands in the order of
+ * the standing, so chart and table show the players in the same order.
+ */
+export function standingsHistory(
+  tournamentId: string,
+  names: readonly string[],
+  lists: readonly ListResultsDto[],
+  groupBy: StandingsGroupBy = 'matchday',
+): StandingsHistoryDto {
+  const score: Record<string, number> = {};
+  const gamesPlayed: Record<string, number> = {};
+  for (const name of names) {
+    score[name] = 0;
+    gamesPlayed[name] = 0;
+  }
+
+  const buckets: StandingsHistoryBucketDto[] = [];
+  let current: StandingsHistoryBucketDto | null = null;
+
+  // Several lists may share a matchday, so the buckets are filled in time order.
+  const ordered = [...lists].sort((a, b) => a.matchday.localeCompare(b.matchday));
+
+  for (const list of ordered) {
+    for (const player of list.players) {
+      // A player outside the roster cannot happen through the API; skipping keeps
+      // the history consistent with the standing.
+      if (!(player.name in score)) continue;
+
+      score[player.name] = (score[player.name] ?? 0) + player.total;
+      gamesPlayed[player.name] = (gamesPlayed[player.name] ?? 0) + player.gamesPlayed;
+    }
+
+    const key = bucketKey(list.matchday, groupBy);
+    if (current === null || current.key !== key) {
+      current = {
+        key,
+        from: list.matchday,
+        to: list.matchday,
+        matchdayCount: 1,
+        averageScore: {},
+        score: {},
+        gamesPlayed: {},
+      };
+      buckets.push(current);
+    } else if (current.to !== list.matchday) {
+      current.to = list.matchday;
+      current.matchdayCount += 1;
+    }
+
+    current.score = { ...score };
+    current.gamesPlayed = { ...gamesPlayed };
+    current.averageScore = Object.fromEntries(
+      names.map((name) => [name, averageScoreOf(score[name] ?? 0, gamesPlayed[name] ?? 0)]),
+    );
+  }
+
+  return { tournamentId, groupBy, players: [...names], buckets };
 }

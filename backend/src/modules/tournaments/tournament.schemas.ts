@@ -87,6 +87,14 @@ export const listTournamentsQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+/**
+ * Grouping of the standing history: the standing at the end of every matchday,
+ * of every ISO week or of every month.
+ */
+export const standingsHistoryQuery = z.object({
+  groupBy: z.enum(['matchday', 'week', 'month']).default('matchday'),
+});
+
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>;
 export type OpenSessionInput = z.infer<typeof openSessionSchema>;
 export type UpdateTournamentInput = z.infer<typeof updateTournamentSchema>;

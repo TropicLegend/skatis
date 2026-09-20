@@ -1,20 +1,25 @@
 /**
- * Pure helpers of the board – no React, no fetching.
+ * Pure Helfer des Boards – kein React, kein Fetching.
  *
- * The rules mirror `backend/src/modules/lists/game-rules.ts` and `scoring.ts`,
- * but the authoritative numbers (Spielwert, Ergebnistabelle, Rangliste) still
- * come from the API. Everything here is only used to *show* what the server
- * decided: labels, the running account and the chart series.
+ * Hier stehen nur Beschriftungen und die Aufbereitung der Diagramme. Die Zahlen
+ * selbst kommen aus der API: die Regeln aus `GET /rules`, die Ergebnistabelle aus
+ * `…/lists/:listId/results`, der Kontoverlauf aus `…/progression` und der Verlauf
+ * der Rangliste aus `…/standings/history`. Nachgerechnet wird hier nichts, damit
+ * das Board nie etwas anderes zeigt als der Server rechnet.
  */
 
-/** Spielarten in the order of the entry wizard, with the Grundwert of each. */
+/**
+ * Spielarten des Wizards – nur Beschriftung und Symbol, in der Reihenfolge der
+ * Schritte. Grundwerte, Spitzen und die Null-Werte kommen aus `GET /rules`
+ * (`gameTypeRules`): das Board zeigt so nie andere Zahlen als der Server rechnet.
+ */
 export const GAME_TYPES = [
-  { id: 'KREUZ', label: 'Kreuz', symbol: '♣', value: 12, maxMatadors: 11 },
-  { id: 'PIK', label: 'Pik', symbol: '♠', value: 11, maxMatadors: 11 },
-  { id: 'HERZ', label: 'Herz', symbol: '♥', value: 10, maxMatadors: 11 },
-  { id: 'KARO', label: 'Karo', symbol: '♦', value: 9, maxMatadors: 11 },
-  { id: 'GRAND', label: 'Grand', symbol: '✦', value: 24, maxMatadors: 4 },
-  { id: 'NULL', label: 'Null', symbol: '∅', value: 23, maxMatadors: null },
+  { id: 'KREUZ', label: 'Kreuz', symbol: '♣' },
+  { id: 'PIK', label: 'Pik', symbol: '♠' },
+  { id: 'HERZ', label: 'Herz', symbol: '♥' },
+  { id: 'KARO', label: 'Karo', symbol: '♦' },
+  { id: 'GRAND', label: 'Grand', symbol: '✦' },
+  { id: 'NULL', label: 'Null', symbol: '∅' },
 ]
 
 /** Line colours of the charts – muted, so they fit the paper-like surface. */
@@ -52,10 +57,13 @@ export function gameTypeLabel(gameType) {
   return gameTypeMeta(gameType)?.label ?? gameType
 }
 
-/** Highest number of Spitzen: 4 for grand, 11 for the suits, none for null. */
-export function maxMatadors(gameType) {
-  if (gameType === 'NULL') return null
-  return gameType === 'GRAND' ? 4 : 11
+/**
+ * Die Regeln einer Spielart, wie `GET /rules` sie liefert: `baseValue` ist der
+ * Grundwert, `maxMatadors` die höchste Zahl Spitzen (`null` bei Nullspielen).
+ */
+export function gameTypeRules(rules, gameType) {
+  if (!gameType) return null
+  return rules?.gameTypes?.find((type) => type.id === gameType) ?? null
 }
 
 /** The Gewinnstufen of a game that are set, as badges for the game table. */
@@ -80,56 +88,49 @@ export function outcomeLabel(game) {
   return game.won ? 'Gewonnen' : 'Verloren'
 }
 
-/**
- * What a game does to the account ("Punktekonto") of `name`: a won Alleinspiel
- * credits the Spielwert, a lost one debits twice of it, everyone else is
- * untouched. Passed out games change nothing.
- */
-export function gameDelta(game, name) {
-  if (!game || game.passedOut || game.declarer !== name) return 0
-
-  const value = game.gameValue ?? 0
-  // The API sends the credited and debited parts; the fallback keeps older
-  // payloads working, which only sent `won` and `gameValue`.
-  const credited = game.positiveGameValue ?? (game.won === true ? value : 0)
-  const debited = game.negativeGameValue ?? (game.won === false ? value * 2 : 0)
-  return credited - debited
-}
-
-function lineupNames(lineup) {
-  return (lineup ?? []).map((player) => (typeof player === 'string' ? player : player?.name)).filter(Boolean)
-}
+// Die Geber-Regel (wer gibt, wer sitzt aus und wer darf Alleinspieler sein) lebt
+// im Backend: `GET /lists/:listId/next-round` nennt Geber und die drei erlaubten
+// Alleinspieler. So kann das Frontend nicht von dem abweichen, was `POST /games`
+// annimmt – siehe `backend/src/modules/lists/round-preview.ts`.
 
 /**
- * The account of every player before and after every round of a list. `before`
- * and `after` are snapshots, `delta` is what this single game changed – exactly
- * the "Spielstand vor und nach dem Spiel" of the game detail view.
+ * Der Kontostand vor und nach jeder Runde, wie ihn
+ * `GET /lists/:listId/progression` liefert: `before` ist der Stand davor, `delta`
+ * die Veränderung dieser Runde und `after` der Stand danach – der Spielstand
+ * „vor und nach dem Spiel" einer Runde.
  */
-export function runningAccounts(lineup, games) {
-  const names = lineupNames(lineup)
-  const accounts = Object.fromEntries(names.map((name) => [name, 0]))
+export function roundAccounts(progression) {
+  const names = progression?.lineup ?? []
+  const zero = Object.fromEntries(names.map((name) => [name, 0]))
+  const rounds = progression?.rounds ?? []
 
-  const rounds = (games ?? []).map((game) => {
-    const delta = Object.fromEntries(names.map((name) => [name, gameDelta(game, name)]))
-    const before = { ...accounts }
-    for (const name of names) accounts[name] += delta[name]
-    return { game, delta, before, after: { ...accounts } }
-  })
-
-  return { rounds, accounts: { ...accounts } }
+  return rounds.map((round, index) => ({
+    position: round.position,
+    dealer: round.dealer,
+    declarer: round.declarer,
+    // Der Server liefert den Stand nach jeder Runde; der Stand davor ist der der
+    // vorigen Runde – vor der ersten Runde steht jedes Konto auf 0.
+    before: { ...zero, ...(index === 0 ? {} : rounds[index - 1].accounts) },
+    delta: { ...zero, ...round.deltas },
+    after: { ...zero, ...round.accounts },
+  }))
 }
 
-/** The running account of a list as chart data – one point per round. */
-export function listProgress(lineup, games) {
-  const names = lineupNames(lineup)
-  const { rounds } = runningAccounts(names, games)
+/**
+ * Der Kontoverlauf einer Liste als Chartdaten – ein Punkt je Runde. Labels und
+ * Werte kommen aus der Progression des Servers, damit Diagramm und Rangliste
+ * dieselben Zahlen zeigen.
+ */
+export function listProgressionChart(progression) {
+  const names = progression?.lineup ?? []
+  const rounds = progression?.rounds ?? []
 
   return {
-    labels: ['Start', ...rounds.map((round) => `R${round.game.position ?? ''}`)],
+    labels: ['Start', ...rounds.map((round) => `R${round.position}`)],
     series: names.map((name, index) => ({
       name,
       color: SERIES_COLORS[index % SERIES_COLORS.length],
-      values: [0, ...rounds.map((round) => round.after[name] ?? 0)],
+      values: [0, ...rounds.map((round) => round.accounts?.[name] ?? 0)],
     })),
   }
 }
@@ -178,16 +179,6 @@ export function shortDate(iso) {
   return `${day}.${month}.`
 }
 
-/** ISO-8601 calendar week of a "YYYY-MM-DD" date. */
-export function isoWeek(iso) {
-  const date = new Date(`${iso}T00:00:00Z`)
-  const weekday = date.getUTCDay() || 7
-  date.setUTCDate(date.getUTCDate() + 4 - weekday)
-  const startOfYear = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-  const week = Math.ceil(((date - startOfYear) / 86400000 + 1) / 7)
-  return { year: date.getUTCFullYear(), week }
-}
-
 /** "Sep. 26" – the month label of the monthly scaling. */
 function monthLabel(iso) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('de-DE', {
@@ -197,7 +188,7 @@ function monthLabel(iso) {
   })
 }
 
-/** How the time axis is grouped. */
+/** Wie die Zeitachse der Rangliste gruppiert wird – der `groupBy` der Historie. */
 export const PROGRESS_SCALES = [
   { id: 'matchday', label: 'Pro Spieltag' },
   { id: 'week', label: 'Pro Woche' },
@@ -205,106 +196,29 @@ export const PROGRESS_SCALES = [
 ]
 
 /**
- * The counted lists of a tournament per matchday: what every player collected
- * on that evening. `lists` are the list DTOs of `/lists` (they carry `counted`),
- * `resultsById` the result tables of `/lists/:id/results`. Score and games are
- * kept apart, because the chart draws the average score per game.
+ * Der Verlauf der Rangliste aus `GET /standings/history`: je Zeitraum ein Punkt
+ * mit dem Durchschnitt, den die Rangliste an dessen Ende hatte – dieselben Zahlen
+ * wie die Spalte „Ø Punkte" der Tabelle. Ein Spieler ohne Spiel hat dort keinen
+ * Durchschnitt, seine Linie hat also eine Lücke (`null`).
  */
-export function tournamentProgress(lists, resultsById, names) {
-  const totalsByMatchday = new Map()
-
-  for (const list of lists ?? []) {
-    // `counted` is what the standing uses – a handed in list or a day that is
-    // over. Without the flag (older payload) the list is taken as it is.
-    if (list.counted === false) continue
-
-    const results = resultsById?.[list.id]
-    if (!results?.players?.length) continue
-
-    const matchday = results.matchday ?? list.matchday
-    if (!matchday) continue
-
-    const bucket = totalsByMatchday.get(matchday) ?? new Map()
-    for (const player of results.players) {
-      const collected = bucket.get(player.name) ?? { points: 0, gamesPlayed: 0 }
-      collected.points += player.total ?? 0
-      collected.gamesPlayed += player.gamesPlayed ?? 0
-      bucket.set(player.name, collected)
-    }
-    totalsByMatchday.set(matchday, bucket)
-  }
-
-  const matchdays = [...totalsByMatchday.keys()].sort()
-  const derived = [...new Set(matchdays.flatMap((matchday) => [...totalsByMatchday.get(matchday).keys()]))]
+export function standingsProgressChart(history) {
+  const names = history?.players ?? []
+  const buckets = history?.buckets ?? []
+  const groupBy = history?.groupBy ?? 'matchday'
 
   return {
-    names: names?.length ? names : derived,
-    matchdays: matchdays.map((matchday) => {
-      const bucket = totalsByMatchday.get(matchday)
-      const pick = (field) => Object.fromEntries([...bucket].map(([name, entry]) => [name, entry[field]]))
-      return { matchday, points: pick('points'), gamesPlayed: pick('gamesPlayed') }
-    }),
-  }
-}
-
-function scaleKey(matchday, scale) {
-  if (scale === 'week') {
-    const { year, week } = isoWeek(matchday)
-    return `${year}-W${week}`
-  }
-  if (scale === 'month') return matchday.slice(0, 7)
-  return matchday
-}
-
-function scaleLabel(matchday, scale) {
-  if (scale === 'week') return `KW ${isoWeek(matchday).week}`
-  if (scale === 'month') return monthLabel(matchday)
-  return shortDate(matchday)
-}
-
-/**
- * The average score per game of every player, grouped by the chosen scale – the
- * "Ø Punkte" column of the standing as a line. A player without a game has no
- * average, so the line has a gap there (`null`).
- */
-export function progressAverageChart(progress, scale = 'matchday') {
-  const entries = progress?.matchdays ?? []
-  const names = progress?.names ?? []
-  if (entries.length === 0 || names.length === 0) return { labels: [], series: [] }
-
-  const running = Object.fromEntries(names.map((name) => [name, { points: 0, gamesPlayed: 0 }]))
-  const averages = entries.map((entry) => {
-    for (const name of names) {
-      running[name].points += entry.points[name] ?? 0
-      running[name].gamesPlayed += entry.gamesPlayed?.[name] ?? 0
-    }
-    return Object.fromEntries(
-      names.map((name) => {
-        const { points, gamesPlayed } = running[name]
-        return [name, gamesPlayed === 0 ? null : Math.round((points / gamesPlayed) * 100) / 100]
-      }),
-    )
-  })
-
-  // One point per bucket, holding the average reached at the end of that bucket.
-  const buckets = []
-  let previousKey = null
-  entries.forEach((entry, index) => {
-    const key = scaleKey(entry.matchday, scale)
-    if (key !== previousKey) {
-      previousKey = key
-      buckets.push({ label: scaleLabel(entry.matchday, scale), snapshot: averages[index] })
-      return
-    }
-    buckets[buckets.length - 1].snapshot = averages[index]
-  })
-
-  return {
-    labels: buckets.map((bucket) => bucket.label),
+    labels: buckets.map((bucket) => bucketLabel(bucket, groupBy)),
     series: names.map((name, index) => ({
       name,
       color: SERIES_COLORS[index % SERIES_COLORS.length],
-      values: buckets.map((bucket) => bucket.snapshot[name] ?? null),
+      values: buckets.map((bucket) => bucket.averageScore?.[name] ?? null),
     })),
   }
+}
+
+/** Die Beschriftung eines Zeitraums: „16.09." / „KW 38" / „Sep. 26". */
+function bucketLabel(bucket, groupBy) {
+  if (groupBy === 'week') return `KW ${Number(String(bucket.key ?? '').slice(-2)) || '?'}`
+  if (groupBy === 'month') return monthLabel(`${bucket.key}-01`)
+  return shortDate(bucket.from ?? bucket.key)
 }

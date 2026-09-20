@@ -13,6 +13,7 @@ import {
   deleteTournament,
   getTournament,
   getTournamentStandings,
+  getStandingsHistory,
   listTournaments,
   updateTournament,
 } from './tournament.service.js';
@@ -20,6 +21,7 @@ import {
   createTournamentSchema,
   listTournamentsQuery,
   openSessionSchema,
+  standingsHistoryQuery,
   tournamentIdParams,
   updateTournamentSchema,
 } from './tournament.schemas.js';
@@ -115,6 +117,19 @@ tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res
   const standings = await getTournamentStandings(tournamentId);
 
   res.json({ data: standings });
+});
+
+/**
+ * The same standing, but dated: where every player stood at the end of every
+ * matchday – or ISO week or month – as the average score per game. Readable by
+ * both roles; a frontend draws its progression chart from it.
+ */
+tournamentRouter.get('/:tournamentId/standings/history', authenticate(), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const { groupBy } = standingsHistoryQuery.parse(req.query);
+  const history = await getStandingsHistory(tournamentId, groupBy);
+
+  res.json({ data: history });
 });
 
 /**

@@ -19,6 +19,8 @@ describe('api', () => {
     expect(response.body.data.endpoints.results).toContain('/results');
     expect(response.body.data.endpoints.standings).toContain('/standings');
     expect(response.body.data.endpoints.game).toContain('DELETE');
+    expect(response.body.data.endpoints.rules).toContain('/rules');
+    expect(response.body.data.endpoints.nextRound).toContain('next-round');
   });
 
   it('reports liveness without touching the database', async () => {
@@ -27,6 +29,14 @@ describe('api', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.status).toBe('ok');
     expect(response.body.data.uptimeSeconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it('serves the rules of the game without a token', async () => {
+    const response = await request(app).get('/api/rules');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.gameTypes).toHaveLength(6);
+    expect(response.body.data.lineup).toEqual({ min: 3, max: 5 });
   });
 
   it('echoes a provided request id', async () => {
@@ -103,6 +113,35 @@ describe('api', () => {
     expect(response.body.error.code).toBe('UNAUTHORIZED');
   });
 
+  it('grows the roster only for an admin – a member may not add a player', async () => {
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/players`)
+      .set('Authorization', `Bearer ${issueSessionToken(TOURNAMENT_ID, 'MEMBER').token}`)
+      .send({ name: 'Anna' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('keeps renaming a player for an admin', async () => {
+    const response = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Betr`)
+      .set('Authorization', `Bearer ${issueSessionToken(TOURNAMENT_ID, 'MEMBER').token}`)
+      .send({ name: 'Bert' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('keeps removing a player for an admin', async () => {
+    const response = await request(app)
+      .delete(`/api/tournaments/${TOURNAMENT_ID}/players/Bert`)
+      .set('Authorization', `Bearer ${issueSessionToken(TOURNAMENT_ID, 'MEMBER').token}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
   it('rejects details of another tournament', async () => {
     const { token } = issueSessionToken(OTHER_TOURNAMENT_ID, 'MEMBER');
     const response = await request(app)
@@ -152,7 +191,7 @@ describe('api', () => {
   });
 
   it('validates a new player before touching the database', async () => {
-    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
     const response = await request(app)
       .post(`/api/tournaments/${TOURNAMENT_ID}/players`)
       .set('Authorization', `Bearer ${token}`)
@@ -187,7 +226,7 @@ describe('api', () => {
   });
 
   it('validates the rename payload before touching the database', async () => {
-    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
     const response = await request(app)
       .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Anna`)
       .set('Authorization', `Bearer ${token}`)
@@ -200,10 +239,13 @@ describe('api', () => {
   it('protects the endpoints that were added last', async () => {
     const paths = [
       ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/results`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/next-round`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/progression`],
       ['get', `/api/tournaments/${TOURNAMENT_ID}/lists/list-1/games/game-1`],
       ['patch', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
       ['delete', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
       ['get', `/api/tournaments/${TOURNAMENT_ID}/standings`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/standings/history`],
     ] as const;
 
     for (const [method, path] of paths) {

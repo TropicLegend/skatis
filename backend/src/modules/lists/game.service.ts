@@ -17,6 +17,7 @@ import {
 } from './game.mapper.js';
 import type { GameInput } from './game.schemas.js';
 import { nextDealer, playingPlayers } from './game-rules.js';
+import { buildRoundPreview, type RoundPreviewDto } from './round-preview.js';
 
 /** Rounds are appended, so a new game gets the next free position. */
 function nextFreePosition(positions: readonly number[]): number {
@@ -48,7 +49,8 @@ function gameDetails(
 export async function listGames(tournamentId: string, listId: string): Promise<GameDto[]> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
-  return list.games.map(toGameDto);
+  const lineup = lineupNames(list);
+  return list.games.map((game) => toGameDto(game, lineup));
 }
 
 /** One game of a list – reading needs no role, like the other reads. */
@@ -65,7 +67,34 @@ export async function getGame(
     throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
 
-  return toGameDto(game);
+  return toGameDto(game, lineupNames(list));
+}
+
+/**
+ * The round a `POST …/games` would create: who deals and which three players may
+ * be the Alleinspieler. A frontend asks this instead of re-deriving the
+ * Geber-Regel, which is what `createGame` enforces.
+ *
+ * This is a read like the other GETs, so it needs no role and no matchday check
+ * – whether a game may actually be entered is decided when it is entered.
+ */
+export async function previewNextRound(
+  tournamentId: string,
+  listId: string,
+): Promise<RoundPreviewDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const list = await findListOrThrow(tournament.id, listId);
+
+  const lineup = lineupNames(list);
+  // Without a complete lineup no round can be played – the same answer the
+  // entry of a game would give.
+  assertLineupComplete(lineup.length);
+
+  return buildRoundPreview(
+    list.id,
+    lineup,
+    list.games.map((game) => game.dealer),
+  );
 }
 
 /**
@@ -111,7 +140,7 @@ export async function createGame(
     details: gameDetails(list, game),
   });
 
-  return toGameDto(game);
+  return toGameDto(game, lineup);
 }
 
 /**
@@ -158,7 +187,7 @@ export async function replaceGame(
     details: gameDetails(list, updated),
   });
 
-  return toGameDto(updated);
+  return toGameDto(updated, lineup);
 }
 
 export async function deleteGame(

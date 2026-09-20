@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { gameRouter } from './game.routes.js';
+import { previewNextRound } from './game.service.js';
 import {
   createList,
   deleteList,
   getList,
+  getListProgression,
   getListResults,
   listLists,
   reopenList,
@@ -52,6 +54,30 @@ listRouter.get('/:listId/results', authenticate(), async (req, res) => {
   const results = await getListResults(tournamentId, listId);
 
   res.json({ data: results });
+});
+
+/**
+ * The round a new game would create: the Geber and the three players who may be
+ * the Alleinspieler ("Geber-Regel"). Readable by both roles – the rule lives in
+ * the API, so a frontend does not have to reproduce it.
+ */
+listRouter.get('/:listId/next-round', authenticate(), async (req, res) => {
+  const { tournamentId, listId } = listParams.parse(req.params);
+  const preview = await previewNextRound(tournamentId, listId);
+
+  res.json({ data: preview });
+});
+
+/**
+ * The account of every player after every round – the data behind the
+ * progression chart and the "Spielstand" of a single game. Readable by both
+ * roles, also after the list was submitted.
+ */
+listRouter.get('/:listId/progression', authenticate(), async (req, res) => {
+  const { tournamentId, listId } = listParams.parse(req.params);
+  const progression = await getListProgression(tournamentId, listId);
+
+  res.json({ data: progression });
 });
 
 /** Admin only: deletes the list including all its games. */

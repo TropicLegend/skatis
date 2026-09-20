@@ -220,30 +220,35 @@ describe('scoreList', () => {
 });
 
 describe('toGameDto result columns', () => {
-  function dto(overrides: Partial<Game> = {}) {
-    return toGameDto({
-      id: 'game-1',
-      listId: 'list-1',
-      position: 1,
-      players: ['Anna', 'Bert', 'Clara'],
-      dealer: 'Anna',
-      declarer: 'Bert',
-      gameType: 'GRAND',
-      hand: true,
-      schneiderAnnounced: false,
-      schwarzAnnounced: false,
-      offen: false,
-      matadors: 'WITH',
-      matadorsCount: 2,
-      schneider: true,
-      schwarz: false,
-      won: true,
-      gameValue: 120,
-      note: null,
-      createdAt: new Date('2026-09-16T18:00:00.000Z'),
-      updatedAt: new Date('2026-09-16T18:00:00.000Z'),
-      ...overrides,
-    } as Game);
+  const LINEUP = ['Anna', 'Bert', 'Clara'];
+
+  function dto(overrides: Partial<Game> = {}, lineup: readonly string[] = LINEUP) {
+    return toGameDto(
+      {
+        id: 'game-1',
+        listId: 'list-1',
+        position: 1,
+        players: ['Anna', 'Bert', 'Clara'],
+        dealer: 'Anna',
+        declarer: 'Bert',
+        gameType: 'GRAND',
+        hand: true,
+        schneiderAnnounced: false,
+        schwarzAnnounced: false,
+        offen: false,
+        matadors: 'WITH',
+        matadorsCount: 2,
+        schneider: true,
+        schwarz: false,
+        won: true,
+        gameValue: 120,
+        note: null,
+        createdAt: new Date('2026-09-16T18:00:00.000Z'),
+        updatedAt: new Date('2026-09-16T18:00:00.000Z'),
+        ...overrides,
+      } as Game,
+      lineup,
+    );
   }
 
   it('fills the positive column for a game that was won', () => {
@@ -264,6 +269,17 @@ describe('toGameDto result columns', () => {
       passedOut: true,
       positiveGameValue: 0,
       negativeGameValue: 0,
+    });
+  });
+
+  it('has nobody sitting out when the lineup is the round', () => {
+    expect(dto().sittingOutPlayers).toEqual([]);
+  });
+
+  it('names the players who sit out when the lineup is bigger than the round', () => {
+    expect(dto({}, ['Anna', 'Bert', 'Clara', 'Dora'])).toMatchObject({
+      players: ['Anna', 'Bert', 'Clara'],
+      sittingOutPlayers: ['Dora'],
     });
   });
 });

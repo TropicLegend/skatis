@@ -1,10 +1,8 @@
 import type { Player } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
-import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit } from '../audit/audit-log.js';
-import { countsForStanding } from '../lists/list-access.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import type { CreatePlayerInput } from './player.schemas.js';
 
@@ -99,10 +97,10 @@ export async function deletePlayer(
  * Corrects the name of a player. A name is the identity of a player, so a typo
  * would otherwise be permanent – and a player cannot be removed once they play.
  *
- * Games store the names of the lineup, team, so a rename has to rewrite them.
- * A list that already counts is frozen for members – that is every submitted
- * list and every list of a past day – therefore a rename that touches one of
- * them is reserved for an admin, the same rule as for the list itself.
+ * Games store the names of the lineup, too, so a rename has to rewrite them.
+ * Only an admin gets here (see the route), which is exactly the rule for a list
+ * that already counts – neither a rename nor any other change to such a list is
+ * a member's business.
  */
 export async function renamePlayer(
   tournamentId: string,
@@ -123,23 +121,6 @@ export async function renamePlayer(
   });
   if (existing) {
     throw conflict(`"${newName}" is already a player of this tournament`);
-  }
-
-  const lists = await prisma.gameList.findMany({
-    where: { tournamentId: tournament.id, lineup: { some: { playerId: player.id } } },
-    select: { matchday: true, status: true },
-    orderBy: { matchday: 'asc' },
-  });
-
-  if (role !== 'ADMIN') {
-    const counted = lists.filter((list) => countsForStanding(list));
-    if (counted.length > 0) {
-      throw conflict(
-        `"${player.name}" plays in a list that already counts, so the name can no longer be changed. ` +
-          'Ask an admin to correct it.',
-        { countedLists: [...new Set(counted.map((list) => toIsoDate(list.matchday)))] },
-      );
-    }
   }
 
   const games = await prisma.game.findMany({

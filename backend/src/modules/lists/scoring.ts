@@ -166,3 +166,91 @@ export function scoreList(
     players,
   };
 }
+
+/**
+ * What a game credits (+) or debits (−) to the account of its Alleinspieler:
+ * a won Alleinspiel credits the Spielwert, a lost one debits **twice** of it, a
+ * game that was passed out changes nothing. It is the per-round form of the rule
+ * `scoreList` applies to the whole sheet – see `accountProgression`.
+ */
+export function gameAccountDelta(game: ScorableGame): number {
+  if (game.declarer === null) return 0;
+  return game.won === true ? game.gameValue : -game.gameValue * 2;
+}
+
+/** One round of a list as far as the accounts are concerned. */
+export interface RoundAccountDto {
+  /** Round within the list, starts at 1. */
+  position: number;
+  dealer: string;
+  declarer: string | null;
+  gameValue: number;
+  /** What this round changed for every player of the lineup. */
+  deltas: Record<string, number>;
+  /** The account of every player after this round. */
+  accounts: Record<string, number>;
+}
+
+export interface AccountProgressionDto {
+  matchday: string;
+  /** The lineup in seating order – the order inside the maps below. */
+  lineup: string[];
+  playerCount: number;
+  /** One entry per round, in the order the rounds were played. */
+  rounds: RoundAccountDto[];
+  /** The account of every player after the last round. */
+  accounts: Record<string, number>;
+}
+
+/** A game as the progression needs it: the properties above plus their round. */
+export interface ProgressableGame extends ScorableGame {
+  position: number;
+  dealer: string;
+}
+
+/**
+ * The account of every player before and after every round of a list – the
+ * "Spielstand vor und nach dem Spiel" of one round and the data of the
+ * progression chart.
+ *
+ * The account starts at 0 and follows the same rule as the result table: only
+ * the Alleinspieler's own games move it. `deltas` says what one round changed
+ * (0 for everybody who was not the Alleinspieler), `accounts` what the account
+ * is afterwards. No bonus is included – the flat +50/-50 and the opponent bonus
+ * only appear in the `total` of the result table.
+ */
+export function accountProgression(
+  lineup: readonly string[],
+  games: readonly ProgressableGame[],
+  matchday: string,
+): AccountProgressionDto {
+  const accounts: Record<string, number> = {};
+  for (const name of lineup) accounts[name] = 0;
+
+  const rounds = games.map((game): RoundAccountDto => {
+    const deltas: Record<string, number> = {};
+    for (const name of lineup) {
+      deltas[name] = game.declarer === name ? gameAccountDelta(game) : 0;
+    }
+    for (const name of lineup) {
+      accounts[name] = (accounts[name] ?? 0) + (deltas[name] ?? 0);
+    }
+
+    return {
+      position: game.position,
+      dealer: game.dealer,
+      declarer: game.declarer,
+      gameValue: game.gameValue,
+      deltas,
+      accounts: { ...accounts },
+    };
+  });
+
+  return {
+    matchday,
+    lineup: [...lineup],
+    playerCount: lineup.length,
+    rounds,
+    accounts: { ...accounts },
+  };
+}

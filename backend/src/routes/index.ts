@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { healthRouter } from '../modules/health/health.routes.js';
+import { rulesRouter } from '../modules/rules/rules.routes.js';
 import { tournamentRouter } from '../modules/tournaments/tournament.routes.js';
 
 export const apiRouter = Router();
@@ -9,10 +10,11 @@ apiRouter.get('/', (_req, res) => {
   res.json({
     data: {
       name: 'skatis-api',
-      version: '0.7.0',
+      version: '0.9.0',
       documentation: 'https://github.com/TropicLegend/skatis/blob/main/backend/README.md',
       endpoints: {
         health: 'GET /api/health',
+        rules: 'GET /api/rules',
         createTournament: 'POST /api/tournaments',
         openSession: 'POST /api/tournaments/:tournamentId/session',
         tournaments: 'GET /api/tournaments',
@@ -28,6 +30,7 @@ apiRouter.get('/', (_req, res) => {
         submit: 'POST /api/tournaments/:tournamentId/lists/:listId/submit',
         reopen: 'POST /api/tournaments/:tournamentId/lists/:listId/reopen',
         results: 'GET /api/tournaments/:tournamentId/lists/:listId/results',
+        nextRound: 'GET /api/tournaments/:tournamentId/lists/:listId/next-round',
         games: 'GET|POST /api/tournaments/:tournamentId/lists/:listId/games',
         game: 'GET|PUT|DELETE /api/tournaments/:tournamentId/lists/:listId/games/:gameId',
       },
@@ -36,4 +39,5 @@ apiRouter.get('/', (_req, res) => {
 });
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/rules', rulesRouter);
 apiRouter.use('/tournaments', tournamentRouter);

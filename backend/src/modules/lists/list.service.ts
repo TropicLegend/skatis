@@ -19,7 +19,12 @@ import type { CreateListInput, ListListsQuery } from './list.schemas.js';
 import { toGameCreateData, toGameDto, toGameProperties, type GameDto } from './game.mapper.js';
 import { assertDeclarerAllowed, assertLineupComplete } from './game-entry.js';
 import { nextDealer, playingPlayers } from './game-rules.js';
-import { scoreList, type ListResultsDto } from './scoring.js';
+import {
+  accountProgression,
+  scoreList,
+  type AccountProgressionDto,
+  type ListResultsDto,
+} from './scoring.js';
 
 /** A player of a list together with their seat in the lineup. */
 export interface ListPlayerDto {
@@ -132,7 +137,7 @@ export function toListDto(
   };
 
   if (withGames) {
-    dto.games = list.games.map(toGameDto);
+    dto.games = list.games.map((game) => toGameDto(game, lineupNames(list)));
   }
 
   return dto;
@@ -238,6 +243,21 @@ export async function getListResults(
   const list = await findListOrThrow(tournament.id, listId);
 
   return scoreList(lineupNames(list), list.games, toIsoDate(list.matchday));
+}
+
+/**
+ * The account ("Punktekonto") of every player after every round of the list –
+ * what the result table is made of, round by round. Always derived from the
+ * current games; readable by both roles, also after the list was submitted.
+ */
+export async function getListProgression(
+  tournamentId: string,
+  listId: string,
+): Promise<AccountProgressionDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const list = await findListOrThrow(tournament.id, listId);
+
+  return accountProgression(lineupNames(list), list.games, toIsoDate(list.matchday));
 }
 
 export async function createList(

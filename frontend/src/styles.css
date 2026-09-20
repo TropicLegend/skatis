@@ -56,6 +56,10 @@
 .chart-note{font-size:10px;color:var(--muted);line-height:1.6;margin:10px 0 0}
 .chart-empty{text-align:center;color:var(--muted);font-size:12px;border:1px dashed #d5cfc1;border-radius:7px;padding:34px 16px}
 .tournament-ranking .chart-block{border-top:1px solid var(--line);margin-top:20px;padding:20px 0 0}
+.wizard-hint{margin:0 0 15px;text-align:center;font:11px 'DM Mono';color:var(--muted)}
+.wizard-hint strong{color:var(--ink)}
+.choice-card.sitting-out{background:#f0ece3;border-style:dashed;color:#8f938a}
+.sits-out-flag{position:absolute;bottom:8px;font:9px 'DM Mono';letter-spacing:.3px;color:#9a988f}
 .detail-modal{max-width:680px}
 .detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 22px}
 .detail-item{border-top:2px solid var(--ink);padding:10px 2px;display:flex;flex-direction:column;gap:6px}
@@ -84,6 +88,7 @@
 .chart-custom{display:block;margin:0;font-size:10px;color:var(--muted);font-family:'DM Mono'}
 .chart-custom input{width:90px;height:34px;margin-top:5px;font-size:11px}
 .field-hint{display:block;margin-top:6px;color:#a2a095;font-weight:400}
+.roster-hint{margin:15px 0 0;font-size:11px;color:var(--muted);border:1px dashed #d5cfc1;border-radius:7px;padding:11px 12px}
 .log-modal{max-width:620px}
 .log-list{list-style:none;margin:0;padding:0;max-height:min(60vh,520px);overflow:auto}
 .log-entry{border-top:1px solid #ebe7de;padding:12px 0}

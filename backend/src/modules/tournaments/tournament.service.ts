@@ -6,13 +6,19 @@ import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit } from '../audit/audit-log.js';
-import { scoreList } from '../lists/scoring.js';
+import { scoreList, type ListResultsDto } from '../lists/scoring.js';
 import type {
   CreateTournamentInput,
   ListTournamentsQuery,
   UpdateTournamentInput,
 } from './tournament.schemas.js';
-import { tournamentStandings, type TournamentStandingsDto } from './standings.js';
+import {
+  standingsHistory,
+  tournamentStandings,
+  type StandingsGroupBy,
+  type StandingsHistoryDto,
+  type TournamentStandingsDto,
+} from './standings.js';
 
 /** Number of attempts to find a free tournament id. */
 const MAX_ID_ATTEMPTS = 5;
@@ -169,10 +175,11 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
  * standing sums up the whole final result of a player: the Spielwerte of their
  * Alleinspiele, the flat +50 per won and -50 per lost Alleinspiel and the bonus
  * for the Alleinspiele the other players lost.
+ *
+ * `loadCountedResults` reads that input once for the standing and for its history
+ * (`getStandingsHistory`), so the two views can never describe different data.
  */
-export async function getTournamentStandings(
-  tournamentId: string,
-): Promise<TournamentStandingsDto> {
+async function loadCountedResults(tournamentId: string): Promise<CountedResults> {
   const tournament = await getTournamentRow(tournamentId);
 
   const [roster, lists] = await Promise.all([
@@ -206,10 +213,47 @@ export async function getTournamentStandings(
     ),
   );
 
-  return tournamentStandings(
-    tournament.id,
-    roster.map((player) => player.name),
-    matchdays,
+  return {
+    tournamentId: tournament.id,
+    roster: roster.map((player) => player.name),
+    results: matchdays,
+  };
+}
+
+/** The input of the standing and of its history. */
+interface CountedResults {
+  tournamentId: string;
+  roster: string[];
+  /** One result table per counted list, oldest matchday first. */
+  results: ListResultsDto[];
+}
+
+/** The standing of the tournament over all counted lists, best player first. */
+export async function getTournamentStandings(
+  tournamentId: string,
+): Promise<TournamentStandingsDto> {
+  const { tournamentId: id, roster, results } = await loadCountedResults(tournamentId);
+
+  return tournamentStandings(id, roster, results);
+}
+
+/**
+ * The standing at the end of every matchday – or ISO week or month – as the
+ * average score per game. The series follow the standing, so a chart drawn from
+ * it and the table show the same order.
+ */
+export async function getStandingsHistory(
+  tournamentId: string,
+  groupBy: StandingsGroupBy,
+): Promise<StandingsHistoryDto> {
+  const { tournamentId: id, roster, results } = await loadCountedResults(tournamentId);
+  const standings = tournamentStandings(id, roster, results);
+
+  return standingsHistory(
+    id,
+    standings.players.map((player) => player.name),
+    results,
+    groupBy,
   );
 }
 

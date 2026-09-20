@@ -146,9 +146,8 @@ tournament once and can then be put on a list:
 - A player can only be deleted while they are not part of any list.
 - `PATCH …/players/:playerName` corrects a name. That is the only way to fix a
   typo, because a player who plays in a list cannot be deleted. The names recorded
-  in already entered games are rewritten as well. A rename that touches a list
-  that already **counts** – a submitted one or one of a past day – is reserved for
-  an `ADMIN`, like every other change to such a list.
+  in already entered games are rewritten as well. Adding, renaming and removing a
+  player all need the admin password – the roster belongs to the admin.
 
 ### Entering a game
 
@@ -171,6 +170,10 @@ A game follows the four steps of README.md. The API checks every one of them:
    sit out – that is the only way to end up with three players, and it is what
    the README of the repository says ("Bei 5 Spielern kann der Spieler vor und
    der Spieler nach dem Geber nicht ausgewählt werden").
+
+   Which players these are for the next round of a list is answered by
+   [`GET …/lists/:listId/next-round`](#get-tournamentstournamentidlistslistidnext-round)
+   – a frontend asks instead of reproducing the rule.
 
 2. **Spieltyp** – exactly one of `KARO`, `HERZ`, `PIK`, `KREUZ`, `GRAND`, `NULL`,
    plus the announced levels (`hand`, `schneiderAnnounced`, `schwarzAnnounced`,
@@ -197,7 +200,7 @@ The API derives the remaining properties:
 
 #### Spielwert
 
-(`src/modules/lists/game-rules.ts`)
+(`src/modules/lists/game-rules.ts`, readable as data through [`GET /rules`](#get-rules))
 
 - Null games have fixed values: `Null` 23, `Null Hand` 35, `Null Offen` 46,
   `Null Hand Offen` 59.
@@ -440,8 +443,9 @@ stored token is still valid can be checked with
   by the `TZ` environment variable); an `ADMIN` may also create and correct lists
   of past or future matchdays.
 - Reading lists, players and games is allowed for both roles on any day.
-- Both roles may manage the players of their tournament at any time – a
-  tournament's roster is not tied to a matchday.
+- The **roster** – adding, renaming and removing a player – is managed by an
+  `ADMIN` at any time: it is not tied to a matchday. Members read it and put its
+  players on the list of the evening.
 - Submitting a list on its own day freezes it for members. An admin may keep
   editing it; with `reopen` an admin hands it back to the members – but only
   while its day lasts, because a list of a past day cannot be reopened.
@@ -721,6 +725,7 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/`             | –    | Discovery document listing all paths  |
 | GET    | `/health`       | –    | Liveness; does not touch the database |
 | GET    | `/health/ready` | –    | Readiness incl. DB connectivity       |
+| GET    | `/rules`        | –    | Grundwerte, Spitzen and lineup limits of the game |
 
 **`GET /health`** → `200`
 
@@ -735,6 +740,37 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 { "data": { "status": "ready", "database": "up" } }
 ```
 
+**`GET /rules`** → `200`
+
+The rules of the game as data – the same constants the service scores with:
+
+```json
+{
+  "data": {
+    "gameTypes": [
+      { "id": "KARO", "baseValue": 9, "maxMatadors": 11 },
+      { "id": "HERZ", "baseValue": 10, "maxMatadors": 11 },
+      { "id": "PIK", "baseValue": 11, "maxMatadors": 11 },
+      { "id": "KREUZ", "baseValue": 12, "maxMatadors": 11 },
+      { "id": "GRAND", "baseValue": 24, "maxMatadors": 4 },
+      { "id": "NULL", "baseValue": 23, "maxMatadors": null }
+    ],
+    "nullValues": { "plain": 23, "hand": 35, "offen": 46, "handOffen": 59 },
+    "lineup": { "min": 3, "max": 5 }
+  }
+}
+```
+
+`baseValue` is the Grundwert of a suit or grand game – for the null game it is
+the value of "Null Einfach", because its Spielwert comes from `nullValues`.
+`maxMatadors` is the highest number of Spitzen (`null` where there are none). No
+token is needed: the rules are the same for every tournament.
+
+They are the read-only twin of the rules the service applies (see
+[Entering a game](#entering-a-game)) – `src/modules/rules/rules.ts` reads them from
+`src/modules/lists/game-rules.ts`, so no frontend has to keep a copy of the
+numbers that could drift from what the API calculates.
+
 ### Tournaments
 
 | Method | Path                                   | Auth  | Description                                             |
@@ -743,6 +779,7 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
 | GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
+| GET    | `/tournaments/:tournamentId/standings/history` | any | The standing at the end of every matchday, week or month |
 | GET    | `/tournaments/:tournamentId/log`       | any   | The change log of the tournament, newest first          |
 | PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays` and/or the player password   |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
@@ -877,7 +914,51 @@ for both roles.
 
 **Errors:** `404` unknown tournament.
 
-#### `GET /tournaments/:tournamentId/log`
+#### `GET /tournaments/:tournamentId/standings/history`
+
+The same standing, but dated: where every player stood at the end of every
+matchday – or of every ISO week or month. It is what a progression chart of the
+ranking is drawn from, and it follows the rules of
+[Tournament standings](#tournament-standings). Reading is allowed for both roles.
+
+Query: `?groupBy=matchday|week|month` (default `matchday`).
+
+**Response** `200` – the month example of the table above:
+
+```json
+{
+  "data": {
+    "tournamentId": "K7M2P4QX",
+    "groupBy": "month",
+    "players": ["Bert", "Anna", "Dora", "Clara", "Emil"],
+    "buckets": [
+      {
+        "key": "2026-09",
+        "from": "2026-09-16",
+        "to": "2026-09-23",
+        "matchdayCount": 2,
+        "score": { "Bert": 182, "Anna": 60, "Dora": -60, "Clara": -66, "Emil": 0 },
+        "gamesPlayed": { "Bert": 2, "Anna": 1, "Dora": 3, "Clara": 3, "Emil": 0 },
+        "averageScore": { "Bert": 91, "Anna": 60, "Dora": -20, "Clara": -22, "Emil": null }
+      }
+    ]
+  }
+}
+```
+
+A bucket is read **after** all of its lists: `score`, `gamesPlayed` and
+`averageScore` are the values of the standing as at the end of the bucket, so the
+last bucket is exactly the table of `GET …/standings` – here one bucket holds both
+matchdays, which is why it is that table. `key` is stable enough to be used as an
+id in a chart (`2026-09-16`, `2026-W38`, `2026-09`), `from`/`to` are its first and
+last matchday and `matchdayCount` counts its days.
+
+`players` is the order of the standing – the order of the series – while the
+buckets come in time order. `averageScore` stays `null` while a player has no
+game: a tournament over months stays comparable because a player who missed an
+evening keeps their own average.
+
+**Errors:** `404` unknown tournament, `422` unknown `groupBy`.
 
 The **change log** ("Protokoll") of the tournament, newest first. Both roles may
 read it, so a member can follow what an admin changed and an admin can see who
@@ -974,18 +1055,21 @@ lists and games (cascade).
 
 ### Players
 
-| Method | Path                                             | Auth | Description                                                |
-| ------ | ------------------------------------------------ | ---- | ---------------------------------------------------------- |
-| GET    | `/tournaments/:tournamentId/players`             | any  | All players of the tournament, sorted by name              |
-| POST   | `/tournaments/:tournamentId/players`             | any  | `{ name }` – 1–64 characters, unique inside the tournament |
-| PATCH  | `/tournaments/:tournamentId/players/:playerName` | any  | `{ name }` – correct the name of a player                  |
-| DELETE | `/tournaments/:tournamentId/players/:playerName` | any  | Remove a player (only while not on any list)               |
+| Method | Path                                             | Auth  | Description                                                |
+| ------ | ------------------------------------------------ | ----- | ---------------------------------------------------------- |
+| GET    | `/tournaments/:tournamentId/players`             | any   | All players of the tournament, sorted by name              |
+| POST   | `/tournaments/:tournamentId/players`             | ADMIN | `{ name }` – 1–64 characters, unique inside the tournament |
+| PATCH  | `/tournaments/:tournamentId/players/:playerName` | ADMIN | `{ name }` – correct the name of a player                  |
+| DELETE | `/tournaments/:tournamentId/players/:playerName` | ADMIN | Remove a player (only while not on any list)               |
 
 Players are the roster of the tournament: they are created once and then put on
-a list, which is what makes a game possible at all. A player is identified by
-their name inside the tournament, so there is no id to remember – the `:playerName`
-path parameter is the name itself (URL-encoded, e.g. `players/Anna%20M%C3%BCller`).
-Names are compared exactly: `anna` and `Anna` are two different players.
+a list, which is what makes a game possible at all. **The roster is managed by an
+`ADMIN`** – adding, renaming and removing a player all need the admin password. A
+member only reads the roster and puts its players on the list of the evening. A
+player is identified by their name inside the tournament, so there is no id to
+remember – the `:playerName` path parameter is the name itself (URL-encoded, e.g.
+`players/Anna%20M%C3%BCller`). Names are compared exactly: `anna` and `Anna` are
+two different players.
 
 **`GET /tournaments/:tournamentId/players`** → `200`, sorted by name, not paginated.
 
@@ -993,11 +1077,11 @@ Names are compared exactly: `anna` and `Anna` are two different players.
 { "data": [{ "name": "Anna" }, { "name": "Bert" }, { "name": "Clara" }] }
 ```
 
-**`POST /tournaments/:tournamentId/players`**
+**`POST /tournaments/:tournamentId/players`** – admin only
 
 ```http
 POST /api/tournaments/K7M2P4QX/players
-Authorization: Bearer <token>
+Authorization: Bearer <admin token>
 Content-Type: application/json
 
 { "name": "Bert" }
@@ -1005,13 +1089,13 @@ Content-Type: application/json
 
 **Response** `201` → `{ "data": { "name": "Bert" } }`
 
-**Errors:** `409` the name already exists, `422` invalid name.
+**Errors:** `403` member token, `409` the name already exists, `422` invalid name.
 
-**`PATCH /tournaments/:tournamentId/players/:playerName`**
+**`PATCH /tournaments/:tournamentId/players/:playerName`** – admin only
 
 ```http
 PATCH /api/tournaments/K7M2P4QX/players/Betr
-Authorization: Bearer <token>
+Authorization: Bearer <admin token>
 Content-Type: application/json
 
 { "name": "Bert" }
@@ -1023,14 +1107,14 @@ Corrects a typo – the only way to fix one, because a player who plays in a lis
 cannot be deleted. The names recorded in already entered games are rewritten as
 well, and a rename to the same name is a no-op.
 
-**Errors:** `404` unknown player, `409` the new name is already taken, `409` the
-player plays in a list that already counts and the token is a member token (answer
-contains `details.countedLists`).
+**Errors:** `403` member token, `404` unknown player, `409` the new name is
+already taken.
 
 **`DELETE /tournaments/:tournamentId/players/:playerName`** → `204`, no body.
+Admin only.
 
-**Errors:** `404` unknown player, `409` the player plays in a list (answer
-contains the number of lists in `details`).
+**Errors:** `403` member token, `404` unknown player, `409` the player plays in a
+list (answer contains the number of lists in `details`).
 
 ### Lists
 
@@ -1052,6 +1136,8 @@ case.
 | POST   | `/tournaments/:tournamentId/lists`                 | any   | Create a list                                          |
 | GET    | `/tournaments/:tournamentId/lists/:listId`         | any   | One list incl. lineup and games                        |
 | GET    | `/tournaments/:tournamentId/lists/:listId/results` | any   | The result table of the list                           |
+| GET    | `/tournaments/:tournamentId/lists/:listId/next-round` | any | The round a new game would create (Geber-Regel)        |
+| GET    | `/tournaments/:tournamentId/lists/:listId/progression` | any | The account of every player before and after every round |
 | PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                                     |
 | DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                        |
 | POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it counts and is locked for members |
@@ -1355,6 +1441,98 @@ roles, also after the list was submitted.
 
 **Errors:** `404` unknown list.
 
+#### `GET /tournaments/:tournamentId/lists/:listId/next-round`
+
+The round that a `POST …/games` would create: which player deals and which three
+players may be the **Alleinspieler** of that round (the "Geber-Regel", see
+[Entering a game](#entering-a-game)). A frontend asks this instead of reproducing
+the rule, so the players it offers for selection can never differ from the ones
+the entry of a game accepts.
+
+Reading is allowed for both roles on any day – like the other `GET`s it says
+nothing about whether a game may actually be entered; the `POST` on `…/games`
+decides that.
+
+The lineup has to be complete (3, 4 or 5 players), otherwise the answer is `409`
+– the same rule the entry of a game enforces.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "listId": "3b6f1c8a-9d24-4c31-9a5f-6f5f0f2c1b77",
+    "position": 5,
+    "lineup": ["Anna", "Bert", "Clara", "Dora", "Emil"],
+    "dealer": "Clara",
+    "playingPlayers": ["Anna", "Clara", "Emil"],
+    "sittingOutPlayers": ["Bert", "Dora"]
+  }
+}
+```
+
+`position` is the round number the new game gets and `dealer` the Geber of that
+round. `playingPlayers` names the three players of the round in seating order –
+exactly the ones that may be sent as `declarer` – and `sittingOutPlayers` the
+ones who sit out: with five players the Geber plays and the two seats around them
+sit out, with four the Geber sits out, with three nobody does.
+
+**Errors:** `404` unknown list, `409` the lineup is not complete yet.
+
+#### `GET /tournaments/:tournamentId/lists/:listId/progression`
+
+The **Spielstand** of the evening: the account of every player of the lineup
+before and after every round. It is what a progression chart of a list and the
+"Spielstand vor und nach dem Spiel" of a single game are drawn from, and it
+follows the rule of the [result table](#results-ergebnistabelle) – only the
+games of the Alleinspieler move an account.
+
+Reading is allowed for both roles on any day, also for an empty list: the answer
+then has `rounds: []` and every account at 0.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "matchday": "2026-09-16",
+    "lineup": ["Anna", "Bert", "Clara", "Dora"],
+    "playerCount": 4,
+    "rounds": [
+      {
+        "position": 1,
+        "dealer": "Anna",
+        "declarer": "Bert",
+        "gameValue": 120,
+        "deltas": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 },
+        "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+      },
+      {
+        "position": 2,
+        "dealer": "Bert",
+        "declarer": null,
+        "gameValue": 0,
+        "deltas": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 0 },
+        "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+      }
+    ],
+    "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+  }
+}
+```
+
+Every round follows the order of the games, so `rounds[i]` belongs to
+`games[i]` of the list and `deltas` says what that round changed for each player:
+the Spielwert for a won Alleinspiel, **twice** the Spielwert for a lost one,
+`0` for everybody else – including a game that was passed out.
+
+`accounts` is the account afterwards and starts at 0; the flat +50/−50 of a won
+or lost Alleinspiel and the opponent bonus are **not** part of it – they are added
+on top in the `total` of the result table, which is why the last `accounts` is the
+`points` of the players, not their `score`.
+
+**Errors:** `404` unknown list.
+
 #### `PUT /tournaments/:tournamentId/lists/:listId/players`
 
 Replaces the lineup. `playerNames[0]` deals in round 1.
@@ -1601,6 +1779,7 @@ reopened on the same evening, both are `false`/`OPEN` again.
 | `position`                                                | number                                                            | API – the round, counted from 1               |
 | `dealer`                                                  | string                                                            | API – follows the seating order               |
 | `players`                                                 | string[]                                                          | API – the three players of the round          |
+| `sittingOutPlayers`                                       | string[]                                                          | API – the lineup minus the three above        |
 | `passedOut`                                               | boolean                                                           | client – step 1                               |
 | `declarer`                                                | string \| null                                                    | client – step 1, `null` when passed out       |
 | `gameType`                                                | `KARO` \| `HERZ` \| `PIK` \| `KREUZ` \| `GRAND` \| `NULL` \| null | client – step 2, `null` when passed out       |
@@ -1613,12 +1792,15 @@ reopened on the same evening, both are `false`/`OPEN` again.
 | `negativeGameValue`                                       | number                                                            | API – **twice** `gameValue` if lost, else `0` |
 | `note`                                                    | string \| null                                                    | client, free text, max 500 characters         |
 
-`dealer`, `position`, `players`, `gameValue` and the two result columns are not
-part of a request – sending them is ignored, so the answer of a `GET` can be sent
-back unchanged. `players` always has exactly **three** entries: the lineup minus
-the players who sit out this round (see [Entering a game](#entering-a-game)),
-which is also what the [standings](#tournament-standings) counts as a played
-game. `positiveGameValue` and `negativeGameValue` are the
+`dealer`, `position`, `players`, `sittingOutPlayers`, `gameValue` and the two
+result columns are not part of a request – sending them is ignored, so the answer
+of a `GET` can be sent back unchanged. `players` always has exactly **three**
+entries: the lineup minus the players who sit out this round (see
+[Entering a game](#entering-a-game)), which is also what the
+[standings](#tournament-standings) counts as a played game; `sittingOutPlayers`
+names the others, so `players` and `sittingOutPlayers` together are the lineup –
+the same pair `GET …/next-round` answers for the round that comes next.
+`positiveGameValue` and `negativeGameValue` are the
 "Positiver/Negativer Spielwert" columns of the result table; exactly one of them
 is non-zero for a game that was played. A game that was passed out is a complete
 record with `declarer: null` and nothing else – `players` still names the three
@@ -1734,8 +1916,9 @@ Known limitations:
   user name. The passwords are what protects a tournament.
 - `CORS_ORIGIN` defaults to `*`, which is fine for a browser app that sends a
   bearer token (no cookies). Set it to your own origin in production.
-- Any role may add and remove players as long as they are not on a list. Say so
-  if roster changes should be an admin-only action.
+- The whole roster is reserved for an `ADMIN`: adding, renaming and removing a
+  player all need the admin password. Members can only read it and put its
+  players on a list.
 
 ## Troubleshooting
 
@@ -1795,6 +1978,7 @@ backend/
 │   ├── middleware/             # auth, cors, error handler, request context
 │   ├── modules/
 │   │   ├── audit/              # the change log ("Protokoll") of a tournament
+│   │   ├── rules/              # the rules of the game as read-only data (/rules)
 │   │   ├── tournaments/        # schemas, service, routes
 │   │   │   ├── tournament.routes.ts   # /tournaments, /tournaments/:id
 │   │   │   └── standings.ts           # the standing over all matchdays
@@ -1803,6 +1987,7 @@ backend/
 │   │   │   ├── game-rules.ts     # pure Skat rules: dealer, Spielwert, Spitzen
 │   │   │   ├── game-entry.ts     # rules of the entry flow that need a list
 │   │   │   ├── scoring.ts        # the result table of a sheet
+│   │   │   ├── round-preview.ts  # the next round: Geber + allowed Alleinspieler
 │   │   │   ├── params.ts         # the route parameters of lists and games
 │   │   │   ├── game.schemas.ts   # the properties of a game
 │   │   │   └── game.mapper.ts    # request -> stored game -> DTO
