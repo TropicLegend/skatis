@@ -196,7 +196,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
    Bewegung – eine kleine, gemeinsame Sammlung. Alles nur über `transform` und
    `opacity`, damit das Handy nichts neu berechnen muss.
    --------------------------------------------------------------------------- */
-@keyframes screen-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes screen-in{from{opacity:0}to{opacity:1}}
 @keyframes sheet-up{from{opacity:.55;transform:translateY(100%)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes card-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
@@ -205,7 +205,9 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 @keyframes draw-line{to{stroke-dashoffset:0}}
 @keyframes pie-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
 
-/** Ein Screen-Wechsel: kurz eingerückt und eingeblendet. */
+/** Ein Screen-Wechsel wird nur eingeblendet – bewusst ohne `transform`: ein
+   transformierter Wrapper wäre der Bezugsrahmen für `position:fixed`, und dann
+   klebte jedes Blatt darin am Ende der Seite statt am unteren Bildschirmrand. */
 .screen{animation:screen-in .26s ease both}
 /** Eine Kartenliste erscheint gestaffelt – jedes Element bringt seinen Index mit. */
 .card-enter{animation:card-in .3s ease both;animation-delay:calc(var(--i,0) * 38ms)}
@@ -474,6 +476,26 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .login-art h1{font-size:34px}
   .login-panel{padding:26px 20px 34px}
   .mode-tabs{gap:14px}
+}
+
+/* ---------------------------------------------------------------------------
+   Korrekturen am Handy-Blatt und an den Spielkarten.
+   --------------------------------------------------------------------------- */
+@media (max-width:600px){
+  /* Über der Tab-Leiste – sonst verdeckt sie den unteren Teil des Blattes. */
+  .modal-backdrop{z-index:40}
+  /* Das Blatt scrollt seinen eigenen Inhalt; dadurch ist immer alles erreichbar,
+     egal wie lang die Spieldetails sind. */
+  .modal{overflow:auto;overscroll-behavior:contain}
+
+  /* Karte im Protokoll: erst Runde und Ergebnis, darunter die Spielart mit ihren
+     Stufen in einer eigenen Zeile. Vorher schoben zwei Stufen das Ergebnis-Badge
+     über den Text. */
+  .game-card-head{flex-wrap:wrap;gap:8px 10px}
+  .game-card-round{order:1}
+  .game-card-result{order:2;margin-left:auto}
+  .game-card-edit{order:3}
+  .game-card-kind{order:4;flex:1 1 100%;flex-wrap:wrap}
 }
 
 

@@ -128,12 +128,25 @@ function useEscape(onClose) {
 }
 
 /**
+ * Sperrt das Scrollen der Seite, solange ein Blatt offen ist – sonst scrollt auf dem
+ * Handy der Inhalt dahinter, während man im Blatt liest.
+ */
+function useScrollLock() {
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [])
+}
+
+/**
  * Eine Rückfrage als kleines Blatt: `window.confirm` sieht auf dem Handy fremd aus
  * und lässt sich nicht gestalten. Aufbau und Verhalten sind wie bei den anderen
  * Overlays – Tippen daneben oder Escape bricht ab.
  */
 function ConfirmSheet({ title, text, confirmLabel = 'Löschen', onConfirm, onCancel }) {
   useEscape(onCancel)
+  useScrollLock()
   return <div className="modal-backdrop" onClick={onCancel}>
     <div className="modal confirm-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
       <span className="eyebrow">Rückfrage</span>
@@ -329,6 +342,7 @@ function MatchdayPicker({ value, onChange }) {
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   useEscape(onClose)
+  useScrollLock()
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -571,6 +585,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
 
 function CreateListModal({ token, tournament, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
   useEscape(onClose)
+  useScrollLock()
   const rules = useRules()
   const [form, setForm] = useState({ matchday: today, series: 1, table: 1 }); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   // Ein Tisch spielt immer nur eine Liste: solange die Liste zu diesem Spieltag,
@@ -890,6 +905,7 @@ function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, s
 /** Ein Spiel im Detail – inklusive Spielstand vor und nach dieser Runde. */
 function GameDetail({ list, game, round, onClose, onEdit }) {
   useEscape(onClose)
+  useScrollLock()
   if (!game) return null
   const { delta = {}, before = {}, after = {} } = round ?? {}
   const lineup = (list.players || []).map((player) => player.name)
@@ -929,6 +945,7 @@ function GameDetail({ list, game, round, onClose, onEdit }) {
 
 function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }) {
   useEscape(onClose)
+  useScrollLock()
   const [step, setStep] = useState(existingGame ? 4 : 1)
   // In welche Richtung der nächste Schritt gleitet – vorwärts von links, zurück von rechts.
   const [direction, setDirection] = useState('forward')
@@ -1083,6 +1100,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
  */
 function TournamentLog({ tournament, token, onClose }) {
   useEscape(onClose)
+  useScrollLock()
   const [entries, setEntries] = useState(null)
   const [error, setError] = useState('')
 
