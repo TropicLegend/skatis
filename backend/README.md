@@ -87,12 +87,17 @@ while developing a schema change, `npm run db:deploy` to apply migrations by han
 | `npm run build`         | Compile to `dist/`                             |
 | `npm start`             | Run the compiled server                        |
 | `npm test`              | Vitest (unit + HTTP tests, no database needed) |
+| `npm run test:watch`    | Vitest in watch mode                           |
 | `npm run test:coverage` | Coverage report in `coverage/`                 |
 | `npm run typecheck`     | `tsc --noEmit`                                 |
 | `npm run lint`          | ESLint                                         |
+| `npm run lint:fix`      | ESLint with `--fix`                            |
 | `npm run format`        | Prettier                                       |
+| `npm run format:check`  | Prettier in check mode                         |
+| `npm run db:generate`   | Regenerate the Prisma Client                   |
 | `npm run db:migrate`    | Create/apply a migration (development)         |
 | `npm run db:deploy`     | Apply existing migrations (production)         |
+| `npm run db:reset`      | Drop the schema, migrate it and seed nothing   |
 | `npm run db:studio`     | Prisma Studio                                  |
 
 ## How it works
@@ -593,8 +598,8 @@ answers use `camelCase` fields. Enumerations are `UPPER_SNAKE_CASE` values
 `YYYY-MM-DD`, all timestamps in answers are ISO 8601 in UTC.
 
 **Pagination.** Collections that grow over the life of a tournament are
-paginated (`/lists`, `/tournaments`); collections that are naturally small are
-not (a roster, the games of one evening, the players of a lineup, the
+paginated (`/lists`, `/tournaments`, `/log`); collections that are naturally
+small are not (a roster, the games of one evening, the players of a lineup, the
 `lockReasons`).
 
 **Two endpoints before the first token.** `POST /tournaments` and
@@ -727,22 +732,27 @@ not reveal which tournaments exist), `422` invalid payload, `429` too many reque
 | GET    | `/health/ready` | –    | Readiness incl. DB connectivity       |
 | GET    | `/rules`        | –    | Grundwerte, Spitzen and lineup limits of the game |
 
-**`GET /health`** → `200`
+#### `GET /health`
+
+**Response** `200`
 
 ```json
 { "data": { "status": "ok", "uptimeSeconds": 412, "timestamp": "2026-09-18T17:05:12.431Z" } }
 ```
 
-**`GET /health/ready`** → `200` when the database answers, otherwise `503`
+#### `GET /health/ready`
+
+**Response** `200` when the database answers, otherwise `503`
 (`{"error":{"code":"SERVICE_UNAVAILABLE","message":"Database is not reachable"}}`).
 
 ```json
 { "data": { "status": "ready", "database": "up" } }
 ```
 
-**`GET /rules`** → `200`
+#### `GET /rules`
 
-The rules of the game as data – the same constants the service scores with:
+**Response** `200` – the rules of the game as data, the same constants the service
+scores with:
 
 ```json
 {
@@ -820,6 +830,26 @@ knowing the id again. Because a token is bound to one tournament the result neve
 contains more than that single entry – no endpoint enumerates all tournaments,
 and an unauthenticated caller learns nothing about them.
 
+#### `GET /tournaments/:tournamentId`
+
+**Response** `200` – the [tournament object](#tournament), the same shape
+`POST /tournaments` answers.
+
+```json
+{
+  "data": {
+    "id": "K7M2P4QX",
+    "name": "Mittwochsrunde",
+    "matchdays": [3],
+    "listCount": 4,
+    "createdAt": "2026-09-18T17:05:12.431Z",
+    "updatedAt": "2026-09-18T19:42:11.000Z"
+  }
+}
+```
+
+**Errors:** `403` token of another tournament, `404` unknown tournament.
+
 #### `GET /tournaments/:tournamentId/session`
 
 **Response** `200`
@@ -850,54 +880,81 @@ submitted and the ones whose day is over –, best player first. See
         "rank": 1,
         "name": "Bert",
         "gamesPlayed": 2,
+        "won": 1,
+        "lost": 0,
+        "opponentWon": 2,
         "points": 72,
         "wonBonus": 50,
         "lossPenalty": 0,
         "opponentBonus": 60,
         "score": 182,
-        "averageScore": 91
+        "averageScore": 91,
+        "averageScorePer36": 3276,
+        "lastMatchdayChange": 30
       },
       {
         "rank": 2,
         "name": "Anna",
         "gamesPlayed": 1,
+        "won": 0,
+        "lost": 0,
+        "opponentWon": 2,
         "points": 0,
         "wonBonus": 0,
         "lossPenalty": 0,
         "opponentBonus": 60,
         "score": 60,
-        "averageScore": 60
+        "averageScore": 60,
+        "averageScorePer36": 2160,
+        "lastMatchdayChange": 30
       },
       {
         "rank": 3,
         "name": "Dora",
         "gamesPlayed": 3,
+        "won": 0,
+        "lost": 1,
+        "opponentWon": 1,
         "points": -40,
         "wonBonus": 0,
         "lossPenalty": -50,
         "opponentBonus": 30,
         "score": -60,
-        "averageScore": -20
+        "averageScore": -20,
+        "averageScorePer36": -720,
+        "lastMatchdayChange": -90
       },
       {
         "rank": 4,
         "name": "Clara",
         "gamesPlayed": 3,
+        "won": 0,
+        "lost": 1,
+        "opponentWon": 1,
         "points": -46,
         "wonBonus": 0,
         "lossPenalty": -50,
         "opponentBonus": 30,
         "score": -66,
-        "averageScore": -22
+        "averageScore": -22,
+        "averageScorePer36": -792,
+        "lastMatchdayChange": 30
       },
       {
         "rank": null,
         "name": "Emil",
         "gamesPlayed": 0,
+        "won": 0,
+        "lost": 0,
+        "opponentWon": 0,
         "points": 0,
+        "wonBonus": 0,
+        "lossPenalty": 0,
         "opponentBonus": 0,
         "score": 0,
-        "averageScore": null
+        "averageScore": null,
+        "averageScorePer36": null,
+        "lastMatchdayChange": 0
       }
     ]
   }
@@ -1027,6 +1084,8 @@ All shares are percentages rounded to one decimal and `null` while the
 denominator is `0`.
 
 **Errors:** `404` unknown tournament or unknown player.
+
+#### `GET /tournaments/:tournamentId/log`
 
 The **change log** ("Protokoll") of the tournament, newest first. Both roles may
 read it, so a member can follow what an admin changed and an admin can see who
@@ -1327,6 +1386,7 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
         "id": "99815b69-7e3b-4e37-a4a5-eecbadcc6ffe",
         "position": 1,
         "players": ["Bert", "Clara", "Dora"],
+        "sittingOutPlayers": ["Anna"],
         "dealer": "Anna",
         "passedOut": false,
         "declarer": "Bert",
@@ -1350,6 +1410,7 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
         "id": "d19f5d5d-90a7-4062-9f82-81eabce45199",
         "position": 2,
         "players": ["Anna", "Clara", "Dora"],
+        "sittingOutPlayers": ["Bert"],
         "dealer": "Bert",
         "passedOut": false,
         "declarer": "Clara",
@@ -1373,6 +1434,7 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
         "id": "c7038ab0-6620-42fb-ac5f-5fd6f92152b3",
         "position": 3,
         "players": ["Anna", "Bert", "Dora"],
+        "sittingOutPlayers": ["Clara"],
         "dealer": "Clara",
         "passedOut": false,
         "declarer": "Dora",
@@ -1396,6 +1458,7 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
         "id": "52197cd3-3d3f-4d27-ab84-1fccc4dcc0f4",
         "position": 4,
         "players": ["Anna", "Bert", "Clara"],
+        "sittingOutPlayers": ["Dora"],
         "dealer": "Dora",
         "passedOut": true,
         "declarer": null,
@@ -1459,6 +1522,7 @@ roles, also after the list was submitted.
         "points": 0,
         "wonBonus": 0,
         "lossPenalty": 0,
+        "opponentWon": 1,
         "opponentBonus": 30,
         "total": 30
       },
@@ -1473,6 +1537,7 @@ roles, also after the list was submitted.
         "points": 120,
         "wonBonus": 50,
         "lossPenalty": 0,
+        "opponentWon": 1,
         "opponentBonus": 30,
         "total": 200
       },
@@ -1487,6 +1552,7 @@ roles, also after the list was submitted.
         "points": 23,
         "wonBonus": 50,
         "lossPenalty": 0,
+        "opponentWon": 1,
         "opponentBonus": 30,
         "total": 103
       },
@@ -1501,6 +1567,7 @@ roles, also after the list was submitted.
         "points": -40,
         "wonBonus": 0,
         "lossPenalty": -50,
+        "opponentWon": 0,
         "opponentBonus": 0,
         "total": -90
       }
@@ -1730,6 +1797,7 @@ A game that was played (`POST` or `PUT`):
     "id": "99815b69-7e3b-4e37-a4a5-eecbadcc6ffe",
     "position": 1,
     "players": ["Bert", "Clara", "Dora"],
+    "sittingOutPlayers": ["Anna"],
     "dealer": "Anna",
     "passedOut": false,
     "declarer": "Bert",
@@ -2043,9 +2111,9 @@ Known limitations:
 | `409 The day of this list is over, so it can no longer be reopened`               | a list of a past day always counts; an admin can still correct its games                                                |
 | `409 The players of this list cannot be changed any more`                         | the list already contains games                                                                                         |
 | `409 … sits out this round because … deals`                                       | step 1: that player is one of the ones who sit out – check `dealer`                                                     |
-| `409 Serie … Tisch … already has a list for …`                                    | that table of the series already has a sheet that evening – see [Lists](#lists)                                         |
+| `409 Serie … Tisch … is still playing on …`                                       | that table of the series already has an open list that evening – hand it in first, or use another table or series       |
 | `409 Every player of a list has to be part of the tournament`                     | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
-| `409 … plays in a list that already counts, so the name can no longer be changed` | correct the name with the admin password – a list of a past day counts as well                                          |
+| `409 … plays in … list(s) – remove them from these lists first`                   | a player can only be deleted while they are on no list                                                                  |
 | `409 A list consists of 3, 4 or 5 players`                                        | the lineup has the wrong size                                                                                           |
 | `404 List … does not exist in this tournament`                                    | the `:listId` is wrong or the list was deleted – fetch the lists of the evening with `GET /lists?matchday=…`            |
 | `422` with `details.issues[].path`                                                | the field named in `path` is wrong                                                                                      |
@@ -2077,24 +2145,30 @@ Invalid configuration aborts startup with a list of the offending variables.
 
 ```
 backend/
-├── prisma/schema.prisma        # data model (Tournament, Player, GameList, Game)
+├── prisma/schema.prisma        # data model (Tournament, Player, GameList, Game,
+│                               # GameListPlayer, AuditLog)
+├── prisma/migrations/          # SQL migrations, applied on startup
 ├── src/
 │   ├── app.ts                  # express app factory
 │   ├── server.ts               # bootstrap + graceful shutdown
 │   ├── config/env.ts           # validated environment
 │   ├── lib/                    # dates, errors, logger, migrations, passwords,
 │   │                           # prisma, tokens, tournament id generation
-│   ├── middleware/             # auth, cors, error handler, request context
+│   ├── middleware/             # auth, cors, error handler, request context,
+│   │                           # not found, rate limits
 │   ├── modules/
 │   │   ├── audit/              # the change log ("Protokoll") of a tournament
 │   │   ├── rules/              # the rules of the game as read-only data (/rules)
 │   │   ├── tournaments/        # schemas, service, routes
 │   │   │   ├── tournament.routes.ts   # /tournaments, /tournaments/:id
-│   │   │   └── standings.ts           # the standing over all matchdays
+│   │   │   ├── standings.ts           # the standing over all matchdays
+│   │   │   └── player-stats.ts        # how one player took part in the rounds
 │   │   ├── players/            # players of a tournament
+│   │   │   └── player-names.ts        # the names a game stores for its lineup
 │   │   ├── lists/              # lists + games
 │   │   │   ├── game-rules.ts     # pure Skat rules: dealer, Spielwert, Spitzen
 │   │   │   ├── game-entry.ts     # rules of the entry flow that need a list
+│   │   │   ├── list-access.ts    # who may change a list, and why not
 │   │   │   ├── scoring.ts        # the result table of a sheet
 │   │   │   ├── round-preview.ts  # the next round: Geber + allowed Alleinspieler
 │   │   │   ├── params.ts         # the route parameters of lists and games
@@ -2113,8 +2187,12 @@ to the envelope above; Express 5 forwards rejected promises automatically.
 
 `npm test` runs without a database – the suite covers password hashing, token
 handling, every Zod schema and the HTTP layer (routing, auth, CORS, error
-envelope). Business logic that needs PostgreSQL has to be exercised against a
-real instance.
+envelope). The pure rule modules are covered as well: the Skat rules incl. the
+Spielwert, the Geber rule and the round preview, the result table and the
+progression, the standing and its history, the player statistics, the list locks
+with the date arithmetic behind them, the change log entries and the renaming of
+the names inside the games. Business logic that needs PostgreSQL – the Prisma
+queries of the services – has to be exercised against a real instance.
 
 ## Deployment notes
 
