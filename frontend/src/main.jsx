@@ -332,28 +332,38 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   </Shell>
 }
 
+/** Die gewählte Darstellung des Spielprotokolls merkt sich der Browser. */
+const TABLE_STYLE_KEY = 'skatis-table-style'
+
 function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
   const games = list.games || []
   const lineup = (list.players || []).map((player) => player.name)
   const roundsByPosition = new Map(rounds.map((round) => [round.position, round]))
-  // Jeder Spieler bekommt drei Unterspalten: seine Spielpunkte nach dem Spiel
-  // (ohne die Boni) und die Zahl seiner bis dahin gewonnenen bzw. verlorenen
-  // Alleinspiele – gefüllt wird immer nur die Spalte des Alleinspielers.
+  // "Klassisch" stellt hinter die Spielart je Spieler drei Unterspalten: seine
+  // Spielpunkte nach dem Spiel (ohne die Boni) und die Zahl seiner bis dahin
+  // gewonnenen bzw. verlorenen Alleinspiele – gefüllt wird immer nur die Spalte
+  // des Alleinspielers. "Modern" lässt die Blöcke weg und zeigt nur die Zeile.
+  const [style, setStyle] = useState(() => (localStorage.getItem(TABLE_STYLE_KEY) === 'classic' ? 'classic' : 'modern'))
+  const classic = style === 'classic'
+  function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
-  const columns = 7 + lineup.length * 3 + (role === 'ADMIN' ? 1 : 0)
+  const columns = 7 + (classic ? lineup.length * 3 : 0) + (role === 'ADMIN' ? 1 : 0)
   return <section className="games-panel">
     <div className="panel-heading">
       <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
-      <span className="dealer-note">Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus · Zeile antippen für Details</span>
+      <div className="panel-tools">
+        <TableStyleSwitch value={style} onChange={chooseStyle} />
+        <span className="dealer-note">{classic ? 'Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus · Zeile antippen für Details' : 'Geberfolge läuft automatisch · Zeile antippen für Details'}</span>
+      </div>
     </div>
     <div className="table-wrap"><table>
       <thead>
         <tr>
-          <th rowSpan={2}>#</th><th rowSpan={2}>Geber</th><th rowSpan={2}>Alleinspieler</th><th rowSpan={2}>Spielart</th><th rowSpan={2}>Spitzen</th><th rowSpan={2}>Wert</th><th rowSpan={2}>Ausgang</th>
-          {lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
-          {role === 'ADMIN' && <th rowSpan={2} />}
+          <th rowSpan={classic ? 2 : undefined}>#</th><th rowSpan={classic ? 2 : undefined}>Geber</th><th rowSpan={classic ? 2 : undefined}>Alleinspieler</th><th rowSpan={classic ? 2 : undefined}>Spielart</th><th rowSpan={classic ? 2 : undefined}>Spitzen</th><th rowSpan={classic ? 2 : undefined}>Wert</th><th rowSpan={classic ? 2 : undefined}>Ausgang</th>
+          {classic && lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
+          {role === 'ADMIN' && <th rowSpan={classic ? 2 : undefined} />}
         </tr>
-        <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>
+        {classic && <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>}
       </thead>
       <tbody>
         {games.length ? games.map((game) => <tr key={game.id} className="game-row" role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
@@ -364,7 +374,7 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
           <td>{matadorsLabel(game)}</td>
           <td className="value-cell">{game.gameValue || 0}</td>
           <td>{game.passedOut ? '—' : <span className={`result-dot ${game.won ? 'won' : 'lost'}`}>{outcomeLabel(game)}</span>}</td>
-          {lineup.map((name) => {
+          {classic && lineup.map((name) => {
             const declarer = !game.passedOut && game.declarer === name
             return <React.Fragment key={name}>
               <td className={`spielpunkte ${declarer ? 'declarer' : ''}`}>{declarer ? roundValue(game, name, 'points') ?? '' : ''}</td>
@@ -378,6 +388,21 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
     </table></div>
     {children}
   </section>
+}
+
+/**
+ * Schalter zwischen den beiden Darstellungen des Spielprotokolls: links "Modern"
+ * (kompakt, wie vor den Spieler-Blöcken), rechts "Klassisch" (mit Spielpunkten,
+ * Gew und Verl je Spieler).
+ */
+function TableStyleSwitch({ value, onChange }) {
+  const classic = value === 'classic'
+  const action = classic ? 'Moderne Darstellung des Spielprotokolls zeigen' : 'Klassische Darstellung des Spielprotokolls zeigen'
+  return <button type="button" className={`table-style ${classic ? 'classic' : ''}`} title={action} aria-label={action} aria-pressed={classic} onClick={() => onChange(classic ? 'modern' : 'classic')}>
+    <span className={classic ? '' : 'active'}>Modern</span>
+    <span className="switch"><i /></span>
+    <span className={classic ? 'active' : ''}>Klassisch</span>
+  </button>
 }
 
 /** Passwortfeld mit Auge-Button – "Passwort anzeigen" ohne Browser-Add-on. */

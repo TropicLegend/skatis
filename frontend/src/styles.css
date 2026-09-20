@@ -108,4 +108,13 @@ td.spielpunkte.declarer{font-weight:500;color:var(--ink)}
 td.spiel-count{font-size:10px;color:var(--muted)}
 .score-legend{margin:9px 0 0;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
 .score-bills{font-family:'DM Mono';font-size:10px;color:var(--muted);min-width:46px;text-align:center}
-@media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}}
+/* Umschalter der Protokoll-Darstellung (modern / klassisch) */
+.panel-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+.table-style{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;cursor:pointer;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
+.table-style span{transition:color .15s}
+.table-style span.active{color:var(--ink);font-weight:500}
+.table-style .switch{position:relative;width:34px;height:18px;border-radius:9px;background:#e4dfd4;border:1px solid var(--line);transition:background .15s}
+.table-style .switch i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fbfaf6;box-shadow:0 1px 2px rgba(62,53,39,.25);transition:left .15s}
+.table-style.classic .switch{background:var(--mint)}
+.table-style.classic .switch i{left:18px}
+@media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}.panel-heading{flex-direction:column;align-items:flex-start;gap:12px}.panel-tools{justify-content:flex-start}}
