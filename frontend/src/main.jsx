@@ -243,7 +243,7 @@ function TournamentRanking({ standing, tournament, token, lists = [], rankings =
   return <section className="tournament-ranking">
     <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen · Spieler antippen für Details</span></div>
     <div className="ranking-table">
-      <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Gewonnene Alleinspiele">Gew</span><span className="num" title="Verlorene Alleinspiele">Verl</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
+      <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => setDetailPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetailPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
         <span>{player.name}</span>
@@ -307,9 +307,10 @@ function PlayerDetail({ player, history, lists = [], rankings = {}, onClose }) {
         {stat('Ø Punkte pro 36 Spiele', player.averageScorePer36 ?? '–', 'hochgerechnet auf 36 Spiele')}
         {stat('Letzter Spieltag', player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange), 'Veränderung seitdem')}
         {stat('Spielpunkte', signedValue(player.points), 'nur die eigenen Alleinspiele')}
-        {stat('Boni (+50 / −50)', signedValue(player.wonBonus + player.lossPenalty), `${player.won} gewonnen, ${player.lost} verloren`)}
+        {stat('Boni (+50 / −50)', signedValue(player.wonBonus + player.lossPenalty), `${player.won} × +50, ${player.lost} × −50`)}
         {stat('Gegenspiel-Punkte', signedValue(player.opponentBonus), `${player.opponentWon} × verloren von Mitspielern`)}
-        {stat('Gewonnen / Verloren', `${player.won} / ${player.lost}`, 'eigene Alleinspiele')}
+        {stat('Gewonnene Spiele', player.won, 'eigene Alleinspiele gewonnen')}
+        {stat('Verlorene Spiele', player.lost, 'eigene Alleinspiele verloren')}
         {best && stat('Bester Zeitraum', signedValue(best.change), best.label)}
       </div>
       <div className="chart-block">

@@ -126,7 +126,7 @@ tr.summary td.spielpunkte,tr.summary td.spiel-count{color:var(--ink);font-size:1
 tr.summary-top>td{border-top:2px solid var(--ink)}
 td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 /* Rangliste: zehn Spalten, jede Zeile öffnet die Spieler-Details */
-.ranking-header,.ranking-row{grid-template-columns:52px minmax(130px,1fr) 62px 80px 80px 52px 52px 70px 92px 74px;gap:12px;min-width:830px}
+.ranking-header,.ranking-row{grid-template-columns:52px minmax(130px,1fr) 62px 80px 80px 84px 84px 70px 92px 74px;gap:12px;min-width:890px}
 .ranking-header .num,.ranking-row .num{text-align:right}
 .ranking-row{cursor:pointer;transition:background .15s}
 .ranking-row:hover,.ranking-row:focus-visible{background:rgba(37,48,43,.05)}
