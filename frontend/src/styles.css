@@ -498,6 +498,49 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .game-card-kind{order:4;flex:1 1 100%;flex-wrap:wrap}
 }
 
+/* ---------------------------------------------------------------------------
+   Die Turnier-ID ist der Schlüssel zum Login: beschriftet, mit Kopier-Symbol und
+   einem Tipp zu kopieren. Auf dem Handy bleibt sie in der Kopfzeile erreichbar.
+   --------------------------------------------------------------------------- */
+.dashboard-id-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.id-chip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fffdf9;color:var(--ink);cursor:pointer;transition:border-color .2s ease,background-color .2s ease,transform .12s ease}
+.id-chip:hover{border-color:rgba(82,123,120,.5)}
+.id-chip:active{transform:scale(.98)}
+.id-chip.full{padding:8px 14px;margin-bottom:14px}
+.id-chip.compact{padding:5px 11px}
+.id-chip-name{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:13px}
+.id-chip-label{font:500 10px 'DM Mono',monospace;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.id-chip.full .id-chip-label{font-size:11px}
+.id-chip-value{font:600 13px 'DM Mono',monospace;letter-spacing:1.5px}
+.id-chip.full .id-chip-value{font-size:16px}
+.id-chip-icon{flex:none;color:var(--muted)}
+.id-chip.copied{border-color:rgba(63,122,85,.55);background:rgba(63,122,85,.12)}
+.id-chip.copied .id-chip-label,.id-chip.copied .id-chip-icon{color:#2f6b46}
+
+/* Ein Hinweis, der erklärt, wofür die ID gebraucht wird. */
+.id-hint{margin:8px 0 0;max-width:54ch;font-size:13px;line-height:1.5;color:var(--muted)}
+.login-panel .id-hint{margin-top:14px}
+
+@media (max-width:600px){
+  /* Die alte Regel blendete das ID-Chip im Kopf aus – jetzt bleibt es erreichbar. */
+  .tournament-chip{display:inline-flex}
+  .id-chip{min-height:44px;gap:6px;padding:6px 11px}
+  .id-chip-name{display:none}
+  .id-chip.full{margin-bottom:12px}
+  .id-chip.full .id-chip-value{font-size:17px;letter-spacing:2px}
+  .id-hint{max-width:none}
+  /* In der Kopfzeile zählt der Platz der Turnier-ID: das Markenzeichen und die
+     Rolle treten zurück (die Rolle steht in der Übersicht neben der ID). */
+  .brand{display:none}
+  .topbar .role-chip{display:none}
+}
+
+/* Auf größeren Bildschirmen steht die Rolle nur einmal – oben in der Kopfzeile. */
+@media (min-width:601px){
+  .dashboard-id-row .role-chip{display:none}
+}
+
+
 
 
 

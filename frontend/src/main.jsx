@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
@@ -216,13 +216,63 @@ function App() {
   return <div className="screen"><ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} /></div>
 }
 
+/**
+ * Kopiert Text in die Zwischenablage. `navigator.clipboard` gibt es nur in einem
+ * sicheren Kontext (HTTPS oder localhost); für alles andere gibt es den Rückfall
+ * über ein unsichtbares Feld, damit der Knopf auch in einer Testumgebung wirkt.
+ */
+async function copyText(value) {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(value); return true }
+  } catch { /* weiter mit dem Rückfall */ }
+
+  try {
+    const field = document.createElement('textarea')
+    field.value = value
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.opacity = '0'
+    document.body.appendChild(field)
+    field.select()
+    const copied = document.execCommand('copy')
+    field.remove()
+    return copied
+  } catch { return false }
+}
+
+/**
+ * Die Turnier-ID als Knopf: antippen kopiert sie und bestätigt es kurz mit
+ * "Kopiert!". Die ID ist der Schlüssel zum Login – ohne sie kommt niemand in die
+ * Runde –, deshalb trägt sie eine Beschriftung und das übliche Kopier-Symbol.
+ */
+function IdChip({ id, name, compact = false, label = 'Turnier-ID' }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return undefined
+    const timer = window.setTimeout(() => setCopied(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  async function copy() {
+    if (await copyText(id)) setCopied(true)
+  }
+
+  return <button type="button" className={`id-chip ${compact ? 'compact' : 'full'}${copied ? ' copied' : ''}`} onClick={copy} title={`${label} ${id} kopieren`} aria-label={`Turnier-ID ${id} kopieren`}>
+    {name && <span className="id-chip-name">{name}</span>}
+    <span className="id-chip-label" aria-live="polite">{copied ? 'Kopiert!' : label}</span>
+    <strong className="id-chip-value">{id}</strong>
+    {copied ? <Check size={15} className="id-chip-icon" /> : <Copy size={15} className="id-chip-icon" />}
+  </button>
+}
+
 function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnierbüro' }) {
   const [showLog, setShowLog] = useState(false)
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">S</span><span>skatis</span></div>
       <div className="topbar-right">
-        {tournament && <span className="tournament-chip"><span className="chip-dot" />{tournament.name}<strong>{tournament.id}</strong></span>}
+        {tournament && <IdChip id={tournament.id} name={tournament.name} label="ID" compact />}
         {role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}
         <button className="icon-button help-button" title="Hilfe"><CircleHelp size={18} /></button>
         <button className="icon-button topbar-log" title="Protokoll der Änderungen" aria-label="Protokoll der Änderungen" onClick={() => setShowLog(true)}><History size={18} /></button>
@@ -250,7 +300,7 @@ function Login({ onLogin, onCreate }) {
   return <div className="login-page">
     <div className="login-art"><div className="art-kicker">DIE RUNDE BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Dein digitales Skatblatt für faire Runden, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
     <div className="login-panel">
-      <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deine nächste Skatrunde.'}</p></div>
+      <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deine nächste Skatrunde. Die Turnier-ID bekommst du danach zum Weitergeben.'}</p>{mode === 'login' && <p className="id-hint">Die ID bekommst du von der Person, die das Turnier angelegt hat. Sie steht später immer oben in der App und lässt sich dort antippen und kopieren.</p>}</div>
       <div className="mode-tabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Einloggen</button><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Turnier erstellen</button></div>
       <form onSubmit={submit}>
         {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsrunde" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} /></>}
@@ -306,7 +356,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       <div className="screen" key={`player-${player.name}`}><PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => setDetailPlayer(null)} onOpenList={onOpenList} /></div>
     </Shell>
   }
-  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
+  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><div className="dashboard-id-row"><IdChip id={tournament?.id} label="Turnier-ID" />{role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}</div><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p><p className="id-hint">Mit dieser ID und dem Passwort kommt jeder in die Runde – antippen kopiert sie zum Weitergeben.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
     {showLists && <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong><CountUp value={lists.length} /></strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong><CountUp value={days.length} /></strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
     {showLists && <>
