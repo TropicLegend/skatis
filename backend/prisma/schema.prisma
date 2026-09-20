@@ -34,6 +34,10 @@ model Tournament {
   matchdays         Int[]
   adminPasswordHash String
   passwordHash      String
+  /// Counts how often the player password was replaced. Tokens carry the version
+  /// they were issued with; a request with an older version is rejected, so
+  /// changing the password ends every running session (see `lib/session-version.ts`).
+  sessionVersion    Int        @default(0)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   lists             GameList[]

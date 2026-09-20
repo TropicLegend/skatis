@@ -77,7 +77,11 @@ tournamentRouter.post('/:tournamentId/session', loginLimiter, async (req, res) =
     throw unauthorized('Invalid tournament id or password');
   }
 
-  const { token, expiresAt } = issueSessionToken(tournamentId, authentication.role);
+  const { token, expiresAt } = issueSessionToken(
+    tournamentId,
+    authentication.role,
+    authentication.sessionVersion,
+  );
   const tournament = await getTournament(tournamentId);
 
   res.json({

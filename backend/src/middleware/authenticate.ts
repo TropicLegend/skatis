@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { forbidden, unauthorized } from '../lib/http-error.js';
+import { currentSessionVersion } from '../lib/session-version.js';
 import { normalizeTournamentId } from '../lib/tournament-id.js';
 import { verifySessionToken, type TournamentRole } from '../lib/tokens.js';
 
@@ -16,7 +17,7 @@ export interface RequestAuth {
  * those roles (no roles = any authenticated role).
  */
 export function authenticate(...allowedRoles: readonly TournamentRole[]): RequestHandler {
-  return (req, _res, next) => {
+  return async (req, _res, next) => {
     const header = req.header('authorization');
     if (!header || !header.toLowerCase().startsWith('bearer ')) {
       next(unauthorized('Missing bearer token'));
@@ -48,6 +49,15 @@ export function authenticate(...allowedRoles: readonly TournamentRole[]): Reques
 
     if (allowedRoles.length > 0 && !allowedRoles.includes(claims.role)) {
       next(forbidden(`This action requires the ${allowedRoles.join(' or ')} role`));
+      return;
+    }
+
+    // Erst nach den Checks ohne Datenbank: die Sitzungs-Version steht im Turnier.
+    // Ein neues Spielerpasswort erhöht sie, damit sind alle älteren Tokens ungültig –
+    // auch das, mit dem die Änderung gemacht wurde.
+    const version = await currentSessionVersion(claims.tournamentId);
+    if (version === null || version !== claims.version) {
+      next(unauthorized('The session is no longer valid – please sign in again'));
       return;
     }
 

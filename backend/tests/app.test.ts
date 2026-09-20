@@ -1,9 +1,22 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { currentSessionVersion } from '../src/lib/session-version.js';
 import { issueSessionToken } from '../src/lib/tokens.js';
 
+// Die Middleware liest die Sitzungs-Version des Turniers. Die Suite läuft ohne
+// Datenbank, also wird genau diese eine Abfrage ersetzt – alle anderen Prüfungen
+// (Signatur, Turnierbindung, Rolle) laufen unverändert.
+vi.mock('../src/lib/session-version.js', () => ({
+  currentSessionVersion: vi.fn(async () => 0),
+}));
+
 const app = createApp();
+
+// Jeder Test startet mit der Version 0; einzelne Tests setzen sie gezielt um.
+beforeEach(() => {
+  vi.mocked(currentSessionVersion).mockResolvedValue(0);
+});
 
 const TOURNAMENT_ID = 'K7M2P4QX';
 const OTHER_TOURNAMENT_ID = 'Z9YXWVTS';
@@ -99,6 +112,43 @@ describe('api', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects a token that carries an older session version', async () => {
+    // So sieht es nach einem Passwortwechsel aus: das Turnier steht bei 4, das
+    // Token wurde noch mit 3 ausgestellt.
+    vi.mocked(currentSessionVersion).mockResolvedValueOnce(4);
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN', 3);
+
+    const response = await request(app)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('accepts a token that carries the current session version', async () => {
+    vi.mocked(currentSessionVersion).mockResolvedValueOnce(7);
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN', 7);
+
+    const response = await request(app)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists`)
+      .set('Authorization', `Bearer ${token}`);
+
+    // Kommt durch die Middleware und scheitert erst an der Datenbank der Suite.
+    expect(response.status).not.toBe(401);
+  });
+
+  it('rejects a token whose tournament no longer exists', async () => {
+    vi.mocked(currentSessionVersion).mockResolvedValueOnce(null);
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
+
+    const response = await request(app)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
   });
 
   it('protects the tournament details', async () => {

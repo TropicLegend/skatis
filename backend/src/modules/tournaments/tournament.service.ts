@@ -326,6 +326,9 @@ export async function updateTournament(
   }
   if (input.password !== undefined) {
     data.passwordHash = await hashPassword(input.password);
+    // Ein neues Spielerpasswort beendet alle laufenden Sitzungen: jedes ausgestellte
+    // Token trägt die alte Version und wird von der Middleware abgelehnt.
+    data.sessionVersion = { increment: 1 };
     changed.push('password');
   }
 
@@ -355,6 +358,8 @@ export async function deleteTournament(tournamentId: string): Promise<void> {
 
 export interface TournamentAuthentication {
   role: TournamentRole;
+  /** Sitzungs-Version, mit der das Token ausgestellt wird (siehe `lib/session-version.ts`). */
+  sessionVersion: number;
 }
 
 /**
@@ -369,7 +374,7 @@ export async function authenticateTournament(
 ): Promise<TournamentAuthentication | null> {
   const tournament = await prisma.tournament.findUnique({
     where: { id: tournamentId },
-    select: { adminPasswordHash: true, passwordHash: true },
+    select: { adminPasswordHash: true, passwordHash: true, sessionVersion: true },
   });
 
   if (!tournament) {
@@ -383,7 +388,7 @@ export async function authenticateTournament(
     verifyPassword(password, tournament.passwordHash),
   ]);
 
-  if (isAdmin) return { role: 'ADMIN' };
-  if (isMember) return { role: 'MEMBER' };
+  if (isAdmin) return { role: 'ADMIN', sessionVersion: tournament.sessionVersion };
+  if (isMember) return { role: 'MEMBER', sessionVersion: tournament.sessionVersion };
   return null;
 }

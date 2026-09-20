@@ -394,8 +394,10 @@ passwords are stored as scrypt hashes; a password can never be read back.
 
 Both passwords are chosen when the tournament is created. Afterwards only the
 player password can be replaced (`PATCH /tournaments/:tournamentId`); the admin
-password is fixed for the lifetime of the tournament. Every change is written to
-the [change log](#get-tournamentstournamentidlog), so members can see what an
+password is fixed for the lifetime of the tournament. A new player password ends
+**all** running sessions at once – also the one that set it, so the change is
+followed by a fresh login. Every change is written to the
+[change log](#get-tournamentstournamentidlog), so members can see what an
 admin did.
 
 ### Tournament id
@@ -423,6 +425,11 @@ Authorization: Bearer <token>
 A token used against another tournament id is rejected with `403`. Whether a
 stored token is still valid can be checked with
 `GET /api/tournaments/:tournamentId/session`.
+
+Every token also carries the **session version** of its tournament. It rises as
+soon as the player password is replaced, so a request with an older version is
+rejected with `401` – the change ends every running session, including the one of
+the admin who made it.
 
 ### Domain rules
 
@@ -1168,8 +1175,10 @@ Content-Type: application/json
 
 **Response** `200` – the updated [tournament object](#tournament).
 
-Tokens that are already out there stay valid until they expire, also after a
-password was changed – see [Security notes](#security-notes).
+Tokens that are already out there stay valid until they expire, also after
+`matchdays` or `name` were changed – see [Security notes](#security-notes). A new
+`password` is different: it ends every session (including this one), so the next
+request answers `401 The session is no longer valid – please sign in again`.
 
 **Errors:** `403` member token, `422` invalid payload.
 
@@ -2084,10 +2093,11 @@ What you have to do:
 
 Known limitations:
 
-- Tokens stay valid until they expire (`JWT_EXPIRES_IN`, default 12 h) – also
-  after a password was changed, and deleting a tournament does not revoke them.
-  Shorten the lifetime if that matters; revoking needs a token version that is
-  checked against the tournament on every request.
+- Tokens stay valid until they expire (`JWT_EXPIRES_IN`, default 12 h). Deleting a
+  tournament does not revoke them, but they become worthless: the middleware answers
+  `401` for a tournament that does not exist any more. Everything else – a new player
+  password – revokes them immediately: every token carries the session version of its
+  tournament and a request with an older version is rejected.
 - The rate limiter counts per process, not across instances.
 - The tournament id is not a secret: it is shown in the frontend and acts as the
   user name. The passwords are what protects a tournament.
@@ -2103,6 +2113,7 @@ Known limitations:
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `401 Missing bearer token`                                                        | header missing or not `Authorization: Bearer <token>`                                                                   |
 | `401 Invalid or expired session token`                                            | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
+| `401 The session is no longer valid – please sign in again`                       | the player password was replaced, which ends every session – sign in with the new one                                   |
 | `403 The session token does not grant access to this tournament`                  | the token belongs to another tournament id                                                                              |
 | `403 … is not a matchday of …`                                                    | the weekday of that date is not in `matchdays`                                                                          |
 | `403 Lists can only be created or changed on the current matchday`                | members may only touch today's list – use the admin password                                                            |

@@ -16,8 +16,29 @@ describe('session tokens', () => {
     expect(verifySessionToken(token)).toEqual({
       tournamentId: TOURNAMENT_ID,
       role: 'ADMIN',
+      version: 0,
     });
     expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('carries the session version it was issued with', () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER', 5);
+
+    expect(verifySessionToken(token)).toEqual({
+      tournamentId: TOURNAMENT_ID,
+      role: 'MEMBER',
+      version: 5,
+    });
+  });
+
+  it('treats a token without a version claim as version 0', () => {
+    const older = jwt.sign({ role: 'MEMBER' }, process.env.JWT_SECRET as string, {
+      subject: TOURNAMENT_ID,
+      issuer: TOKEN_ISSUER,
+      audience: TOKEN_AUDIENCE,
+    });
+
+    expect(verifySessionToken(older).version).toBe(0);
   });
 
   it('rejects a tampered token', () => {

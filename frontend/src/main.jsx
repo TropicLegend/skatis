@@ -27,14 +27,27 @@ function signedValue(value) {
   return '0'
 }
 
+/**
+ * Wird aufgerufen, wenn der Server ein Token ablehnt: abgelaufen oder durch einen
+ * Passwortwechsel ungültig. `App` hängt dort das Abmelden ein – so landet jede
+ * Anfrage, die ein totes Token benutzt, auf der Anmeldeseite statt in einem Fehler.
+ */
+let sessionExpiredHandler = null
+
 async function request(path, options = {}) {
+  const { token, body, skipSessionExpiry = false, ...init } = options
   const response = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    ...init,
+    body: body ? JSON.stringify(body) : undefined,
   })
   const payload = response.status === 204 ? null : await response.json()
-  if (!response.ok) throw new Error(payload?.error?.message || 'Die Anfrage konnte nicht verarbeitet werden.')
+  if (!response.ok) {
+    // Beim Anmelden selbst bedeutet 401 nur „falsches Passwort“ – dort darf die
+    // Sitzungs-Meldung nicht dazwischenfunken.
+    if (response.status === 401 && !skipSessionExpiry && sessionExpiredHandler) sessionExpiredHandler()
+    throw new Error(payload?.error?.message || 'Die Anfrage konnte nicht verarbeitet werden.')
+  }
   return payload?.data
 }
 
@@ -171,12 +184,15 @@ function App() {
   const [selectedList, setSelectedList] = useState(null)
   const [view, setView] = useState(token ? 'dashboard' : 'login')
   const [notice, setNotice] = useState('')
+  // Grund, warum jemand wieder auf der Anmeldeseite steht (z. B. Passwortwechsel).
+  const [loginNotice, setLoginNotice] = useState('')
 
   async function login(id, password) {
-    const session = await request(`/tournaments/${id.trim()}/session`, { method: 'POST', body: { password } })
+    const session = await request(`/tournaments/${id.trim()}/session`, { method: 'POST', body: { password }, skipSessionExpiry: true })
     localStorage.setItem('skatis-token', session.token)
     localStorage.setItem('skatis-tournament', JSON.stringify(session.tournament))
     localStorage.setItem('skatis-role', session.role)
+    setLoginNotice('')
     setToken(session.token)
     setRole(session.role)
     setTournament(session.tournament)
@@ -204,14 +220,21 @@ function App() {
     if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(error.message))
   }, [token, tournament, view])
 
-  function logout() {
+  function logout(message = '') {
     localStorage.removeItem('skatis-token')
     localStorage.removeItem('skatis-tournament')
     localStorage.removeItem('skatis-role')
     setToken(null); setRole(null); setTournament(null); setView('login'); setSelectedList(null)
+    setLoginNotice(message)
   }
 
-  if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} /></div>
+  // Ein abgelehntes Token (abgelaufen oder nach einem Passwortwechsel ungültig) führt
+  // zurück zur Anmeldung – egal welche Anfrage es war.
+  useEffect(() => {
+    sessionExpiredHandler = () => logout('Deine Sitzung ist beendet – bitte melde dich neu an.')
+  }, [])
+
+  if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} notice={loginNotice} /></div>
   if (view === 'dashboard') return <div className="screen"><Dashboard tournament={tournament} role={role} lists={lists} notice={notice} onOpenList={openList} onLogout={logout} token={token} onCreated={refreshLists} onTournamentUpdated={(updated) => { setTournament(updated); localStorage.setItem('skatis-tournament', JSON.stringify(updated)) }} /></div>
   return <div className="screen"><ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} /></div>
 }
@@ -286,7 +309,7 @@ function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnier
   </div>
 }
 
-function Login({ onLogin, onCreate }) {
+function Login({ onLogin, onCreate, notice = '' }) {
   const [mode, setMode] = useState('login')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -302,6 +325,7 @@ function Login({ onLogin, onCreate }) {
     <div className="login-panel">
       <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deine nächste Skatrunde. Die Turnier-ID bekommst du danach zum Weitergeben.'}</p>{mode === 'login' && <p className="id-hint">Die ID bekommst du von der Person, die das Turnier angelegt hat. Sie steht später immer oben in der App und lässt sich dort antippen und kopieren.</p>}</div>
       <div className="mode-tabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Einloggen</button><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Turnier erstellen</button></div>
+      {notice && <div className="info-message">{notice}</div>}
       <form onSubmit={submit}>
         {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsrunde" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} /></>}
         {error && <div className="error-message">{error}</div>}
@@ -367,7 +391,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
-    {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated) => { onTournamentUpdated(updated); setShowSettings(false) }} />}
+    {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
   </Shell>
 }
 
@@ -396,7 +420,7 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  async function submit(event) { event.preventDefault(); setError(''); try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, ...(password ? { password } : {}) } }); onUpdated(updated) } catch (problem) { setError(problem.message) } }
+  async function submit(event) { event.preventDefault(); setError(''); try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) } }
   return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
