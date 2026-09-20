@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
+import { useMobile } from './lib/useMedia.js'
 import './styles.css'
 
 // Die Basis-URL der API lässt sich beim Bauen überschreiben (`VITE_API_BASE`), damit
@@ -129,9 +130,9 @@ function App() {
     setToken(null); setRole(null); setTournament(null); setView('login'); setSelectedList(null)
   }
 
-  if (view === 'login') return <Login onLogin={login} onCreate={createTournament} />
-  if (view === 'dashboard') return <Dashboard tournament={tournament} role={role} lists={lists} notice={notice} onOpenList={openList} onLogout={logout} token={token} onCreated={refreshLists} onTournamentUpdated={(updated) => { setTournament(updated); localStorage.setItem('skatis-tournament', JSON.stringify(updated)) }} />
-  return <ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} />
+  if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} /></div>
+  if (view === 'dashboard') return <div className="screen"><Dashboard tournament={tournament} role={role} lists={lists} notice={notice} onOpenList={openList} onLogout={logout} token={token} onCreated={refreshLists} onTournamentUpdated={(updated) => { setTournament(updated); localStorage.setItem('skatis-tournament', JSON.stringify(updated)) }} /></div>
+  return <div className="screen"><ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} /></div>
 }
 
 function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnierbüro' }) {
@@ -142,7 +143,8 @@ function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnier
       <div className="topbar-right">
         {tournament && <span className="tournament-chip"><span className="chip-dot" />{tournament.name}<strong>{tournament.id}</strong></span>}
         {role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}
-        <button className="icon-button" title="Hilfe"><CircleHelp size={18} /></button>
+        <button className="icon-button help-button" title="Hilfe"><CircleHelp size={18} /></button>
+        <button className="icon-button topbar-log" title="Protokoll der Änderungen" aria-label="Protokoll der Änderungen" onClick={() => setShowLog(true)}><History size={18} /></button>
         <button className="icon-button" title="Abmelden" onClick={onLogout}><LogOut size={18} /></button>
       </div>
     </header>
@@ -191,10 +193,18 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [standing, setStanding] = useState(null)
   const [detailPlayer, setDetailPlayer] = useState(null)
   const [filter, setFilter] = useState('all')
+  // Auf dem Handy stehen die drei Bereiche nicht untereinander, sondern hinter
+  // der Tab-Leiste: nur der gewählte Abschnitt wird gebaut – das spart auch die
+  // Verlaufs-Abfragen der Rangliste, solange sie niemand sehen will.
+  const mobile = useMobile()
+  const [section, setSection] = useState('lists')
   const filtered = lists.filter((list) => filter === 'all' || list.matchday === filter)
   const days = [...new Set(lists.map((list) => list.matchday))]
   // An welchen Wochentagen gespielt werden kann – Namen statt einer Zahl.
   const matchdayNames = [...(tournament?.matchdays || [])].sort((a, b) => a - b).map((day) => weekdayLabel(day)).filter(Boolean)
+  const showLists = !mobile || section === 'lists'
+  const showRanking = !mobile || section === 'ranking'
+  const showPlayers = !mobile || section === 'players'
   async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })) }
   async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(error.message) } }
   function startEditing(player) { setEditingPlayer(player.name); setEditedPlayerName(player.name); setPlayerError('') }
@@ -212,19 +222,36 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   if (detailPlayer) {
     const player = standing?.players?.find((entry) => entry.name === detailPlayer.name) ?? detailPlayer
     return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Spieler">
-      <PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => setDetailPlayer(null)} onOpenList={onOpenList} />
+      <div className="screen" key={`player-${player.name}`}><PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => setDetailPlayer(null)} onOpenList={onOpenList} /></div>
     </Shell>
   }
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
-    <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>
-    <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
-    <div className="list-grid">{filtered.length ? filtered.map((list) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
-    {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={setDetailPlayer} />} 
-    <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>
+    {showLists && <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
+    {showLists && <>
+      <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
+      <div className="list-grid">{filtered.length ? filtered.map((list, index) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} index={index} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
+    </>}
+    {showRanking && standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={setDetailPlayer} />}
+    {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
+    {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated) => { onTournamentUpdated(updated); setShowSettings(false) }} />}
   </Shell>
+}
+
+/**
+ * Die Tab-Leiste der Handy-Ansicht: die drei Bereiche der Übersicht, mit einem
+ * gleitenden Feld hinter dem aktiven Tab. Auf dem Desktop gibt es sie nicht – dort
+ * stehen die Abschnitte wie bisher untereinander.
+ */
+const SECTIONS = [['lists', 'Übersicht', ClipboardList], ['ranking', 'Rangliste', Trophy], ['players', 'Spieler', Users]]
+
+function SectionTabs({ value, onChange }) {
+  return <nav className="tabbar" aria-label="Bereiche">
+    <i className="tab-pill" style={{ '--i': Math.max(0, SECTIONS.findIndex(([id]) => id === value)) }} aria-hidden="true" />
+    {SECTIONS.map(([id, label, Icon]) => <button key={id} type="button" className={value === id ? 'active' : ''} aria-current={value === id ? 'page' : undefined} onClick={() => { onChange(id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}><Icon size={22} /><span>{label}</span></button>)}
+  </nav>
 }
 
 function MatchdayPicker({ value, onChange }) {
@@ -240,7 +267,7 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   return <div className="modal-backdrop"><div className="modal settings-modal"><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
-function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
+function ListCard({ list, ranking, index = 0, onClick }) { return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
 function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
