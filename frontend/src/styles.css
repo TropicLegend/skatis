@@ -386,5 +386,48 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .game-summary-note{margin-top:8px;font-size:12px;color:var(--muted)}
 }
 
+/* Rückmeldungen (gespeichert, Fehler) erscheinen kurz eingeschoben. */
+.success-message,.error-message{animation:card-in .25s ease both}
+
+@keyframes step-forward{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+@keyframes step-back{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+
+/* ---------------------------------------------------------------------------
+   Handy: Wizard und Modals liegen unten am Rand – wie ein Blatt, das man von unten
+   hochzieht. Der Wizard scrollt nur seinen Inhalt, sein Fuß bleibt erreichbar.
+   --------------------------------------------------------------------------- */
+@media (max-width:600px){
+  .modal-backdrop{align-items:end;justify-items:stretch;padding:0}
+  .modal,.wizard{width:100%;max-width:100%;max-height:92dvh;border-radius:20px 20px 0 0;padding-bottom:calc(20px + env(safe-area-inset-bottom));animation:sheet-up .3s cubic-bezier(.22,.9,.24,1) both}
+  .modal-close{top:10px;right:10px}
+  .modal-copy{font-size:14px}
+
+  .wizard{display:flex;flex-direction:column;overflow:hidden;max-height:94dvh}
+  .wizard-top{padding:18px 18px 0}
+  .progress{padding:14px 18px 6px}
+  .wizard-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px 18px}
+  .wizard-footer{position:sticky;bottom:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 18px calc(14px + env(safe-area-inset-bottom));background:#fbfaf6;border-top:1px solid var(--line)}
+  .wizard-footer .primary-button,.wizard-footer .secondary-button{width:100%;justify-content:center}
+  .wizard-heading h2{font-size:24px}
+
+  .wizard-step{animation:card-in .26s ease both}
+  .wizard-step.forward{animation-name:step-forward}
+  .wizard-step.back{animation-name:step-back}
+
+  .choice-card,.game-type{min-height:88px}
+  .number-picker button{width:64px;height:64px;font-size:20px}
+  .result-picker button{min-height:96px}
+  .passed-button{min-height:72px}
+  .segmented{width:100%}
+  .segmented button{min-height:var(--tap)}
+  .tip-box{max-width:none}
+  .breadcrumb{flex-wrap:wrap}
+
+  .modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .modal-actions .primary-button,.modal-actions .secondary-button{width:100%;justify-content:center}
+  .primary-button.danger{background:#a8412c;border-color:#a8412c;color:#fdf6f0}
+}
+
+
 
 
