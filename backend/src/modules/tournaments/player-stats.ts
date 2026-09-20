@@ -49,6 +49,8 @@ export interface PlayerRoleStatsDto {
   declarerShare: number | null;
   /** `defender / played` in percent; `null` without a game. */
   defenderShare: number | null;
+  /** `passedOut / played` in percent; `null` without a game. */
+  passedOutShare: number | null;
 }
 
 export interface PlayerDeclarerStatsDto {
@@ -140,6 +142,8 @@ export function playerGameStats(name: string, games: readonly StatGame[]): Playe
   const handGames = declared.filter((game) => game.hand);
   const handWon = handGames.filter((game) => game.won === true).length;
   const defenderWon = defended.filter((game) => game.won === false).length;
+  // A round the player was at the table in is exactly one of the three roles.
+  const passedOut = own.length - declared.length - defended.length;
 
   const gameTypes = GAME_TYPE_ORDER.map((gameType): PlayerGameTypeStatsDto => {
     const played = declared.filter((game) => game.gameType === gameType);
@@ -174,9 +178,10 @@ export function playerGameStats(name: string, games: readonly StatGame[]): Playe
       played: own.length,
       declarer: declared.length,
       defender: defended.length,
-      passedOut: own.length - declared.length - defended.length,
+      passedOut,
       declarerShare: percent(declared.length, own.length),
       defenderShare: percent(defended.length, own.length),
+      passedOutShare: percent(passedOut, own.length),
     },
     declarer: {
       played: declared.length,

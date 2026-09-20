@@ -389,7 +389,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
         {stats && <div className="stat-grid">
           {item('Anteil Alleinspieler', percentLabel(stats.roles.declarerShare), `${stats.roles.declarer} × selbst gespielt`)}
           {item('Anteil Gegenspieler', percentLabel(stats.roles.defenderShare), `${stats.roles.defender} × als Gegenspieler`)}
-          {item('Eingepasst', stats.roles.passedOut, 'Runden ohne Spiel')}
+          {item('Anteil Eingepasst', percentLabel(stats.roles.passedOutShare), `${stats.roles.passedOut} × ohne Spiel`)}
           {item('Spiele am Tisch', stats.roles.played, 'seine gesamten Spiele')}
         </div>}
       </section>

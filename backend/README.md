@@ -982,7 +982,8 @@ Reading is allowed for both roles.
       "defender": 1,
       "passedOut": 0,
       "declarerShare": 83.3,
-      "defenderShare": 16.7
+      "defenderShare": 16.7,
+      "passedOutShare": 0
     },
     "declarer": { "played": 5, "won": 4, "lost": 1, "winShare": 80 },
     "hand": { "played": 2, "won": 2, "share": 40, "winShare": 100 },
@@ -1004,9 +1005,10 @@ Reading is allowed for both roles.
 
 A round the player is part of is exactly one of three things, so the roles add up
 to his `gamesPlayed`: his own **Alleinspiel**, a **Gegenspiel** (somebody else
-played) or a round that was **passed out**. `declarerShare` / `defenderShare` are
-those roles as a share of `played` – "in how many of his games was he the
-Alleinspieler / a Gegenspieler?".
+played) or a round that was **passed out**. `declarerShare` / `defenderShare` /
+`passedOutShare` are those roles as a share of `played` – "in how many of his
+games was he the Alleinspieler, a Gegenspieler, or was the round passed out?" –,
+which is why the three shares add up to 100 %.
 
 The blocks below follow the same pattern: `played` is the number of games in that
 block, `share` is it in percent of the right total (his Alleinspiele) and

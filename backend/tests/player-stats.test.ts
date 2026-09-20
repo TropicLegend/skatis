@@ -51,6 +51,13 @@ describe('playerGameStats', () => {
 
     expect(stats.roles.declarerShare).toBe(33.3);
     expect(stats.roles.defenderShare).toBe(33.3);
+    expect(stats.roles.passedOutShare).toBe(33.3);
+  });
+
+  it('reports the passed out rounds as a share of all his games', () => {
+    const stats = playerGameStats('Anna', [game('Anna', true, 'GRAND'), PASSED_OUT]);
+
+    expect(stats.roles).toMatchObject({ played: 2, passedOut: 1, passedOutShare: 50 });
   });
 
   it('counts the own Alleinspiele and their Erfolgsquote', () => {
@@ -137,6 +144,7 @@ describe('playerGameStats', () => {
       passedOut: 0,
       declarerShare: null,
       defenderShare: null,
+      passedOutShare: null,
     });
     expect(stats.declarer).toEqual({ played: 0, won: 0, lost: 0, winShare: null });
     expect(stats.hand).toEqual({ played: 0, won: 0, share: null, winShare: null });
