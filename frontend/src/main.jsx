@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
-import { GAME_TYPES, gameTypeLabel, gameTypeRules, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, PROGRESS_SCALES, roundAccounts, scaleStep, standingsProgressChart, withStep } from './lib/skat.js'
+import { GAME_TYPES, gameTypeLabel, gameTypeRules, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
 import './styles.css'
 
 const API = 'https://skatis.online/api'
@@ -199,7 +199,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>
     <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
     <div className="list-grid">{filtered.length ? filtered.map((list) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
-    {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} />} 
+    {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} />} 
     <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>
     {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated) => { onTournamentUpdated(updated); setShowSettings(false) }} />}
@@ -221,10 +221,11 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
 
 function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
-function TournamentRanking({ standing, tournament, token }) {
+function TournamentRanking({ standing, tournament, token, lists = [], rankings = {} }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
   const [histories, setHistories] = useState({})
   const [historyError, setHistoryError] = useState('')
+  const [detailPlayer, setDetailPlayer] = useState(null)
 
   // Der Verlauf kommt aus `standings/history`: dieselben Zahlen wie die Tabelle
   // darunter, nur datiert. Jede Skalierung wird einmal geholt und gemerkt.
@@ -237,17 +238,102 @@ function TournamentRanking({ standing, tournament, token }) {
     return () => { active = false }
   }, [tournament?.id, token, scale, histories])
 
-  const chart = standingsProgressChart(histories[scale])
+  const history = histories[scale]
+  const chart = standingsProgressChart(history)
   return <section className="tournament-ranking">
-    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen</span></div>
+    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen · Spieler antippen für Details</span></div>
     <div className="ranking-table">
-      <div className="ranking-header"><span>Rang</span><span>Spieler</span><span>Spiele</span><span>Ø Punkte</span><span>Gesamt</span></div>
-      {standing.players.map((player) => <div className="ranking-row" key={player.name}><strong>{player.rank ?? '–'}</strong><span>{player.name}</span><span>{player.gamesPlayed}</span><span>{player.averageScore ?? '–'}</span><strong>{player.score}</strong></div>)}
+      <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Gewonnene Alleinspiele">Gew</span><span className="num" title="Verlorene Alleinspiele">Verl</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
+      {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => setDetailPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetailPlayer(player) } }}>
+        <strong>{player.rank ?? '–'}</strong>
+        <span>{player.name}</span>
+        <span className="num">{player.gamesPlayed}</span>
+        <span className="num">{player.averageScore ?? '–'}</span>
+        <span className="num">{player.averageScorePer36 ?? '–'}</span>
+        <span className="num">{player.won}</span>
+        <span className="num">{player.lost}</span>
+        <span className="num">{player.opponentWon}</span>
+        <span className={`num ${player.lastMatchdayChange === null ? '' : player.lastMatchdayChange > 0 ? 'up' : player.lastMatchdayChange < 0 ? 'down' : ''}`}>{player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange)}</span>
+        <strong className="num">{player.score}</strong>
+      </div>)}
     </div>
     <ProgressChart eyebrow="Punkteentwicklung" title="Durchschnittspunkte im Turnier" note="Ø Punkte je Spiel – dieselben Zahlen wie die Spalte „Ø Punkte“ der Rangliste. Die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
     {historyError && <div className="error-message">{historyError}</div>}
-    {!histories[scale] && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+    {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+    {detailPlayer && <PlayerDetail player={detailPlayer} history={history} lists={lists} rankings={rankings} onClose={() => setDetailPlayer(null)} />}
   </section>
+}
+
+/**
+ * Details und Statistiken eines Spielers: die Zahlen der Rangliste, der Verlauf
+ * seines Kontos und seine Abende. Alles kommt aus der API – die Wertung, der
+ * Verlauf aus `…/standings/history` und die Abende aus den Ergebnistabellen.
+ */
+function PlayerDetail({ player, history, lists = [], rankings = {}, onClose }) {
+  const buckets = history?.buckets ?? []
+  const groupBy = history?.groupBy ?? 'matchday'
+  const groupByLabel = PROGRESS_SCALES.find((option) => option.id === groupBy)?.label ?? ''
+  const chart = playerProgressChart(history, player.name)
+  // Was er in jedem Zeitraum gesammelt hat und wo sein Konto danach stand.
+  const periods = buckets.map((bucket, index) => {
+    const score = bucket.score?.[player.name] ?? 0
+    const before = index === 0 ? 0 : buckets[index - 1].score?.[player.name] ?? 0
+    return {
+      key: bucket.key,
+      label: chart.labels[index],
+      gamesPlayed: bucket.gamesPlayed?.[player.name] ?? 0,
+      change: score - before,
+      score,
+      averageScore: bucket.averageScore?.[player.name] ?? null,
+    }
+  })
+  const best = periods.reduce((top, period) => (top === null || period.change > top.change ? period : top), null)
+  // Seine gewerteten Abende – ein Zettel ist eine Zeile.
+  const evenings = (lists ?? [])
+    .filter((list) => list.counted !== false && rankings[list.id])
+    .map((list) => ({ list, row: (rankings[list.id].players ?? []).find((entry) => entry.name === player.name) }))
+    .filter((entry) => entry.row)
+  const stat = (label, value, hint) => <div className="detail-item"><span>{label}</span><strong>{value}</strong>{hint && <small className="detail-hint">{hint}</small>}</div>
+
+  return <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal detail-modal player-modal" onClick={(event) => event.stopPropagation()}>
+      <button className="modal-close" onClick={onClose}><X size={18} /></button>
+      <span className="eyebrow">Rangliste · {player.rank === null ? 'ohne Wertung' : `Rang ${player.rank}`}</span>
+      <h2>{player.name}</h2>
+      <p className="modal-copy">{player.gamesPlayed} Spiele in den gewerteten Listen · Ø {player.averageScore ?? '–'} Punkte je Spiel</p>
+      <div className="detail-grid">
+        {stat('Gesamtpunkte', signedValue(player.score), 'Spielpunkte, Boni und Gegenspiele')}
+        {stat('Ø Punkte je Spiel', player.averageScore ?? '–', 'der Rangwert')}
+        {stat('Ø Punkte pro 36 Spiele', player.averageScorePer36 ?? '–', 'hochgerechnet auf 36 Spiele')}
+        {stat('Letzter Spieltag', player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange), 'Veränderung seitdem')}
+        {stat('Spielpunkte', signedValue(player.points), 'nur die eigenen Alleinspiele')}
+        {stat('Boni (+50 / −50)', signedValue(player.wonBonus + player.lossPenalty), `${player.won} gewonnen, ${player.lost} verloren`)}
+        {stat('Gegenspiel-Punkte', signedValue(player.opponentBonus), `${player.opponentWon} × verloren von Mitspielern`)}
+        {stat('Gewonnen / Verloren', `${player.won} / ${player.lost}`, 'eigene Alleinspiele')}
+        {best && stat('Bester Zeitraum', signedValue(best.change), best.label)}
+      </div>
+      <div className="chart-block">
+        <div className="chart-head"><div><span className="eyebrow">Entwicklung</span><h3>Punkte über die Zeit</h3></div><span className="dealer-note">{groupByLabel}</span></div>
+        <LineChart labels={chart.labels} series={chart.series} height={200} unit="Punkte" emptyHint="Noch keine gewerteten Spieltage." />
+        <p className="chart-note">Der Kontostand nach jedem Zeitraum – er wächst nur durch eigene Alleinspiele und die Boni.</p>
+      </div>
+      <div className="player-tables">
+        <div>
+          <span className="option-label">Nach Zeitraum <small>({groupByLabel})</small></span>
+          <table className="detail-table"><thead><tr><th>Zeitraum</th><th>Spiele</th><th>Punkte</th><th>Ø</th><th>Gesamt</th></tr></thead><tbody>
+            {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td className={period.change > 0 ? 'delta-up' : period.change < 0 ? 'delta-down' : 'muted'}>{signedValue(period.change)}</td><td>{period.averageScore ?? '–'}</td><td><strong>{period.score}</strong></td></tr>) : <tr><td colSpan={5} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
+          </tbody></table>
+        </div>
+        <div>
+          <span className="option-label">Seine Abende</span>
+          <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
+            {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
+          </tbody></table>
+        </div>
+      </div>
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Schließen</button></div>
+    </div>
+  </div>
 }
 
 function CreateListModal({ token, tournament, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {

@@ -125,6 +125,20 @@ tr.summary>td{background:rgba(37,48,43,.03)}
 tr.summary td.spielpunkte,tr.summary td.spiel-count{color:var(--ink);font-size:11px;font-weight:800}
 tr.summary-top>td{border-top:2px solid var(--ink)}
 td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
+/* Rangliste: zehn Spalten, jede Zeile öffnet die Spieler-Details */
+.ranking-header,.ranking-row{grid-template-columns:52px minmax(130px,1fr) 62px 80px 80px 52px 52px 70px 92px 74px;gap:12px;min-width:830px}
+.ranking-header .num,.ranking-row .num{text-align:right}
+.ranking-row{cursor:pointer;transition:background .15s}
+.ranking-row:hover,.ranking-row:focus-visible{background:rgba(37,48,43,.05)}
+.ranking-row .up{color:#4d7957}
+.ranking-row .down{color:var(--red)}
+.ranking-row>strong:last-child{font-weight:800}
+/* Spieler-Details */
+.player-modal{max-width:860px;max-height:calc(100vh - 40px);overflow:auto}
+.player-tables{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:24px}
+.player-tables .option-label{display:block;margin-bottom:9px}
+.detail-hint{font-size:10px;line-height:1.45;color:var(--muted)}
+@media(max-width:800px){.player-tables{grid-template-columns:1fr}}
 /* Umschalter der Protokoll-Darstellung (modern / klassisch) */
 .panel-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
 .table-style{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;cursor:pointer;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}

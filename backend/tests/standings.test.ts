@@ -330,4 +330,71 @@ describe('tournamentStandings', () => {
     expect(standings.players).toHaveLength(1);
     expect(row(standings, 'Anna').gamesPlayed).toBe(0);
   });
+
+  it('adds up the won and lost Alleinspiele and the won opponent games', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, [
+      matchday('2026-09-16', [
+        game('Bert', true, 120),
+        game('Bert', false, 20),
+        game('Clara', false, 24),
+      ]),
+    ]);
+
+    // Two Alleinspiele were lost, so everybody else has two won opponent games.
+    expect(row(standings, 'Bert')).toMatchObject({ won: 1, lost: 1, opponentWon: 1 });
+    expect(row(standings, 'Clara')).toMatchObject({ won: 0, lost: 1, opponentWon: 1 });
+    expect(row(standings, 'Anna')).toMatchObject({ won: 0, lost: 0, opponentWon: 2 });
+  });
+
+  it('counts the counters over all matchdays', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, [
+      matchday('2026-09-16', [game('Bert', true, 60)]),
+      matchday('2026-09-23', [game('Bert', false, 24, ['Bert', 'Clara', 'Dora'])]),
+    ]);
+
+    expect(row(standings, 'Bert')).toMatchObject({ won: 1, lost: 1, opponentWon: 0 });
+  });
+
+  it('projects the average on a series of 36 games', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, [
+      matchday('2026-09-16', [game('Bert', true, 60)]),
+    ]);
+
+    // Bert: 60 Spielwert + 50 for the win over one game.
+    expect(row(standings, 'Bert')).toMatchObject({
+      averageScore: 110,
+      averageScorePer36: 110 * 36,
+    });
+    // Anna played nothing, so she has no average to project.
+    expect(row(standings, 'Anna').averageScorePer36).toBeNull();
+  });
+
+  it('reports what the last matchday brought', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, [
+      matchday('2026-09-16', [game('Bert', true, 60)]),
+      matchday('2026-09-23', [game('Anna', true, 24, ['Anna', 'Clara', 'Dora'])]),
+    ]);
+
+    // Bert collected 110 on the first evening and nothing on the second, Anna
+    // only played on the second one (24 + 50).
+    expect(row(standings, 'Bert')).toMatchObject({ score: 110, lastMatchdayChange: 0 });
+    expect(row(standings, 'Anna')).toMatchObject({ score: 74, lastMatchdayChange: 74 });
+  });
+
+  it('reports the whole score as change while there is only one matchday', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, [
+      matchday('2026-09-16', [game('Bert', true, 60)]),
+    ]);
+
+    expect(row(standings, 'Bert').lastMatchdayChange).toBe(110);
+  });
+
+  it('reports no change without a counted list', () => {
+    const standings = tournamentStandings('K7M2P4QX', ROSTER, []);
+
+    for (const player of standings.players) {
+      expect(player.lastMatchdayChange).toBeNull();
+      expect(player.opponentWon).toBe(0);
+    }
+  });
 });

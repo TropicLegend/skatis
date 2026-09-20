@@ -34,6 +34,15 @@ export interface StandingRow {
   name: string;
   /** Games of the counted lists the player took part in. */
   gamesPlayed: number;
+  /** Alleinspiele the player won ("Gew") – the source of `wonBonus`. */
+  won: number;
+  /** Alleinspiele the player lost ("Verl") – the source of `lossPenalty`. */
+  lost: number;
+  /**
+   * Alleinspiele **other** players lost – the player's "gewonnenen Gegenspiele",
+   * the source of `opponentBonus`.
+   */
+  opponentWon: number;
   /** Spielwerte of the player's own Alleinspiele – a loss is debited twice. */
   points: number;
   /** Flat bonus for the won Alleinspiele: `+50` each. */
@@ -46,6 +55,18 @@ export interface StandingRow {
   score: number;
   /** `score / gamesPlayed`, rounded to two decimals. `null` without a game. */
   averageScore: number | null;
+  /**
+   * `averageScore` projected on a series of `SESSION_GAME_COUNT` games – a
+   * comparable size for players who played a different number of games.
+   * `null` without a game.
+   */
+  averageScorePer36: number | null;
+  /**
+   * What the last counted matchday added to `score` – the score of that evening.
+   * `null` while nothing counts; a tournament with a single evening reports the
+   * whole score here, because it is everything gained since the start.
+   */
+  lastMatchdayChange: number | null;
 }
 
 export interface TournamentStandingsDto {
@@ -58,6 +79,13 @@ export interface TournamentStandingsDto {
   players: StandingRow[];
 }
 
+/**
+ * Number of games a series ("Serie") is measured in: `averageScorePer36` answers
+ * "what would this player collect in `SESSION_GAME_COUNT` games?", so two players
+ * can be compared although they played a different number of games.
+ */
+export const SESSION_GAME_COUNT = 36;
+
 /** Rounds to two decimals and never returns a negative zero. */
 function round2(value: number): number {
   const rounded = Math.round(value * 100) / 100;
@@ -67,6 +95,9 @@ function round2(value: number): number {
 /** The numbers a player collected over the counted lists. */
 interface Account {
   gamesPlayed: number;
+  won: number;
+  lost: number;
+  opponentWon: number;
   points: number;
   wonBonus: number;
   lossPenalty: number;
@@ -75,7 +106,16 @@ interface Account {
 
 /** An account that was never touched. */
 function emptyAccount(): Account {
-  return { gamesPlayed: 0, points: 0, wonBonus: 0, lossPenalty: 0, opponentBonus: 0 };
+  return {
+    gamesPlayed: 0,
+    won: 0,
+    lost: 0,
+    opponentWon: 0,
+    points: 0,
+    wonBonus: 0,
+    lossPenalty: 0,
+    opponentBonus: 0,
+  };
 }
 
 /**
@@ -101,6 +141,9 @@ export function tournamentStandings(
       if (!account) continue;
 
       account.gamesPlayed += player.gamesPlayed;
+      account.won += player.won;
+      account.lost += player.lost;
+      account.opponentWon += player.opponentWon;
       account.points += player.points;
       account.wonBonus += player.wonBonus;
       account.lossPenalty += player.lossPenalty;
@@ -115,6 +158,9 @@ export function tournamentStandings(
     return {
       name,
       gamesPlayed: account.gamesPlayed,
+      won: account.won,
+      lost: account.lost,
+      opponentWon: account.opponentWon,
       points: account.points,
       wonBonus: account.wonBonus,
       lossPenalty: account.lossPenalty,
@@ -134,6 +180,15 @@ export function tournamentStandings(
     return b.average - a.average || a.name.localeCompare(b.name);
   });
 
+  // Was der letzte Spieltag gebracht hat, ist die Differenz zum Spieltag davor im
+  // Verlauf. Ein einzelner Abend berichtet sein ganzes Ergebnis: alles, was seit
+  // dem Start dazukam.
+  const history = standingsHistory(tournamentId, names, lists, 'matchday');
+  const latest = history.buckets.at(-1);
+  const beforeLatest = history.buckets.at(-2);
+  const lastChange = (name: string): number | null =>
+    latest === undefined ? null : (latest.score[name] ?? 0) - (beforeLatest?.score[name] ?? 0);
+
   // Equal averages share a rank, the next one continues after them.
   let rank = 0;
   let previous: number | null = null;
@@ -148,12 +203,17 @@ export function tournamentStandings(
       rank: row.average === null ? null : rank,
       name: row.name,
       gamesPlayed: row.gamesPlayed,
+      won: row.won,
+      lost: row.lost,
+      opponentWon: row.opponentWon,
       points: row.points,
       wonBonus: row.wonBonus,
       lossPenalty: row.lossPenalty,
       opponentBonus: row.opponentBonus,
       score: row.score,
       averageScore: row.average === null ? null : round2(row.average),
+      averageScorePer36: row.average === null ? null : round2(row.average * SESSION_GAME_COUNT),
+      lastMatchdayChange: lastChange(row.name),
     };
   });
 

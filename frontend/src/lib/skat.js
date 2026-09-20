@@ -226,3 +226,23 @@ function bucketLabel(bucket, groupBy) {
   if (groupBy === 'month') return monthLabel(`${bucket.key}-01`)
   return shortDate(bucket.from ?? bucket.key)
 }
+
+/**
+ * Der Verlauf eines einzelnen Spielers aus `…/standings/history`: je Zeitraum ein
+ * Punkt mit seinem Kontostand – für die Spieler-Details.
+ */
+export function playerProgressChart(history, name) {
+  const buckets = history?.buckets ?? []
+  const groupBy = history?.groupBy ?? 'matchday'
+
+  return {
+    labels: buckets.map((bucket) => bucketLabel(bucket, groupBy)),
+    series: [
+      {
+        name,
+        color: SERIES_COLORS[0],
+        values: buckets.map((bucket) => bucket.score?.[name] ?? null),
+      },
+    ],
+  }
+}

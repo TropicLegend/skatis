@@ -1888,12 +1888,17 @@ is over, several of which may belong to the same matchday.
 | `rank`          | number \| null | `1` is the best; `null` while the player has no game              |
 | `name`          | string         |                                                                   |
 | `gamesPlayed`   | number         | Σ `gamesPlayed` of the counted lists                              |
+| `won`           | number         | Σ `won` – won Alleinspiele of the player                          |
+| `lost`          | number         | Σ `lost` – lost Alleinspiele of the player                        |
+| `opponentWon`   | number         | Σ `opponentWon` – lost Alleinspiele of the others                 |
 | `points`        | number         | Σ `points` – the Spielwerte of the player's own Alleinspiele      |
 | `wonBonus`      | number         | Σ `wonBonus` – `+50` per won Alleinspiel                          |
 | `lossPenalty`   | number         | Σ `lossPenalty` – `-50` per lost Alleinspiel                      |
 | `opponentBonus` | number         | Σ `opponentBonus` – for the Alleinspiele the others lost          |
 | `score`         | number         | `points + wonBonus + lossPenalty + opponentBonus`                 |
 | `averageScore`  | number \| null | `score / gamesPlayed`, rounded to two decimals; the ranking value |
+| `averageScorePer36` | number \| null | `averageScore` projected on `SESSION_GAME_COUNT` (36) games – a comparable size for players with a different number of games |
+| `lastMatchdayChange` | number \| null | what the last counted matchday added to `score` (the difference to the matchday before it in the [history](#get-tournamentstournamentidstandingshistory)); with a single evening it is the whole `score`, `null` while nothing counts |
 
 `score` is therefore the sum of the `total` column of the player's sheets, and
 `averageScore` is what keeps a tournament that runs over months comparable: it is
