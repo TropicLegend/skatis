@@ -113,6 +113,10 @@ export function roundAccounts(progression) {
     before: { ...zero, ...(index === 0 ? {} : rounds[index - 1].accounts) },
     delta: { ...zero, ...round.deltas },
     after: { ...zero, ...round.accounts },
+    // Spielpunkte (ohne Boni) und die Zähler, wie das Spielprotokoll sie zeigt.
+    points: { ...zero, ...round.points },
+    won: { ...zero, ...round.won },
+    lost: { ...zero, ...round.lost },
   }))
 }
 

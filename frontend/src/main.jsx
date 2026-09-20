@@ -315,14 +315,15 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     </div>
     {notice && <div className="success-message">{notice}</div>}
     <div className="workspace-grid">
-      <GameTable list={list} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
+      <GameTable list={list} rounds={rounds} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist damit der Gesamtstand der Ergebnistabelle; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
       </GameTable>
       <aside className="score-card">
         <div className="score-card-head"><span className="eyebrow">Ergebnistabelle</span><Trophy size={20} /></div>
-        {results?.players?.length ? results.players.map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>) : (list.players || []).map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><strong>0</strong></div>)}
+        <p className="score-legend" title="Gewonnene Alleinspiele / verlorene Alleinspiele / gewonnene Gegenspiele (ein anderer Spieler der Liste hat verloren)">Gew / Verl / Gegner</p>
+        {results?.players?.length ? results.players.map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><span className="score-bills" title={`${player.won} gewonnen, ${player.lost} verloren, ${player.opponentWon} Spiele der Mitspieler verloren`}>{player.won}/{player.lost}/{player.opponentWon}</span><strong>{player.total}</strong></div>) : (list.players || []).map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><span className="score-bills">0/0/0</span><strong>0</strong></div>)}
         <div className="score-total"><span>Rundenwert</span><strong>{results?.totalGameValue ?? list.totalGameValue ?? 0}</strong></div>
       </aside>
     </div>
@@ -331,16 +332,29 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   </Shell>
 }
 
-function GameTable({ list, role, onEdit, onSelect, children }) {
+function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
   const games = list.games || []
-  const columns = role === 'ADMIN' ? 8 : 7
+  const lineup = (list.players || []).map((player) => player.name)
+  const roundsByPosition = new Map(rounds.map((round) => [round.position, round]))
+  // Jeder Spieler bekommt drei Unterspalten: seine Spielpunkte nach dem Spiel
+  // (ohne die Boni) und die Zahl seiner bis dahin gewonnenen bzw. verlorenen
+  // Alleinspiele – gefüllt wird immer nur die Spalte des Alleinspielers.
+  const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
+  const columns = 7 + lineup.length * 3 + (role === 'ADMIN' ? 1 : 0)
   return <section className="games-panel">
     <div className="panel-heading">
       <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
-      <span className="dealer-note">Geberfolge läuft automatisch · Zeile antippen für Details</span>
+      <span className="dealer-note">Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus · Zeile antippen für Details</span>
     </div>
     <div className="table-wrap"><table>
-      <thead><tr><th>#</th><th>Geber</th><th>Alleinspieler</th><th>Spielart</th><th>Spitzen</th><th>Wert</th><th>Ausgang</th>{role === 'ADMIN' && <th />}</tr></thead>
+      <thead>
+        <tr>
+          <th rowSpan={2}>#</th><th rowSpan={2}>Geber</th><th rowSpan={2}>Alleinspieler</th><th rowSpan={2}>Spielart</th><th rowSpan={2}>Spitzen</th><th rowSpan={2}>Wert</th><th rowSpan={2}>Ausgang</th>
+          {lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
+          {role === 'ADMIN' && <th rowSpan={2} />}
+        </tr>
+        <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>
+      </thead>
       <tbody>
         {games.length ? games.map((game) => <tr key={game.id} className="game-row" role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
           <td className="round">{game.position}</td>
@@ -350,6 +364,14 @@ function GameTable({ list, role, onEdit, onSelect, children }) {
           <td>{matadorsLabel(game)}</td>
           <td className="value-cell">{game.gameValue || 0}</td>
           <td>{game.passedOut ? '—' : <span className={`result-dot ${game.won ? 'won' : 'lost'}`}>{outcomeLabel(game)}</span>}</td>
+          {lineup.map((name) => {
+            const declarer = !game.passedOut && game.declarer === name
+            return <React.Fragment key={name}>
+              <td className={`spielpunkte ${declarer ? 'declarer' : ''}`}>{declarer ? roundValue(game, name, 'points') ?? '' : ''}</td>
+              <td className="spiel-count">{declarer && game.won === true ? roundValue(game, name, 'won') ?? '' : ''}</td>
+              <td className="spiel-count">{declarer && game.won === false ? roundValue(game, name, 'lost') ?? '' : ''}</td>
+            </React.Fragment>
+          })}
           {role === 'ADMIN' && <td><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
         </tr>) : <tr><td colSpan={columns}><div className="table-empty"><ClipboardList size={22} /><span>Noch keine Spiele eingetragen.</span><small>Der erste Eintrag beginnt mit dem Geber aus Platz 1.</small></div></td></tr>}
       </tbody>

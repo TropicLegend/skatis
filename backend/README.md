@@ -1505,7 +1505,10 @@ then has `rounds: []` and every account at 0.
         "declarer": "Bert",
         "gameValue": 120,
         "deltas": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 },
-        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 }
+        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 },
+        "points": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 },
+        "won": { "Anna": 0, "Bert": 1, "Clara": 0, "Dora": 0 },
+        "lost": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 0 }
       },
       {
         "position": 2,
@@ -1513,7 +1516,10 @@ then has `rounds: []` and every account at 0.
         "declarer": null,
         "gameValue": 0,
         "deltas": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 0 },
-        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 }
+        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 },
+        "points": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 },
+        "won": { "Anna": 0, "Bert": 1, "Clara": 0, "Dora": 0 },
+        "lost": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 0 }
       },
       {
         "position": 3,
@@ -1521,7 +1527,10 @@ then has `rounds: []` and every account at 0.
         "declarer": "Dora",
         "gameValue": 24,
         "deltas": { "Anna": 30, "Bert": 30, "Clara": 30, "Dora": -98 },
-        "accounts": { "Anna": 30, "Bert": 200, "Clara": 30, "Dora": -98 }
+        "accounts": { "Anna": 30, "Bert": 200, "Clara": 30, "Dora": -98 },
+        "points": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": -48 },
+        "won": { "Anna": 0, "Bert": 1, "Clara": 0, "Dora": 0 },
+        "lost": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 1 }
       }
     ],
     "accounts": { "Anna": 30, "Bert": 200, "Clara": 30, "Dora": -98 }
@@ -1541,6 +1550,19 @@ round: in the example Dora loses 24, so Anna, Bert and Clara each collect 30 whi
 their own accounts stay untouched otherwise. `accounts` is the standing after each
 round, starting at 0 – after the last round it is exactly the `total` of the
 result table, so chart and table cannot contradict each other.
+
+Every round also carries the three numbers of the Spielprotokoll:
+
+| Field    | Meaning                                                                                      |
+| -------- | -------------------------------------------------------------------------------------------- |
+| `points` | the **Spielpunkte** of every player after that round – the Spielwerte of their own Alleinspiele, **without** the flat ±50 and **without** the opponent bonus |
+| `won`    | Alleinspiele the player had won up to and including that round (`Gew`)                        |
+| `lost`   | Alleinspiele the player had lost up to and including that round (`Verl`)                      |
+
+So a Spielprotokoll can write, next to the Spielart of a game, where its
+Alleinspieler stands in Spielpunkten and how their win/loss record looks at that
+moment, while the chart keeps drawing the full account (`accounts`) – after the
+last round `points`, `won` and `lost` are the matching columns of the result table.
 
 **Errors:** `404` unknown list.
 
@@ -1846,6 +1868,7 @@ A `Result` row:
 | `points`           | number | `wonGameValue - lostGameValue`                                    |
 | `wonBonus`         | number | `+50` per win                                                     |
 | `lossPenalty`      | number | `-50` per loss                                                    |
+| `opponentWon`      | number | number of Alleinspiele **other** players lost ("gewonnene Gegenspiele") |
 | `opponentBonus`    | number | `opponentBonusPerGame` per lost Alleinspiel of **another** player |
 | `total`            | number | `points + wonBonus + lossPenalty + opponentBonus`                 |
 

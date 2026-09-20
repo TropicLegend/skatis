@@ -98,4 +98,14 @@
 .log-entry time{display:block;margin-top:5px;font:10px 'DM Mono';color:var(--muted)}
 .log-entry.admin .role-chip{color:#9a4a2f;background:#f5dfd5}
 .log-empty{margin:0;color:var(--muted);font-size:12px}
+/* Spielprotokoll: je Spieler drei Unterspalten (Spielpunkte, Gew, Verl) */
+.games-panel table{min-width:760px}
+th.player-column{text-align:center;font-family:'Manrope';font-size:10px;font-weight:800;color:#535c54;border-left:1px solid #ebe7de}
+th.sub{text-align:center;padding:5px 8px;font:9px 'DM Mono';color:var(--muted);border-left:1px solid #ebe7de}
+td.spielpunkte,td.spiel-count{text-align:center;font-family:'DM Mono';padding:14px 8px;border-left:1px solid #ebe7de}
+td.spielpunkte{color:#4d574f}
+td.spielpunkte.declarer{font-weight:500;color:var(--ink)}
+td.spiel-count{font-size:10px;color:var(--muted)}
+.score-legend{margin:9px 0 0;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
+.score-bills{font-family:'DM Mono';font-size:10px;color:var(--muted);min-width:46px;text-align:center}
 @media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}}

@@ -85,6 +85,37 @@ describe('accountProgression', () => {
     expect(first?.deltas['Anna']).toBe(30);
   });
 
+  it('keeps the flat bonuses out of the Spielpunkte of a round', () => {
+    const [first, second] = progression([
+      round(1, 'Bert', true, 60),
+      round(2, 'Anna', false, 30),
+    ]).rounds;
+
+    // Round 1: Bert's own Spielwert, without the +50 and without the bonus of
+    // round 2 – the account tells a different story.
+    expect(first?.points).toEqual({ Anna: 0, Bert: 60, Clara: 0, Dora: 0 });
+    expect(first?.accounts).toEqual({ Anna: 0, Bert: 110, Clara: 0, Dora: 0 });
+
+    // Round 2: Anna loses 30, so she is debited twice of it – nothing else, and
+    // the others stay where they were in their Spielpunkte.
+    expect(second?.points).toEqual({ Anna: -60, Bert: 60, Clara: 0, Dora: 0 });
+    expect(second?.accounts).toEqual({ Anna: -110, Bert: 140, Clara: 30, Dora: 30 });
+  });
+
+  it('counts the won and lost Alleinspiele round by round', () => {
+    const rounds = progression([
+      round(1, 'Bert', true, 60),
+      round(2, 'Anna', true, 24),
+      round(3, 'Bert', false, 20),
+      round(4, null, null, 0),
+    ]).rounds;
+
+    expect(rounds.map((entry) => entry.won['Bert'])).toEqual([1, 1, 1, 1]);
+    expect(rounds.map((entry) => entry.lost['Bert'])).toEqual([0, 0, 1, 1]);
+    expect(rounds.map((entry) => entry.won['Anna'])).toEqual([0, 1, 1, 1]);
+    expect(rounds.at(-1)?.lost).toEqual({ Anna: 0, Bert: 1, Clara: 0, Dora: 0 });
+  });
+
   it('carries the account from round to round', () => {
     const result = progression([
       round(1, 'Bert', true, 60),
@@ -113,11 +144,14 @@ describe('accountProgression', () => {
       round(4, null, null, 0),
     ];
 
-    const accounts = progression(games).accounts;
+    const last = progression(games).rounds.at(-1);
     for (const player of scoreList(LINEUP, games, '2026-09-16').players) {
-      // The chart of the list and the Ergebnistabelle must not drift apart: the
-      // last account is exactly the `total` of the table.
-      expect(accounts[player.name], player.name).toBe(player.total);
+      // The Spielprotokoll and the Ergebnistabelle must not drift apart: the last
+      // round reports exactly the row of the table.
+      expect(last?.accounts[player.name], player.name).toBe(player.total);
+      expect(last?.points[player.name], player.name).toBe(player.points);
+      expect(last?.won[player.name], player.name).toBe(player.won);
+      expect(last?.lost[player.name], player.name).toBe(player.lost);
     }
   });
 });

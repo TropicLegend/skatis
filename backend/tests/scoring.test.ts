@@ -79,11 +79,34 @@ describe('scoreList', () => {
       '2026-09-16',
     );
 
-    // Bert won, Clara lost – so everyone but Clara gets the bonus for her loss.
+    // Bert won, Clara lost – so everyone but Clara gets the bonus for her loss,
+    // and the bonus comes from exactly the games counted in `opponentWon`.
+    expect(byName(results, 'Bert').opponentWon).toBe(1);
+    expect(byName(results, 'Anna').opponentWon).toBe(1);
+    expect(byName(results, 'Dora').opponentWon).toBe(1);
+    expect(byName(results, 'Clara').opponentWon).toBe(0);
     expect(byName(results, 'Bert').opponentBonus).toBe(30);
     expect(byName(results, 'Anna').opponentBonus).toBe(30);
     expect(byName(results, 'Dora').opponentBonus).toBe(30);
     expect(byName(results, 'Clara').opponentBonus).toBe(0);
+  });
+
+  it('reports the opponent bonus as count times the bonus per game', () => {
+    const lineup = ['Anna', 'Bert', 'Clara'];
+    const results = scoreList(
+      lineup,
+      [game('Bert', false, 20, lineup), game('Clara', false, 30, lineup), PASSED_OUT],
+      '2026-09-16',
+    );
+
+    // Three players read a lost Alleinspiel of somebody else as 40 points.
+    expect(results.opponentBonusPerGame).toBe(40);
+    for (const player of results.players) {
+      expect(player.opponentBonus, player.name).toBe(player.opponentWon * 40);
+    }
+    expect(byName(results, 'Anna').opponentWon).toBe(2);
+    expect(byName(results, 'Bert').opponentWon).toBe(1);
+    expect(byName(results, 'Clara').opponentWon).toBe(1);
   });
 
   it('adds the flat bonuses to the account for the final result', () => {
