@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Skatis">
+  <rect width="512" height="512" rx="112" fill="#1d231f" />
+  <text
+    x="256"
+    y="336"
+    text-anchor="middle"
+    font-family="Georgia, 'Playfair Display', 'Times New Roman', serif"
+    font-size="268"
+    font-weight="700"
+    fill="#f4efe6"
+  >S</text>
+  <circle cx="392" cy="126" r="30" fill="#db6f40" />
+</svg>

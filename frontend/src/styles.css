@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap');
+/* Die Schrift kommt als <link> aus `index.html` – ein @import hier würde auf dem
+   Handy erst nach dem CSS geladen und die Seite sichtbar umbrechen. */
 /* Inline roster editing and Null variant state */
 .player-tag{display:inline-flex;align-items:center;gap:5px}.player-tag .icon-button{padding:0;color:#778077}.player-tag-edit{display:flex;align-items:center;gap:2px;background:#f1eee6;border-radius:5px;padding:2px 3px}.player-tag-edit input{height:28px;width:130px;margin:0;padding:0 7px;font-size:11px}.player-tag-edit .icon-button{padding:4px}.null-option.selected{background:#f6dfd3;border-color:var(--orange);box-shadow:0 0 0 2px #f1c4ac}
 .dashboard-actions{display:flex;gap:9px;align-items:center}.matchday-picker{border:0;border-top:1px solid var(--line);padding:15px 0 0;margin:4px 0 18px}.matchday-picker legend{font-size:11px;font-weight:800;color:#535c54;padding:0}.matchday-picker p{font-size:10px;color:var(--muted);margin:5px 0 10px}.matchday-picker>div{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.matchday-picker button{background:#f1eee6;border:1px solid #e0dbd0;border-radius:5px;padding:8px 3px;color:#777b72;font-size:9px}.matchday-picker button span{display:block;font:12px 'DM Mono';margin-bottom:3px;color:var(--ink)}.matchday-picker button.selected{background:#f6dfd3;border-color:var(--orange);color:var(--orange-dark)}.roster-panel{margin-top:46px;padding:22px;border:1px solid var(--line);border-radius:9px;background:rgba(251,250,246,.72);display:grid;grid-template-columns:.8fr 1.2fr;gap:30px}.roster-panel h2{font-size:23px;letter-spacing:-1px;margin:8px 0 5px}.roster-panel p{color:var(--muted);font-size:11px;margin:0}.roster-content{min-width:0}.player-tags{display:flex;gap:6px;flex-wrap:wrap;min-height:36px;align-items:center}.player-tags span{background:#e5ebe4;border-radius:4px;padding:6px 8px;font-size:11px}.player-form{display:flex;gap:7px;margin-top:15px}.player-form input{margin:0}.player-form .primary-button{width:43px;padding:0}.settings-modal{max-width:560px}
@@ -190,3 +191,130 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .chart-tooltip-value{font:500 10.5px 'DM Mono';fill:var(--ink)}
 .stat strong.days{font-size:14px;letter-spacing:-.2px;line-height:1.35}
 @media(max-width:560px){.chart-controls{width:100%}.chart-custom input{width:100%}.log-entry-head{flex-wrap:wrap}.panel-heading{flex-direction:column;align-items:flex-start;gap:12px}.panel-tools{justify-content:flex-start}}
+
+/* ---------------------------------------------------------------------------
+   Bewegung – eine kleine, gemeinsame Sammlung. Alles nur über `transform` und
+   `opacity`, damit das Handy nichts neu berechnen muss.
+   --------------------------------------------------------------------------- */
+@keyframes screen-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes sheet-up{from{opacity:.55;transform:translateY(100%)}to{opacity:1;transform:none}}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes card-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes pop-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+@keyframes shimmer{from{background-position:-420px 0}to{background-position:420px 0}}
+@keyframes draw-line{to{stroke-dashoffset:0}}
+@keyframes pie-in{from{opacity:0;transform:rotate(-22deg) scale(.94)}to{opacity:1;transform:none}}
+
+/** Ein Screen-Wechsel: kurz eingerückt und eingeblendet. */
+.screen{animation:screen-in .26s ease both}
+/** Eine Kartenliste erscheint gestaffelt – jedes Element bringt seinen Index mit. */
+.card-enter{animation:card-in .3s ease both;animation-delay:calc(var(--i,0) * 38ms)}
+/** Platzhalter, solange Daten geladen werden. */
+.skeleton{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,#ece7dc 0,#f7f3ea 45%,#ece7dc 90%);background-size:420px 100%;animation:shimmer 1.3s linear infinite}
+
+/* Wer Bewegung ablehnt, bekommt alles ohne Bewegung – aber nichts fehlt. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;animation-delay:0ms !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+}
+
+/* ---------------------------------------------------------------------------
+   Handy (bis 600 px). Additiv: der Desktop behält alles, hier werden nur die
+   Regeln überschrieben, die mit Finger und kleinem Bildschirm nicht gehen.
+   --------------------------------------------------------------------------- */
+@media (max-width:600px){
+  :root{--tap:48px;--pad:16px;--radius:16px;--tabbar:72px}
+
+  /* Echte Viewport-Höhe (Adressleiste) und Umbrüche statt Mini-Schrift. */
+  body{min-width:0;-webkit-text-size-adjust:100%}
+  .app-shell{min-height:100vh;min-height:100dvh}
+
+  /* Kein grauer Tipp-Blitz, keine Textauswahl auf Bedienelementen. */
+  button,.list-card,.choice-card,.game-type,.result-picker button,.pie-legend-item,.bar-list li,.matchday-picker button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  button{user-select:none}
+
+  /* Lesbare Schrift: nichts unter 12 px, Eingaben mindestens 16 px (sonst zoomt iOS). */
+  .eyebrow,.dealer-note,.status,.card-footer,.player-line span,.stat span,.stat small,
+  .detail-item>span,.detail-item small,.detail-table th,.level-badge,.declarer-flag,.sits-out-flag,
+  .chart-tick,.chart-note,.chart-scale,.chart-legend,.chart-legend-item,.chart-custom,.chart-tooltip-row,
+  .chart-tooltip-value,.chart-tooltip-title,.pie-caption,.pie-legend-item,.pie-legend-item small,
+  .bar-label,.bar-list small,.mini-ranking>span,.lineup-picker legend,.lineup-picker p,.lineup-choice,
+  .lineup-status,.roster-hint,.log-entry p,.log-entry time,.log-entry-head,.table-style,tr.summary td,
+  .site-footer,.breadcrumb,.matchday-picker button,.matchday-picker p,.tip-box p,.field-hint,
+  .form-note,.modal-copy,.section-heading span,.list-card h3 small{font-size:12px}
+  .detail-table td,.log-entry,.roster-content,.player-tag,.stat strong.days{font-size:13px}
+  input,select,textarea{font-size:16px;height:var(--tap);border-radius:10px}
+  select{min-height:var(--tap);width:100%}
+
+  /* Alles, was man drückt, ist mindestens 48 px groß. */
+  .primary-button,.secondary-button{min-height:var(--tap);font-size:14px;padding:0 18px;border-radius:12px}
+  .icon-button{width:var(--tap);height:var(--tap);padding:0;display:inline-grid;place-items:center;border-radius:12px}
+  .modal-close{width:var(--tap);height:var(--tap);padding:0;display:grid;place-items:center;top:8px;right:8px}
+  .password-toggle{width:var(--tap);height:var(--tap);padding:0}
+  .password-field input{padding-right:calc(var(--tap) + 4px)}
+
+  /* Rückmeldung beim Drücken – kurz und ohne Layout-Sprung. */
+  .primary-button:active,.secondary-button:active,.icon-button:active,.list-card:active,
+  .choice-card:active,.game-type:active,.result-picker button:active,.passed-button:active,
+  .number-picker button:active,.tabbar button:active,.ranking-card:active,.game-card:active{transform:scale(.97)}
+  .primary-button,.secondary-button,.icon-button,.list-card,.choice-card,.game-type{transition:transform .12s ease,background-color .2s ease,border-color .2s ease}
+
+  /* Rahmen und Abstände */
+  main{width:100%;padding:0 var(--pad) calc(var(--tabbar) + env(safe-area-inset-bottom) + 28px)}
+  .topbar{position:sticky;top:0;z-index:20;height:calc(56px + env(safe-area-inset-top));padding:env(safe-area-inset-top) var(--pad) 0;gap:10px}
+  .brand{font-size:17px;gap:8px}
+  .brand-mark{width:26px;height:26px;font-size:15px}
+  .topbar-right{gap:6px}
+  .modal{padding:24px 18px;border-radius:var(--radius);width:100%}
+
+  /* Kopf und Kennzahlen der Übersicht */
+  .dashboard-header{display:block;padding:20px 0 16px}
+  .dashboard-header h1{font-size:31px}
+  .dashboard-header .lede{margin-top:8px}
+  .dashboard-actions{width:100%;gap:10px;margin-top:18px;justify-content:stretch}
+  .dashboard-actions .primary-button,.dashboard-actions .secondary-button{flex:1;padding:0 12px}
+  .stats-row{gap:8px;margin-bottom:24px}
+  .stat{padding-top:10px}
+  .stat strong{font-size:20px}
+  .section-heading{align-items:flex-end;gap:10px;margin-bottom:14px}
+  .section-heading h2{font-size:21px}
+  .section-heading select{width:auto;max-width:190px}
+  .list-grid{grid-template-columns:1fr;gap:12px}
+  .list-card{min-height:0;padding:16px}
+  .mini-ranking strong{font-size:14px}
+
+  /* Wochentage und Roster */
+  .matchday-picker>div{grid-template-columns:repeat(4,1fr);gap:8px}
+  .matchday-picker button{min-height:var(--tap)}
+  .roster-panel{grid-template-columns:1fr;gap:14px;margin-top:26px}
+  .player-tags{gap:8px}
+  .player-tag{min-height:40px;padding:8px 10px}
+
+  /* Tischliste */
+  .workspace-head{display:block;text-align:left;padding:18px 0 14px}
+  .back-link{position:static;margin-bottom:12px;min-height:var(--tap);display:inline-flex;align-items:center}
+  .workspace-title{text-align:left}
+  .workspace-title h1{font-size:30px}
+  .workspace-actions{display:grid;grid-template-columns:1fr;gap:10px;margin-top:16px}
+  .workspace-actions .primary-button,.workspace-actions .secondary-button{width:100%}
+  .panel-heading{padding:14px}
+  .panel-tools{gap:10px}
+
+  /* Spieler-Seite und Diagramme */
+  .player-panel{padding:16px}
+  .stat-grid{grid-template-columns:1fr;gap:10px}
+  .detail-item{padding:12px}
+  .detail-table th,.detail-table td{padding:10px 8px}
+  .chart-block{padding:16px 14px}
+  .chart-block h2{font-size:19px}
+  .chart-scale{width:100%}
+  .chart-scale select{width:100%;min-width:0}
+  .pie-canvas{max-width:200px}
+  .bar-list li{grid-template-columns:1fr;gap:4px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .bar-track{order:3}
+  .bar-list strong{justify-self:start}
+  .bar-list small{grid-column:1/-1}
+
+  /* Kleine Hinweise bleiben stehen, dürfen aber umbrechen. */
+  .dealer-note{display:block;white-space:normal}
+}
+

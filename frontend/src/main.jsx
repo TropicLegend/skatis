@@ -7,7 +7,10 @@ import PieChart from './components/PieChart.jsx'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
 import './styles.css'
 
-const API = 'https://skatis.online/api'
+// Die Basis-URL der API lässt sich beim Bauen überschreiben (`VITE_API_BASE`), damit
+// ein Handy im WLAN gegen einen lokalen Server testen kann – sonst bleibt es die
+// ausgelieferte Adresse.
+const API = import.meta.env.VITE_API_BASE ?? 'https://skatis.online/api'
 const today = new Date().toISOString().slice(0, 10)
 const weekdays = [['1', 'Montag'], ['2', 'Dienstag'], ['3', 'Mittwoch'], ['4', 'Donnerstag'], ['5', 'Freitag'], ['6', 'Samstag'], ['7', 'Sonntag']]
 
