@@ -273,6 +273,10 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
   const [histories, setHistories] = useState({})
   const [historyError, setHistoryError] = useState('')
+  // Auf dem Handy ist jede Zeile eine Karte: Rang, Name und Schnitt groß, alles
+  // Weitere klappt auf Tippen auf. Die breite Tabelle bleibt dem Desktop.
+  const mobile = useMobile()
+  const [expanded, setExpanded] = useState(null)
 
   // Der Verlauf kommt aus `standings/history`: dieselben Zahlen wie die Tabelle
   // darunter, nur datiert. Jede Skalierung wird einmal geholt und gemerkt.
@@ -288,8 +292,29 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const history = histories[scale]
   const chart = standingsProgressChart(history)
   return <section className="tournament-ranking">
-    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen · Spieler antippen für Details</span></div>
-    <div className="ranking-table">
+    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span></div>
+    {mobile ? <div className="ranking-cards">
+      {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
+        <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
+          <span className="rank-badge">{player.rank ?? '–'}</span>
+          <span className="rank-name">{player.name}</span>
+          <span className="rank-average"><strong>{player.averageScore ?? '–'}</strong><small>Ø Punkte</small></span>
+          <ChevronRight size={18} className="rank-caret" />
+        </button>
+        <div className="ranking-card-body"><div className="ranking-card-inner">
+          <div className="ranking-card-grid">
+            <div className="ranking-card-item"><span>Gesamt</span><strong>{player.score}</strong></div>
+            <div className="ranking-card-item"><span>Spiele</span><strong>{player.gamesPlayed}</strong></div>
+            <div className="ranking-card-item"><span>Gewonnen</span><strong>{player.won}</strong></div>
+            <div className="ranking-card-item"><span>Verloren</span><strong>{player.lost}</strong></div>
+            <div className="ranking-card-item"><span>Gegner</span><strong>{player.opponentWon}</strong></div>
+            <div className="ranking-card-item"><span>Ø / 36</span><strong>{player.averageScorePer36 ?? '–'}</strong></div>
+            <div className="ranking-card-item"><span>Letzter Spieltag</span><strong>{player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange)}</strong></div>
+          </div>
+          <button className="secondary-button" onClick={() => onOpenPlayer(player)}>Details und Statistiken <ChevronRight size={16} /></button>
+        </div></div>
+      </div>)}
+    </div> : <div className="ranking-table">
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => onOpenPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
@@ -303,7 +328,7 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
         <span className={`num ${player.lastMatchdayChange === null ? '' : player.lastMatchdayChange > 0 ? 'up' : player.lastMatchdayChange < 0 ? 'down' : ''}`}>{player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange)}</span>
         <strong className="num">{player.score}</strong>
       </div>)}
-    </div>
+    </div>}
     <ProgressChart eyebrow="Punkteentwicklung" title="Durchschnittspunkte im Turnier" note="Ø Punkte je Spiel – dieselben Zahlen wie die Spalte „Ø Punkte“ der Rangliste. Die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
     {historyError && <div className="error-message">{historyError}</div>}
     {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
@@ -579,6 +604,9 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
   // des Alleinspielers. "Modern" lässt die Blöcke weg und zeigt nur die Zeile.
   const [style, setStyle] = useState(() => (localStorage.getItem(TABLE_STYLE_KEY) === 'classic' ? 'classic' : 'modern'))
   const classic = style === 'classic'
+  // Auf dem Handy ist das Protokoll eine Kartenliste – die breite Tabelle mit ihren
+  // Spieler-Blöcken bleibt dem größeren Bildschirm.
+  const mobile = useMobile()
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
   const columns = (classic ? 6 + lineup.length * 3 : 7) + (role === 'ADMIN' ? 1 : 0)
@@ -607,6 +635,40 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
     const value = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
     return <td className={`value-cell num signed ${value === null ? '' : value > 0 ? 'up' : 'down'}`}>{value === null ? '' : signedValue(value)}</td>
   }
+  // Handy: eine Karte je Runde. Ganz vorne die Runde und die Spielart, dann die
+  // beiden Zahlen, die zählen (Spielwert und was das Spiel dem Alleinspieler
+  // bringt), darunter wer gab und wer spielte.
+  if (mobile) return <section className="games-panel">
+    <div className="panel-heading">
+      <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
+      <span className="dealer-note">Zeile antippen für Details</span>
+    </div>
+    <div className="game-cards">
+      {games.length ? games.map((game, index) => {
+        const delta = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
+        return <div key={game.id} className="game-card card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
+          <div className="game-card-head">
+            <span className="game-card-round">Runde {game.position}</span>
+            <span className="game-card-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
+            <span className={`game-card-result ${game.passedOut ? 'muted' : game.won ? 'won' : 'lost'}`}>{game.passedOut ? '—' : outcomeLabel(game)}</span>
+            {role === 'ADMIN' && <button className="icon-button game-card-edit" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button>}
+          </div>
+          <div className="game-card-values">
+            <span className="game-card-value"><strong>{game.passedOut ? '–' : game.gameValue}</strong><small>Spielwert</small></span>
+            <span className="game-card-value"><strong className={delta === null ? '' : delta > 0 ? 'up' : delta < 0 ? 'down' : ''}>{delta === null ? '–' : signedValue(delta)}</strong><small>für {game.passedOut ? 'alle' : game.declarer}</small></span>
+          </div>
+          <div className="game-card-meta">{game.passedOut ? `Geber ${game.dealer} · kein Alleinspieler` : `Geber ${game.dealer} · Alleinspieler ${game.declarer}`}{game.passedOut ? '' : ` · ${matadorsLabel(game)}`}</div>
+        </div>
+      }) : <p className="chart-note">Noch keine Spiele eingetragen. Der erste Eintrag beginnt mit dem Geber aus Platz 1.</p>}
+    </div>
+    {summary && <div className="game-summary">
+      <span className="eyebrow">Endergebnis</span>
+      {results.players.map((player) => <div key={player.name} className="game-summary-row"><span>{player.name}</span><span className="muted">{player.won} / {player.lost} / {player.opponentWon}</span><strong className={player.total > 0 ? 'up' : player.total < 0 ? 'down' : ''}>{signedValue(player.total)}</strong></div>)}
+      <small className="game-summary-note">Gewonnene / verlorene Alleinspiele / Gegenspiele</small>
+    </div>}
+    {children}
+  </section>
+
   return <section className="games-panel">
     <div className="panel-heading">
       <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
