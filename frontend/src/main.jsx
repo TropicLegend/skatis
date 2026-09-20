@@ -178,6 +178,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [editedPlayerName, setEditedPlayerName] = useState('')
   const [listRankings, setListRankings] = useState({})
   const [standing, setStanding] = useState(null)
+  const [detailPlayer, setDetailPlayer] = useState(null)
   const [filter, setFilter] = useState('all')
   const filtered = lists.filter((list) => filter === 'all' || list.matchday === filter)
   const days = [...new Set(lists.map((list) => list.matchday))]
@@ -194,12 +195,21 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       .catch(() => setListRankings({}))
     request(`/tournaments/${tournament.id}/standings`, { token }).then(setStanding).catch(() => setStanding(null))
   }, [lists, tournament?.id, token])
+  // Die Spieler-Details sind eine eigene Ansicht, kein Popup: sie treten an die
+  // Stelle der Übersicht und haben Kopfzeile und Zurück-Link. Die Zahlen kommen
+  // frisch aus der Rangliste, damit die Seite nach einem Nachladen mitzieht.
+  if (detailPlayer) {
+    const player = standing?.players?.find((entry) => entry.name === detailPlayer.name) ?? detailPlayer
+    return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Spieler">
+      <PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => setDetailPlayer(null)} onOpenList={onOpenList} />
+    </Shell>
+  }
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
     <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>
     <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
     <div className="list-grid">{filtered.length ? filtered.map((list) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
-    {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} />} 
+    {standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={setDetailPlayer} />} 
     <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>
     {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated) => { onTournamentUpdated(updated); setShowSettings(false) }} />}
@@ -221,11 +231,10 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
 
 function ListCard({ list, ranking, onClick }) { return <button className="list-card" onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
-function TournamentRanking({ standing, tournament, token, lists = [], rankings = {} }) {
+function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
   const [histories, setHistories] = useState({})
   const [historyError, setHistoryError] = useState('')
-  const [detailPlayer, setDetailPlayer] = useState(null)
 
   // Der Verlauf kommt aus `standings/history`: dieselben Zahlen wie die Tabelle
   // darunter, nur datiert. Jede Skalierung wird einmal geholt und gemerkt.
@@ -244,7 +253,7 @@ function TournamentRanking({ standing, tournament, token, lists = [], rankings =
     <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen · Spieler antippen für Details</span></div>
     <div className="ranking-table">
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
-      {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => setDetailPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetailPlayer(player) } }}>
+      {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => onOpenPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
         <span>{player.name}</span>
         <span className="num">{player.gamesPlayed}</span>
@@ -260,21 +269,36 @@ function TournamentRanking({ standing, tournament, token, lists = [], rankings =
     <ProgressChart eyebrow="Punkteentwicklung" title="Durchschnittspunkte im Turnier" note="Ø Punkte je Spiel – dieselben Zahlen wie die Spalte „Ø Punkte“ der Rangliste. Die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
     {historyError && <div className="error-message">{historyError}</div>}
     {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
-    {detailPlayer && <PlayerDetail player={detailPlayer} history={history} lists={lists} rankings={rankings} onClose={() => setDetailPlayer(null)} />}
   </section>
 }
 
 /**
- * Details und Statistiken eines Spielers: die Zahlen der Rangliste, der Verlauf
- * seines Kontos und seine Abende. Alles kommt aus der API – die Wertung, der
- * Verlauf aus `…/standings/history` und die Abende aus den Ergebnistabellen.
+ * Die Ansicht eines Spielers: seine Zahlen aus der Rangliste, der Verlauf seines
+ * Kontos je Zeitraum und seine Abende. Alles kommt aus der API – die Wertung aus
+ * `…/standings`, der Verlauf aus `…/standings/history` und die Abende aus den
+ * Ergebnistabellen der Listen.
  */
-function PlayerDetail({ player, history, lists = [], rankings = {}, onClose }) {
-  const buckets = history?.buckets ?? []
-  const groupBy = history?.groupBy ?? 'matchday'
+function PlayerView({ player, standing, tournament, token, lists = [], rankings = {}, onBack, onOpenList }) {
+  const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
+  const [histories, setHistories] = useState({})
+  const [historyError, setHistoryError] = useState('')
+
+  // Jede Skalierung wird einmal geholt und gemerkt – wie in der Rangliste.
+  useEffect(() => {
+    if (!tournament?.id || histories[scale]) return undefined
+    let active = true
+    request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}`, { token })
+      .then((history) => { if (active) setHistories((current) => ({ ...current, [scale]: history })) })
+      .catch((problem) => { if (active) setHistoryError(problem.message) })
+    return () => { active = false }
+  }, [tournament?.id, token, scale, histories])
+
+  const history = histories[scale]
+  const groupBy = history?.groupBy ?? scale
   const groupByLabel = PROGRESS_SCALES.find((option) => option.id === groupBy)?.label ?? ''
   const chart = playerProgressChart(history, player.name)
   // Was er in jedem Zeitraum gesammelt hat und wo sein Konto danach stand.
+  const buckets = history?.buckets ?? []
   const periods = buckets.map((bucket, index) => {
     const score = bucket.score?.[player.name] ?? 0
     const before = index === 0 ? 0 : buckets[index - 1].score?.[player.name] ?? 0
@@ -288,53 +312,55 @@ function PlayerDetail({ player, history, lists = [], rankings = {}, onClose }) {
     }
   })
   const best = periods.reduce((top, period) => (top === null || period.change > top.change ? period : top), null)
-  // Seine gewerteten Abende – ein Zettel ist eine Zeile.
+  // Seine gewerteten Abende – ein Zettel ist eine Zeile, antippen öffnet ihn.
   const evenings = (lists ?? [])
     .filter((list) => list.counted !== false && rankings[list.id])
     .map((list) => ({ list, row: (rankings[list.id].players ?? []).find((entry) => entry.name === player.name) }))
     .filter((entry) => entry.row)
-  const stat = (label, value, hint) => <div className="detail-item"><span>{label}</span><strong>{value}</strong>{hint && <small className="detail-hint">{hint}</small>}</div>
+  const changeClass = (value) => (value === null ? '' : value > 0 ? 'up' : value < 0 ? 'down' : '')
 
-  return <div className="modal-backdrop" onClick={onClose}>
-    <div className="modal detail-modal player-modal" onClick={(event) => event.stopPropagation()}>
-      <button className="modal-close" onClick={onClose}><X size={18} /></button>
-      <span className="eyebrow">Rangliste · {player.rank === null ? 'ohne Wertung' : `Rang ${player.rank}`}</span>
-      <h2>{player.name}</h2>
-      <p className="modal-copy">{player.gamesPlayed} Spiele in den gewerteten Listen · Ø {player.averageScore ?? '–'} Punkte je Spiel</p>
-      <div className="detail-grid">
-        {stat('Gesamtpunkte', signedValue(player.score), 'Spielpunkte, Boni und Gegenspiele')}
-        {stat('Ø Punkte je Spiel', player.averageScore ?? '–', 'der Rangwert')}
-        {stat('Ø Punkte pro 36 Spiele', player.averageScorePer36 ?? '–', 'hochgerechnet auf 36 Spiele')}
-        {stat('Letzter Spieltag', player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange), 'Veränderung seitdem')}
-        {stat('Spielpunkte', signedValue(player.points), 'nur die eigenen Alleinspiele')}
-        {stat('Boni (+50 / −50)', signedValue(player.wonBonus + player.lossPenalty), `${player.won} × +50, ${player.lost} × −50`)}
-        {stat('Gegenspiel-Punkte', signedValue(player.opponentBonus), `${player.opponentWon} × verloren von Mitspielern`)}
-        {stat('Gewonnene Spiele', player.won, 'eigene Alleinspiele gewonnen')}
-        {stat('Verlorene Spiele', player.lost, 'eigene Alleinspiele verloren')}
-        {best && stat('Bester Zeitraum', signedValue(best.change), best.label)}
-      </div>
-      <div className="chart-block">
-        <div className="chart-head"><div><span className="eyebrow">Entwicklung</span><h3>Punkte über die Zeit</h3></div><span className="dealer-note">{groupByLabel}</span></div>
-        <LineChart labels={chart.labels} series={chart.series} height={200} unit="Punkte" emptyHint="Noch keine gewerteten Spieltage." />
-        <p className="chart-note">Der Kontostand nach jedem Zeitraum – er wächst nur durch eigene Alleinspiele und die Boni.</p>
-      </div>
-      <div className="player-tables">
-        <div>
-          <span className="option-label">Nach Zeitraum <small>({groupByLabel})</small></span>
-          <table className="detail-table"><thead><tr><th>Zeitraum</th><th>Spiele</th><th>Punkte</th><th>Ø</th><th>Gesamt</th></tr></thead><tbody>
-            {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td className={period.change > 0 ? 'delta-up' : period.change < 0 ? 'delta-down' : 'muted'}>{signedValue(period.change)}</td><td>{period.averageScore ?? '–'}</td><td><strong>{period.score}</strong></td></tr>) : <tr><td colSpan={5} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
-          </tbody></table>
-        </div>
-        <div>
-          <span className="option-label">Seine Abende</span>
-          <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
-            {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
-          </tbody></table>
-        </div>
-      </div>
-      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Schließen</button></div>
+  return <>
+    <div className="workspace-head">
+      <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Rangliste</button>
+      <div className="workspace-title"><span className="eyebrow">{tournament?.name} · {standing?.listsCounted ?? 0} gewertete Listen</span><h1>{player.name}</h1></div>
+      <div className="workspace-actions"><span className="status submitted">{player.rank === null ? 'Ohne Wertung' : `Rang ${player.rank}`}</span></div>
     </div>
-  </div>
+
+    <div className="stats-row player-stats">
+      <div className="stat"><span>Gesamtpunkte</span><strong>{signedValue(player.score)}</strong><small>Spielpunkte, Boni und Gegenspiele</small></div>
+      <div className="stat"><span>Ø Punkte je Spiel</span><strong>{player.averageScore ?? '–'}</strong><small>der Rangwert · {player.gamesPlayed} Spiele</small></div>
+      <div className="stat"><span>Ø Punkte pro 36 Spiele</span><strong>{player.averageScorePer36 ?? '–'}</strong><small>hochgerechnet auf 36 Spiele</small></div>
+      <div className="stat"><span>Letzter Spieltag</span><strong className={changeClass(player.lastMatchdayChange)}>{player.lastMatchdayChange === null ? '–' : signedValue(player.lastMatchdayChange)}</strong><small>Veränderung zum Spieltag davor</small></div>
+    </div>
+
+    <div className="stats-row player-stats">
+      <div className="stat"><span>Spielpunkte</span><strong>{signedValue(player.points)}</strong><small>nur die eigenen Alleinspiele</small></div>
+      <div className="stat"><span>Boni (+50 / −50)</span><strong>{signedValue(player.wonBonus + player.lossPenalty)}</strong><small>{player.won} × +50, {player.lost} × −50</small></div>
+      <div className="stat"><span>Gegenspiel-Punkte</span><strong>{signedValue(player.opponentBonus)}</strong><small>{player.opponentWon} × verloren von Mitspielern</small></div>
+      <div className="stat"><span>Gewonnen / Verloren</span><strong>{player.won} / {player.lost}</strong><small>{best ? `bester Zeitraum ${best.label} (${signedValue(best.change)})` : 'eigene Alleinspiele'}</small></div>
+    </div>
+
+    <section className="player-panel">
+      <ProgressChart eyebrow="Entwicklung" title="Punkte über die Zeit" note="Der Kontostand nach jedem Zeitraum – er wächst nur durch eigene Alleinspiele und die Boni; die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
+      {historyError && <div className="error-message">{historyError}</div>}
+      {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+    </section>
+
+    <div className="player-tables">
+      <section className="player-panel">
+        <div className="section-heading"><div><span className="eyebrow">Aufschlüsselung</span><h2>Nach Zeitraum</h2></div><span className="dealer-note">{groupByLabel}</span></div>
+        <table className="detail-table"><thead><tr><th>Zeitraum</th><th>Spiele</th><th>Punkte</th><th>Ø</th><th>Gesamt</th></tr></thead><tbody>
+          {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td className={period.change > 0 ? 'delta-up' : period.change < 0 ? 'delta-down' : 'muted'}>{signedValue(period.change)}</td><td>{period.averageScore ?? '–'}</td><td><strong>{period.score}</strong></td></tr>) : <tr><td colSpan={5} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
+        </tbody></table>
+      </section>
+      <section className="player-panel">
+        <div className="section-heading"><div><span className="eyebrow">Bilanz</span><h2>Seine Abende</h2></div><span className="dealer-note">{evenings.length} gewertete Zettel · antippen öffnet den Tisch</span></div>
+        <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
+          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
+        </tbody></table>
+      </section>
+    </div>
+  </>
 }
 
 function CreateListModal({ token, tournament, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
