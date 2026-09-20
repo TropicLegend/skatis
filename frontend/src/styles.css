@@ -435,7 +435,10 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
    sich, Punkte und Ring kommen nach. Nur `transform`/`opacity`, damit es auf
    kleinen Geräten günstig bleibt; `prefers-reduced-motion` schaltet alles ab.
    --------------------------------------------------------------------------- */
-.chart-line{stroke-dasharray:2600;stroke-dashoffset:2600;animation:draw-line 1s ease forwards}
+/* `pathLength="1"` an der Linie: die Länge ist damit 1, egal wie viele Runden die
+   Kurve hat – sonst müsste die Strichlänge geraten werden und lange Kurven würden
+   nach der Animation stricheln. */
+.chart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-line 1s ease forwards}
 .chart-point{animation:pop-in .32s ease both;animation-delay:calc(var(--i,0) * 18ms)}
 .pie-canvas{animation:pie-in .5s ease both}
 .pie-slice{cursor:pointer}
@@ -461,6 +464,16 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .pie-detail{font-size:14px}
   .pie-legend-item{min-height:40px}
   .bar-track{height:9px}
+
+  /* Die alten 560px-Regeln machen die Kopfknöpfe der Übersicht zu reinen Symbolen.
+     Mit voller Breite darf das Wort wieder daneben stehen. */
+  .dashboard-actions .primary-button,.dashboard-actions .secondary-button,.dashboard-header .primary-button{font-size:14px;width:auto;padding:0 14px}
+
+  /* Anmeldung: die grosse Überschrift des Werbeblocks braucht auf dem Handy weniger Platz. */
+  .login-art{min-height:0;padding:28px 20px}
+  .login-art h1{font-size:34px}
+  .login-panel{padding:26px 20px 34px}
+  .mode-tabs{gap:14px}
 }
 
 

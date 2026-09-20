@@ -152,6 +152,7 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
           <g key={serie.name}>
             <polyline
               className="chart-line"
+              pathLength="1"
               points={serie.values.flatMap((value, index) => (value === null ? [] : [`${x(index)},${y(value)}`])).join(' ')}
               style={{ stroke: serie.color }}
             />
