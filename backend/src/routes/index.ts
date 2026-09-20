@@ -10,7 +10,7 @@ apiRouter.get('/', (_req, res) => {
   res.json({
     data: {
       name: 'skatis-api',
-      version: '0.9.0',
+      version: '0.10.0',
       documentation: 'https://github.com/TropicLegend/skatis/blob/main/backend/README.md',
       endpoints: {
         health: 'GET /api/health',
@@ -21,6 +21,8 @@ apiRouter.get('/', (_req, res) => {
         tournament: 'GET /api/tournaments/:tournamentId',
         session: 'GET /api/tournaments/:tournamentId/session',
         standings: 'GET /api/tournaments/:tournamentId/standings',
+        standingsHistory: 'GET /api/tournaments/:tournamentId/standings/history',
+        playerStats: 'GET /api/tournaments/:tournamentId/standings/players/:playerName',
         log: 'GET /api/tournaments/:tournamentId/log',
         players: 'GET|POST /api/tournaments/:tournamentId/players',
         player: 'PATCH|DELETE /api/tournaments/:tournamentId/players/:playerName',

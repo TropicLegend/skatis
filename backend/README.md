@@ -780,6 +780,7 @@ numbers that could drift from what the API calculates.
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
 | GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
 | GET    | `/tournaments/:tournamentId/standings/history` | any | The standing at the end of every matchday, week or month |
+| GET    | `/tournaments/:tournamentId/standings/players/:playerName` | any | How one player took part in the rounds and how he did there |
 | GET    | `/tournaments/:tournamentId/log`       | any   | The change log of the tournament, newest first          |
 | PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays` and/or the player password   |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
@@ -959,6 +960,71 @@ game: a tournament over months stays comparable because a player who missed an
 evening keeps their own average.
 
 **Errors:** `404` unknown tournament, `422` unknown `groupBy`.
+
+#### `GET /tournaments/:tournamentId/standings/players/:playerName`
+
+How one player took part in the rounds of the tournament and how he did there. The
+answer carries his [ranking row](#standing) as `player`, so a player page needs a
+single request; everything else is derived from the games of the counted lists.
+Reading is allowed for both roles.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "tournamentId": "K7M2P4QX",
+    "listsCounted": 3,
+    "player": { "rank": 1, "name": "Bert", "gamesPlayed": 6, "score": 612, "averageScore": 102, "averageScorePer36": 3672, "lastMatchdayChange": 140, "won": 4, "lost": 1, "opponentWon": 3, "points": 96, "wonBonus": 200, "lossPenalty": -50, "opponentBonus": 90 },
+    "roles": {
+      "played": 6,
+      "declarer": 5,
+      "defender": 1,
+      "passedOut": 0,
+      "declarerShare": 83.3,
+      "defenderShare": 16.7
+    },
+    "declarer": { "played": 5, "won": 4, "lost": 1, "winShare": 80 },
+    "hand": { "played": 2, "won": 2, "share": 40, "winShare": 100 },
+    "defender": { "played": 1, "won": 1, "winShare": 100 },
+    "gameTypes": [
+      { "gameType": "HERZ", "played": 2, "won": 1, "share": 40, "winShare": 50 },
+      { "gameType": "PIK", "played": 1, "won": 1, "share": 20, "winShare": 100 },
+      { "gameType": "GRAND", "played": 1, "won": 1, "share": 20, "winShare": 100 },
+      { "gameType": "NULL", "played": 1, "won": 1, "share": 20, "winShare": 100 }
+    ],
+    "gameTypeGroups": [
+      { "group": "SUIT", "played": 3, "won": 2, "share": 60, "winShare": 66.7 },
+      { "group": "GRAND", "played": 1, "won": 1, "share": 20, "winShare": 100 },
+      { "group": "NULL", "played": 1, "won": 1, "share": 20, "winShare": 100 }
+    ]
+  }
+}
+```
+
+A round the player is part of is exactly one of three things, so the roles add up
+to his `gamesPlayed`: his own **Alleinspiel**, a **Gegenspiel** (somebody else
+played) or a round that was **passed out**. `declarerShare` / `defenderShare` are
+those roles as a share of `played` – "in how many of his games was he the
+Alleinspieler / a Gegenspieler?".
+
+The blocks below follow the same pattern: `played` is the number of games in that
+block, `share` is it in percent of the right total (his Alleinspiele) and
+`winShare` is the Erfolgsquote inside the block. `hand` counts his Alleinspiele
+with the Gewinnstufe "Hand" (also "Null Hand"), `defender.won` counts the rounds
+he was at the table in **and** the Alleinspieler lost – the standing's
+`opponentWon` counts every such loss of the others, because the bonus is paid to
+the whole lineup, also to a player who sat out.
+
+`gameTypes` lists every Spielart he played (in the order of the enum) and
+`gameTypeGroups` always reports all three groups – `SUIT` (the four colours),
+`GRAND` and `NULL`; a frontend draws its "Grand / Null / Farbspiel" pie and the
+colour rankings from those two lists without doing maths itself.
+
+All shares are percentages rounded to one decimal and `null` while the
+denominator is `0`.
+
+**Errors:** `404` unknown tournament or unknown player.
 
 The **change log** ("Protokoll") of the tournament, newest first. Both roles may
 read it, so a member can follow what an admin changed and an admin can see who

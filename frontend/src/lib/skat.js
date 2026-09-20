@@ -51,6 +51,14 @@ export function gameTypeMeta(gameType) {
   return GAME_TYPES.find((type) => type.id === gameType) ?? null
 }
 
+/** ♣ ♠ ♥ ♦ ✦ ∅ – das Symbol einer Spielart. */
+export function gameTypeSymbol(gameType) {
+  return gameTypeMeta(gameType)?.symbol ?? ''
+}
+
+/** Die vier Farbspiele – Grand und Null sind keine Farben. */
+export const SUIT_GAME_TYPES = ['KARO', 'HERZ', 'PIK', 'KREUZ']
+
 /** "KREUZ" → "Kreuz"; unknown values are passed through for the admin to see. */
 export function gameTypeLabel(gameType) {
   if (!gameType) return '—'

@@ -7,6 +7,7 @@ import { rateLimit } from '../../middleware/rate-limit.js';
 import { auditRouter } from '../audit/audit.routes.js';
 import { listRouter } from '../lists/list.routes.js';
 import { playerRouter } from '../players/player.routes.js';
+import { playerParams } from '../players/player.schemas.js';
 import {
   authenticateTournament,
   createTournament,
@@ -14,6 +15,7 @@ import {
   getTournament,
   getTournamentStandings,
   getStandingsHistory,
+  getPlayerStats,
   listTournaments,
   updateTournament,
 } from './tournament.service.js';
@@ -131,6 +133,23 @@ tournamentRouter.get('/:tournamentId/standings/history', authenticate(), async (
 
   res.json({ data: history });
 });
+
+/**
+ * How one player took part in the rounds of the tournament and how he did there:
+ * how often he was the Alleinspieler, how many of those he won, his Hand games,
+ * his Spielarten and how he did as a Gegenspieler. His ranking row is part of the
+ * answer, so a player page is a single request. Readable by both roles.
+ */
+tournamentRouter.get(
+  '/:tournamentId/standings/players/:playerName',
+  authenticate(),
+  async (req, res) => {
+    const { tournamentId, playerName } = playerParams.parse(req.params);
+    const stats = await getPlayerStats(tournamentId, playerName);
+
+    res.json({ data: stats });
+  },
+);
 
 /**
  * Admin only: change the name, the matchdays and the normal ("Spieler-")

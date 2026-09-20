@@ -246,6 +246,7 @@ describe('api', () => {
       ['delete', `/api/tournaments/${TOURNAMENT_ID}/players/Anna`],
       ['get', `/api/tournaments/${TOURNAMENT_ID}/standings`],
       ['get', `/api/tournaments/${TOURNAMENT_ID}/standings/history`],
+      ['get', `/api/tournaments/${TOURNAMENT_ID}/standings/players/Anna`],
     ] as const;
 
     for (const [method, path] of paths) {

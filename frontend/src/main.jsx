@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
-import { GAME_TYPES, gameTypeLabel, gameTypeRules, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
+import PieChart from './components/PieChart.jsx'
+import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, SUIT_GAME_TYPES, withStep } from './lib/skat.js'
 import './styles.css'
 
 const API = 'https://skatis.online/api'
@@ -36,6 +37,13 @@ async function request(path, options = {}) {
 const initialGame = { passedOut: false, declarer: '', gameType: '', hand: false, schneiderAnnounced: false, schwarzAnnounced: false, offen: false, matadors: { suit: 'WITH', count: 1 }, schneider: false, schwarz: false, won: true, note: '' }
 /** Spielarten des Wizards – Beschriftung und Symbol; die Grundwerte kommen aus `/rules`. */
 const gameTypes = GAME_TYPES
+
+/** Die drei Spielart-Gruppen: Beschriftung und Farbe für das Kuchendiagramm. */
+const GAME_TYPE_GROUPS = {
+  SUIT: { label: 'Farbspiel', color: '#527b78' },
+  GRAND: { label: 'Grand', color: '#db6f40' },
+  NULL: { label: 'Null', color: '#7d6a9c' },
+}
 
 /**
  * Die Regeln des Spiels (`GET /rules`) sind für alle Turniere gleich und werden
@@ -293,6 +301,19 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     return () => { active = false }
   }, [tournament?.id, token, scale, histories])
 
+  // Die Spielstatistiken (Rolle, Quoten, Spielarten) kommen aus einem eigenen
+  // Endpunkt – die Prozentwerte rechnet der Server, nicht diese Ansicht.
+  const [stats, setStats] = useState(null)
+  const [statsError, setStatsError] = useState('')
+  useEffect(() => {
+    if (!tournament?.id || !player?.name) return undefined
+    let active = true
+    request(`/tournaments/${tournament.id}/standings/players/${encodeURIComponent(player.name)}`, { token })
+      .then((value) => { if (active) { setStats(value); setStatsError('') } })
+      .catch((problem) => { if (active) setStatsError(problem.message) })
+    return () => { active = false }
+  }, [tournament?.id, player?.name, token])
+
   const history = histories[scale]
   const groupBy = history?.groupBy ?? scale
   const groupByLabel = PROGRESS_SCALES.find((option) => option.id === groupBy)?.label ?? ''
@@ -318,6 +339,26 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     .map((list) => ({ list, row: (rankings[list.id].players ?? []).find((entry) => entry.name === player.name) }))
     .filter((entry) => entry.row)
   const changeClass = (value) => (value === null ? '' : value > 0 ? 'up' : value < 0 ? 'down' : '')
+  const percentLabel = (value) => (value === null || value === undefined ? '–' : `${value} %`)
+  // Farbspiele getrennt: „Lieblingsfarben“ nach Häufigkeit, „Beste Farben“ nach
+  // Gewinnchance – beides aus den Zahlen des Servers, hier wird nur sortiert.
+  const suits = (stats?.gameTypes ?? []).filter((entry) => SUIT_GAME_TYPES.includes(entry.gameType))
+  const favourite = [...suits].sort((a, b) => b.played - a.played || a.gameType.localeCompare(b.gameType))
+  const bestSuits = [...suits].sort((a, b) => (b.winShare ?? 0) - (a.winShare ?? 0) || b.played - a.played)
+  const pieSlices = (stats?.gameTypeGroups ?? []).map((group) => ({
+    label: GAME_TYPE_GROUPS[group.group]?.label ?? group.group,
+    value: group.played,
+    color: GAME_TYPE_GROUPS[group.group]?.color ?? '#c1c3ba',
+  }))
+  /** Eine Kennzahl im Panel: Label, Wert und eine erläuternde Zeile darunter. */
+  const item = (label, value, hint) => <div className="detail-item"><span>{label}</span><strong>{value}</strong>{hint && <small>{hint}</small>}</div>
+  /** Eine Zeile der Farb-Rankings: Balken (Anteil), Wert und Erläuterung. */
+  const barRow = (entry, value, width, hint) => <li key={entry.gameType}>
+    <span className="bar-label"><span className={`suit-icon suit-${entry.gameType.toLowerCase()}`}>{gameTypeSymbol(entry.gameType)}</span>{gameTypeLabel(entry.gameType)}</span>
+    <span className="bar-track"><i style={{ width: `${Math.max(0, Math.min(100, width ?? 0))}%` }} /></span>
+    <strong>{value}</strong>
+    <small>{hint}</small>
+  </li>
 
   return <>
     <div className="workspace-head">
@@ -340,10 +381,50 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
       <div className="stat"><span>Gewonnen / Verloren</span><strong>{player.won} / {player.lost}</strong><small>{best ? `bester Zeitraum ${best.label} (${signedValue(best.change)})` : 'eigene Alleinspiele'}</small></div>
     </div>
 
+    <div className="player-tables">
+      <section className="player-panel">
+        <div className="section-heading"><div><span className="eyebrow">Rollen</span><h2>Seine Aufgaben</h2></div><span className="dealer-note">in {stats?.roles.played ?? player.gamesPlayed} Spielen am Tisch</span></div>
+        {statsError && <div className="error-message">{statsError}</div>}
+        {!stats && !statsError && <p className="chart-note">Die Spielstatistiken werden geladen …</p>}
+        {stats && <div className="stat-grid">
+          {item('Anteil Alleinspieler', percentLabel(stats.roles.declarerShare), `${stats.roles.declarer} × selbst gespielt`)}
+          {item('Anteil Gegenspieler', percentLabel(stats.roles.defenderShare), `${stats.roles.defender} × als Gegenspieler`)}
+          {item('Eingepasst', stats.roles.passedOut, 'Runden ohne Spiel')}
+          {item('Spiele am Tisch', stats.roles.played, 'seine gesamten Spiele')}
+        </div>}
+      </section>
+      <section className="player-panel">
+        <div className="section-heading"><div><span className="eyebrow">Quoten</span><h2>Wie er abschneidet</h2></div></div>
+        {stats && <div className="stat-grid">
+          {item('Alleinspiele gewonnen', percentLabel(stats.declarer.winShare), `${stats.declarer.won} von ${stats.declarer.played}`)}
+          {item('Hand angesagt', percentLabel(stats.hand.share), `${stats.hand.played} von ${stats.declarer.played} Alleinspielen`)}
+          {item('Hand gewonnen', percentLabel(stats.hand.winShare), `${stats.hand.won} von ${stats.hand.played}`)}
+          {item('Gegenspiele gewonnen', percentLabel(stats.defender.winShare), `${stats.defender.won} von ${stats.defender.played}`)}
+        </div>}
+      </section>
+    </div>
+
     <section className="player-panel">
       <ProgressChart eyebrow="Entwicklung" title="Punkte über die Zeit" note="Der Kontostand nach jedem Zeitraum – er wächst nur durch eigene Alleinspiele und die Boni; die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
       {historyError && <div className="error-message">{historyError}</div>}
       {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+    </section>
+
+    <section className="player-panel">
+      <div className="section-heading"><div><span className="eyebrow">Spielarten</span><h2>Grand, Null und Farbspiel</h2></div><span className="dealer-note">Anteil an seinen {stats?.declarer.played ?? '–'} Alleinspielen</span></div>
+      {stats && <div className="pie-layout">
+        <PieChart slices={pieSlices} centerLabel="Alleinspiele" emptyHint="Noch keine Alleinspiele eingetragen." />
+        <div className="bar-lists">
+          <div>
+            <div className="section-heading"><div><span className="eyebrow">Farben</span><h3>Lieblingsfarben</h3></div><span className="dealer-note">nach Häufigkeit</span></div>
+            {favourite.length ? <ul className="bar-list">{favourite.map((entry) => barRow(entry, `${entry.played}×`, entry.share, `${entry.share} % seiner Alleinspiele · ${entry.won} gewonnen`))}</ul> : <p className="chart-note">Noch kein Farbspiel gespielt.</p>}
+          </div>
+          <div>
+            <div className="section-heading"><div><span className="eyebrow">Farben</span><h3>Beste Farben</h3></div><span className="dealer-note">nach Gewinnchance</span></div>
+            {bestSuits.length ? <ul className="bar-list">{bestSuits.map((entry) => barRow(entry, percentLabel(entry.winShare), entry.winShare ?? 0, `${entry.won} von ${entry.played} gewonnen`))}</ul> : <p className="chart-note">Noch kein Farbspiel gespielt.</p>}
+          </div>
+        </div>
+      </div>}
     </section>
 
     <div className="player-tables">

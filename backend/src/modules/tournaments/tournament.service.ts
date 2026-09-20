@@ -15,10 +15,12 @@ import type {
 import {
   standingsHistory,
   tournamentStandings,
+  type StandingRow,
   type StandingsGroupBy,
   type StandingsHistoryDto,
   type TournamentStandingsDto,
 } from './standings.js';
+import { playerGameStats, type PlayerGameStatsDto, type StatGame } from './player-stats.js';
 
 /** Number of attempts to find a free tournament id. */
 const MAX_ID_ATTEMPTS = 5;
@@ -200,7 +202,16 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
           orderBy: { position: 'asc' },
           select: { player: { select: { name: true } } },
         },
-        games: { select: { players: true, declarer: true, won: true, gameValue: true } },
+        games: {
+          select: {
+            players: true,
+            declarer: true,
+            won: true,
+            gameValue: true,
+            gameType: true,
+            hand: true,
+          },
+        },
       },
     }),
   ]);
@@ -217,15 +228,18 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
     tournamentId: tournament.id,
     roster: roster.map((player) => player.name),
     results: matchdays,
+    games: lists.flatMap((list) => list.games),
   };
 }
 
-/** The input of the standing and of its history. */
+/** The input of the standing, of its history and of the per-game statistics. */
 interface CountedResults {
   tournamentId: string;
   roster: string[];
   /** One result table per counted list, oldest matchday first. */
   results: ListResultsDto[];
+  /** Every game of the counted lists, in the same order. */
+  games: StatGame[];
 }
 
 /** The standing of the tournament over all counted lists, best player first. */
@@ -255,6 +269,41 @@ export async function getStandingsHistory(
     results,
     groupBy,
   );
+}
+
+/** The statistics of one player: his ranking row plus the numbers of his games. */
+export interface PlayerStatsDto extends PlayerGameStatsDto {
+  tournamentId: string;
+  /** How many counted lists the numbers are built from. */
+  listsCounted: number;
+  /** The ranking row of the player – the same numbers `GET …/standings` reports. */
+  player: StandingRow;
+}
+
+/**
+ * How one player took part in the rounds of the tournament and how he did there:
+ * the roles he had (Alleinspieler, Gegenspieler, Eingepasst), his Erfolgsquote,
+ * his Hand games and his Spielarten. The ranking row comes with it, so the page
+ * gets the standing numbers from the very same request.
+ */
+export async function getPlayerStats(
+  tournamentId: string,
+  playerName: string,
+): Promise<PlayerStatsDto> {
+  const { tournamentId: id, roster, results, games } = await loadCountedResults(tournamentId);
+  const standings = tournamentStandings(id, roster, results);
+
+  const player = standings.players.find((entry) => entry.name === playerName);
+  if (!player) {
+    throw notFound(`Player ${playerName} does not exist in the tournament ${id}`);
+  }
+
+  return {
+    tournamentId: id,
+    listsCounted: standings.listsCounted,
+    player,
+    ...playerGameStats(player.name, games),
+  };
 }
 
 export async function updateTournament(
