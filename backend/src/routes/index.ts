@@ -1,7 +1,30 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import { healthRouter } from '../modules/health/health.routes.js';
 import { rulesRouter } from '../modules/rules/rules.routes.js';
 import { tournamentRouter } from '../modules/tournaments/tournament.routes.js';
+
+/**
+ * The version of the package. It is read from `package.json` instead of being
+ * written down a second time, so the discovery document can never report a
+ * version the deployed code does not have. `src/routes` and `dist/routes` are
+ * both two levels below the project root; a missing file is not worth an aborted
+ * start, the discovery document then simply has no version.
+ */
+function packageVersion(): string {
+  const fallback = '0.0.0';
+
+  try {
+    const path = fileURLToPath(new URL('../../package.json', import.meta.url));
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { version?: string };
+    return parsed.version ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const API_VERSION = packageVersion();
 
 export const apiRouter = Router();
 
@@ -10,7 +33,7 @@ apiRouter.get('/', (_req, res) => {
   res.json({
     data: {
       name: 'skatis-api',
-      version: '0.10.0',
+      version: API_VERSION,
       documentation: 'https://github.com/TropicLegend/skatis/blob/main/backend/README.md',
       endpoints: {
         health: 'GET /api/health',

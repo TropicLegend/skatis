@@ -14,6 +14,8 @@ describe('api', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.name).toBe('skatis-api');
+    // Read from `package.json`, so a version the code does not have is impossible.
+    expect(response.body.data.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(response.body.data.endpoints.createTournament).toBe('POST /api/tournaments');
     expect(response.body.data.endpoints.openSession).toContain('/session');
     expect(response.body.data.endpoints.results).toContain('/results');
