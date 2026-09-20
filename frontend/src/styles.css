@@ -396,6 +396,9 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 /* Ein ruhiger Hinweis – z. B. „Sitzung beendet, bitte neu anmelden“. */
 .info-message{margin:0 0 18px;padding:12px 14px;border:1px solid rgba(82,123,120,.35);border-radius:12px;background:rgba(82,123,120,.1);color:#2f4f4c;font-size:13px;line-height:1.5;animation:card-in .25s ease both}
 
+/* Erklärt die Stufen-Kette im Wizard und läuft über die volle Breite der Auswahl. */
+.announces .field-hint,.options-block .field-hint{grid-column:1/-1;margin-top:6px;line-height:1.5}
+
 @keyframes step-forward{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 @keyframes step-back{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
 

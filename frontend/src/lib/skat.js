@@ -84,6 +84,31 @@ export function levelsOf(game) {
   }))
 }
 
+/**
+ * Die Stufen eines Spiels bauen aufeinander auf: "Schneider angesagt" gibt es nur mit
+ * "Hand", "Schwarz angesagt" nur mit "Schneider angesagt", „Offen“ nur mit „Schwarz
+ * angesagt“ – und gespielt gilt dasselbe ("Schwarz" nur mit "Schneider"). Der Server
+ * lehnt alles andere ab.
+ *
+ * `withLevelChain` hält eine solche Kette in Ordnung: Eine Stufe einzuschalten holt
+ * ihre Voraussetzungen mit, eine auszuschalten nimmt die Stufen darüber weg. Dadurch
+ * kann gar keine Kombination entstehen, die der Server ablehnt – und keine Stufe
+ * bleibt angehakt, deren Grundlage gerade verschwunden ist (das war vorher der Fall:
+ * „Schwarz“ blieb stehen, obwohl „Schneider“ weg war, und ließ sich dann nicht mehr
+ * abwählen, weil es ausgegraut war).
+ */
+export function withLevelChain(chain, levels, key, value) {
+  const index = chain.indexOf(key)
+  const next = { ...levels, [key]: value }
+
+  chain.forEach((step, position) => {
+    if (value && position < index) next[step] = true
+    if (!value && position > index) next[step] = false
+  })
+
+  return next
+}
+
 /** "Mit 2" / "Ohne 3", or "—" for a null game. */
 export function matadorsLabel(game) {
   if (!game?.matadors) return '—'

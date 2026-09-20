@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, C
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
-import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
+import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withLevelChain, withStep } from './lib/skat.js'
 import { useMobile } from './lib/useMedia.js'
 import './styles.css'
 
@@ -52,6 +52,10 @@ async function request(path, options = {}) {
 }
 
 const initialGame = { passedOut: false, declarer: '', gameType: '', hand: false, schneiderAnnounced: false, schwarzAnnounced: false, offen: false, matadors: { suit: 'WITH', count: 1 }, schneider: false, schwarz: false, won: true, note: '' }
+// Die Stufen bauen aufeinander auf: erst wird angesagt, dann gespielt (siehe
+// `withLevelChain`). Ein höherer Schritt holt die darunterliegenden mit.
+const ANNOUNCED_CHAIN = ['hand', 'schneiderAnnounced', 'schwarzAnnounced', 'offen']
+const PLAYED_CHAIN = ['schneider', 'schwarz']
 /** Spielarten des Wizards – Beschriftung und Symbol; die Grundwerte kommen aus `/rules`. */
 const gameTypes = GAME_TYPES
 
@@ -1132,12 +1136,13 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
           {!rules && <p className="wizard-hint">Regeln werden geladen …</p>}
           <div className="choice-grid game-type-grid">{gameTypes.map((type) => <button key={type.id} className={`choice-card game-type ${game.gameType === type.id ? 'selected' : ''}`} onClick={() => selectGameType(type.id)}><span className={`suit-icon suit-${type.id.toLowerCase()}`}>{type.symbol}</span><strong>{type.label}</strong><small>Grundwert {gameTypeRules(rules, type.id)?.baseValue ?? '…'}</small></button>)}</div>
           {game.gameType && <div className="options-block">{game.gameType === 'NULL' ? <NullVariantOptions variant={game.nullVariant} nullValues={rules?.nullValues} onChange={(option) => setGame({ ...game, ...option })} /> : <>
-            <Toggle label="Hand" hint="Ohne Skataufnahme" checked={game.hand} onChange={(v) => update('hand', v)} />
+            <Toggle label="Hand" hint="Ohne Skataufnahme" checked={game.hand} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'hand', v) })} />
             <div className="announces">
               <span className="option-label">Zusatz-Ansagen</span>
-              <Toggle label="Schneider angesagt" checked={game.schneiderAnnounced} disabled={!game.hand} onChange={(v) => update('schneiderAnnounced', v)} />
-              <Toggle label="Schwarz angesagt" checked={game.schwarzAnnounced} disabled={!game.schneiderAnnounced} onChange={(v) => update('schwarzAnnounced', v)} />
-              <Toggle label="Offen / Ouvert" checked={game.offen} disabled={!game.schwarzAnnounced} onChange={(v) => update('offen', v)} />
+              <Toggle label="Schneider angesagt" checked={game.schneiderAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'schneiderAnnounced', v) })} />
+              <Toggle label="Schwarz angesagt" checked={game.schwarzAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'schwarzAnnounced', v) })} />
+              <Toggle label="Offen / Ouvert" checked={game.offen} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'offen', v) })} />
+              <small className="field-hint">Eine höhere Ansage schaltet die darunterliegenden automatisch mit – und eine abgeschaltete nimmt sie wieder weg.</small>
             </div>
           </>}</div>}
         </div>}
@@ -1162,8 +1167,9 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
           </div>
           {game.gameType !== 'NULL' && <div className="options-block">
             <span className="option-label">Erreichte Stufen</span>
-            <Toggle label="Schneider gespielt" checked={game.schneider} onChange={(v) => update('schneider', v)} />
-            <Toggle label="Schwarz gespielt" checked={game.schwarz} disabled={!game.schneider} onChange={(v) => update('schwarz', v)} />
+            <Toggle label="Schneider gespielt" checked={game.schneider} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schneider', v) })} />
+            <Toggle label="Schwarz gespielt" checked={game.schwarz} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schwarz', v) })} />
+            <small className="field-hint">Schwarz gespielt heißt immer auch Schneider gespielt.</small>
           </div>}
         </div>}
         </div>
