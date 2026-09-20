@@ -242,7 +242,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .bar-label,.bar-list small,.mini-ranking>span,.lineup-picker legend,.lineup-picker p,.lineup-choice,
   .lineup-status,.roster-hint,.log-entry p,.log-entry time,.log-entry-head,.table-style,tr.summary td,
   .site-footer,.breadcrumb,.matchday-picker button,.matchday-picker p,.tip-box p,.field-hint,
-  .form-note,.modal-copy,.section-heading span,.list-card h3 small{font-size:12px}
+  .form-note,.modal-copy,.section-heading span,.list-card h3 small,.matchday-picker legend,.roster-panel p{font-size:12px}
   .detail-table td,.log-entry,.roster-content,.player-tag,.stat strong.days{font-size:13px}
   input,select,textarea{font-size:16px;height:var(--tap);border-radius:10px}
   select{min-height:var(--tap);width:100%}
