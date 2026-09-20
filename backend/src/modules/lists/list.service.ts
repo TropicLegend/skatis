@@ -247,7 +247,7 @@ export async function getListResults(
 
 /**
  * The account ("Punktekonto") of every player after every round of the list –
- * what the result table is made of, round by round. Always derived from the
+ * the result table as it develops, round by round. Always derived from the
  * current games; readable by both roles, also after the list was submitted.
  */
 export async function getListProgression(

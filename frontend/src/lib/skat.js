@@ -118,8 +118,8 @@ export function roundAccounts(progression) {
 
 /**
  * Der Kontoverlauf einer Liste als Chartdaten – ein Punkt je Runde. Labels und
- * Werte kommen aus der Progression des Servers, damit Diagramm und Rangliste
- * dieselben Zahlen zeigen.
+ * Werte kommen aus der Progression des Servers, damit Diagramm und
+ * Ergebnistabelle dieselben Zahlen zeigen.
  */
 export function listProgressionChart(progression) {
   const names = progression?.lineup ?? []

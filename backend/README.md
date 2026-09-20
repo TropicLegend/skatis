@@ -1137,7 +1137,7 @@ case.
 | GET    | `/tournaments/:tournamentId/lists/:listId`         | any   | One list incl. lineup and games                        |
 | GET    | `/tournaments/:tournamentId/lists/:listId/results` | any   | The result table of the list                           |
 | GET    | `/tournaments/:tournamentId/lists/:listId/next-round` | any | The round a new game would create (Geber-Regel)        |
-| GET    | `/tournaments/:tournamentId/lists/:listId/progression` | any | The account of every player before and after every round |
+| GET    | `/tournaments/:tournamentId/lists/:listId/progression` | any | The account of every player before and after every round (bonuses included) |
 | PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                                     |
 | DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                        |
 | POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it counts and is locked for members |
@@ -1484,8 +1484,8 @@ sit out, with four the Geber sits out, with three nobody does.
 The **Spielstand** of the evening: the account of every player of the lineup
 before and after every round. It is what a progression chart of a list and the
 "Spielstand vor und nach dem Spiel" of a single game are drawn from, and it
-follows the rule of the [result table](#results-ergebnistabelle) – only the
-games of the Alleinspieler move an account.
+follows the rule of the [result table](#results-ergebnistabelle) in full – a
+game moves nobody else's account, but the bonuses of a lost Alleinspiel do.
 
 Reading is allowed for both roles on any day, also for an empty list: the answer
 then has `rounds: []` and every account at 0.
@@ -1504,8 +1504,8 @@ then has `rounds: []` and every account at 0.
         "dealer": "Anna",
         "declarer": "Bert",
         "gameValue": 120,
-        "deltas": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 },
-        "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+        "deltas": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 },
+        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 }
       },
       {
         "position": 2,
@@ -1513,23 +1513,34 @@ then has `rounds: []` and every account at 0.
         "declarer": null,
         "gameValue": 0,
         "deltas": { "Anna": 0, "Bert": 0, "Clara": 0, "Dora": 0 },
-        "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+        "accounts": { "Anna": 0, "Bert": 170, "Clara": 0, "Dora": 0 }
+      },
+      {
+        "position": 3,
+        "dealer": "Clara",
+        "declarer": "Dora",
+        "gameValue": 24,
+        "deltas": { "Anna": 30, "Bert": 30, "Clara": 30, "Dora": -98 },
+        "accounts": { "Anna": 30, "Bert": 200, "Clara": 30, "Dora": -98 }
       }
     ],
-    "accounts": { "Anna": 0, "Bert": 120, "Clara": 0, "Dora": 0 }
+    "accounts": { "Anna": 30, "Bert": 200, "Clara": 30, "Dora": -98 }
   }
 }
 ```
 
 Every round follows the order of the games, so `rounds[i]` belongs to
-`games[i]` of the list and `deltas` says what that round changed for each player:
-the Spielwert for a won Alleinspiel, **twice** the Spielwert for a lost one,
-`0` for everybody else – including a game that was passed out.
+`games[i]` of the list. `deltas` says what that round changed for each player,
+exactly as the result table counts it: the Spielwert plus the flat `+50` for a won
+Alleinspiel, **twice** the Spielwert plus `−50` for a lost one, the opponent bonus
+(`+30` in a lineup of four) for every Alleinspiel a teammate lost – and `0` for
+all the others, including a game that was passed out.
 
-`accounts` is the account afterwards and starts at 0; the flat +50/−50 of a won
-or lost Alleinspiel and the opponent bonus are **not** part of it – they are added
-on top in the `total` of the result table, which is why the last `accounts` is the
-`points` of the players, not their `score`.
+The opponent bonus is paid to the whole lineup, also to a player who sat out that
+round: in the example Dora loses 24, so Anna, Bert and Clara each collect 30 while
+their own accounts stay untouched otherwise. `accounts` is the standing after each
+round, starting at 0 – after the last round it is exactly the `total` of the
+result table, so chart and table cannot contradict each other.
 
 **Errors:** `404` unknown list.
 

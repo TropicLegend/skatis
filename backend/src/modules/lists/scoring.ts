@@ -17,6 +17,10 @@ import { MAX_LINEUP, MIN_LINEUP } from './game-rules.js';
  * * +50 per won and −50 per lost Alleinspiel
  * * a bonus for every Alleinspiel that **another** player lost (+40 with 3,
  *   +30 with 4 and +24 with 5 players)
+ *
+ * `scoreList` sums all of it up into the table of the evening, `accountProgression`
+ * reports the very same numbers round by round – where every player stood before
+ * and after each round.
  */
 
 /** Bonus for every lost Alleinspiel of another player, by size of the lineup. */
@@ -168,14 +172,15 @@ export function scoreList(
 }
 
 /**
- * What a game credits (+) or debits (−) to the account of its Alleinspieler:
- * a won Alleinspiel credits the Spielwert, a lost one debits **twice** of it, a
- * game that was passed out changes nothing. It is the per-round form of the rule
- * `scoreList` applies to the whole sheet – see `accountProgression`.
+ * What a game credits (+) or debits (−) to the account of its **Alleinspieler**:
+ * a won Alleinspiel credits the Spielwert plus the flat `+50`, a lost one debits
+ * **twice** the Spielwert plus the `-50` penalty, a game that was passed out
+ * changes nothing. The opponent bonus is not part of it – it belongs to the other
+ * players and is added in `accountProgression`.
  */
 export function gameAccountDelta(game: ScorableGame): number {
   if (game.declarer === null) return 0;
-  return game.won === true ? game.gameValue : -game.gameValue * 2;
+  return game.won === true ? game.gameValue + WIN_BONUS : -(game.gameValue * 2) - LOSS_PENALTY;
 }
 
 /** One round of a list as far as the accounts are concerned. */
@@ -185,7 +190,10 @@ export interface RoundAccountDto {
   dealer: string;
   declarer: string | null;
   gameValue: number;
-  /** What this round changed for every player of the lineup. */
+  /**
+   * What this round changed for every player of the lineup: the Spielwert and the
+   * flat ±50 for the Alleinspieler, the opponent bonus for the others.
+   */
   deltas: Record<string, number>;
   /** The account of every player after this round. */
   accounts: Record<string, number>;
@@ -198,7 +206,7 @@ export interface AccountProgressionDto {
   playerCount: number;
   /** One entry per round, in the order the rounds were played. */
   rounds: RoundAccountDto[];
-  /** The account of every player after the last round. */
+  /** The account of every player after the last round – the `total` of the table. */
   accounts: Record<string, number>;
 }
 
@@ -213,11 +221,13 @@ export interface ProgressableGame extends ScorableGame {
  * "Spielstand vor und nach dem Spiel" of one round and the data of the
  * progression chart.
  *
- * The account starts at 0 and follows the same rule as the result table: only
- * the Alleinspieler's own games move it. `deltas` says what one round changed
- * (0 for everybody who was not the Alleinspieler), `accounts` what the account
- * is afterwards. No bonus is included – the flat +50/-50 and the opponent bonus
- * only appear in the `total` of the result table.
+ * The account starts at 0 and follows the result table in full, so the chart ends
+ * where the table ends: the Spielwert of the own Alleinspiele (a loss counts
+ * twice), the flat `+50`/`-50` of the Alleinspieler and the opponent bonus for
+ * every Alleinspiel a **teammate** lost – that bonus is paid to the whole lineup,
+ * also to a player who sat out that round. After the last round `accounts` is
+ * therefore the `total` of the result table. `deltas` says what one round changed
+ * and is `0` for everybody the round did not touch.
  */
 export function accountProgression(
   lineup: readonly string[],
@@ -227,10 +237,19 @@ export function accountProgression(
   const accounts: Record<string, number> = {};
   for (const name of lineup) accounts[name] = 0;
 
+  const bonusPerGame = opponentBonusPerGame(lineup.length);
+
   const rounds = games.map((game): RoundAccountDto => {
+    const declarer = game.declarer;
+    // A declarer outside the lineup cannot happen through the API; `scoreList`
+    // ignores such a game as well, so nobody gets a bonus for it.
+    const lostByDeclarer = declarer !== null && game.won === false && lineup.includes(declarer);
+
     const deltas: Record<string, number> = {};
     for (const name of lineup) {
-      deltas[name] = game.declarer === name ? gameAccountDelta(game) : 0;
+      const own = declarer === name ? gameAccountDelta(game) : 0;
+      const opponent = lostByDeclarer && declarer !== name ? bonusPerGame : 0;
+      deltas[name] = own + opponent;
     }
     for (const name of lineup) {
       accounts[name] = (accounts[name] ?? 0) + (deltas[name] ?? 0);
@@ -239,7 +258,7 @@ export function accountProgression(
     return {
       position: game.position,
       dealer: game.dealer,
-      declarer: game.declarer,
+      declarer,
       gameValue: game.gameValue,
       deltas,
       accounts: { ...accounts },
