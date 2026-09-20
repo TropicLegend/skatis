@@ -1,21 +1,29 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { isSessionRevoked, revokeSession } from '../src/lib/revoked-sessions.js';
 import { currentSessionVersion } from '../src/lib/session-version.js';
 import { issueSessionToken } from '../src/lib/tokens.js';
 
-// Die Middleware liest die Sitzungs-Version des Turniers. Die Suite läuft ohne
-// Datenbank, also wird genau diese eine Abfrage ersetzt – alle anderen Prüfungen
-// (Signatur, Turnierbindung, Rolle) laufen unverändert.
+// Die Middleware liest die Sitzungs-Version des Turniers und die Denylist beendeter
+// Sitzungen. Die Suite läuft ohne Datenbank, also werden genau diese Abfragen
+// ersetzt – alle anderen Prüfungen (Signatur, Turnierbindung, Rolle) laufen unverändert.
 vi.mock('../src/lib/session-version.js', () => ({
   currentSessionVersion: vi.fn(async () => 0),
+}));
+vi.mock('../src/lib/revoked-sessions.js', () => ({
+  isSessionRevoked: vi.fn(async () => false),
+  revokeSession: vi.fn(async () => undefined),
 }));
 
 const app = createApp();
 
-// Jeder Test startet mit der Version 0; einzelne Tests setzen sie gezielt um.
+// Jeder Test startet mit der Version 0 und ohne beendete Sitzungen; einzelne Tests
+// setzen das gezielt um.
 beforeEach(() => {
   vi.mocked(currentSessionVersion).mockResolvedValue(0);
+  vi.mocked(isSessionRevoked).mockResolvedValue(false);
+  vi.mocked(revokeSession).mockClear();
 });
 
 const TOURNAMENT_ID = 'K7M2P4QX';
@@ -149,6 +157,40 @@ describe('api', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(401);
+  });
+
+  it('rejects a token that was ended with a logout', async () => {
+    vi.mocked(isSessionRevoked).mockResolvedValueOnce(true);
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+
+    const response = await request(app)
+      .get(`/api/tournaments/${TOURNAMENT_ID}/lists`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('ends the presented session on logout', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+
+    const response = await request(app)
+      .post(`/api/tournaments/${TOURNAMENT_ID}/session/logout`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(204);
+    expect(revokeSession).toHaveBeenCalledTimes(1);
+    const [tournamentId, tokenId, expiresAt] = vi.mocked(revokeSession).mock.calls[0] ?? [];
+    expect(tournamentId).toBe(TOURNAMENT_ID);
+    expect(tokenId).toEqual(expect.any(String));
+    expect(expiresAt).toBeInstanceOf(Date);
+  });
+
+  it('needs a token to log out', async () => {
+    const response = await request(app).post(`/api/tournaments/${TOURNAMENT_ID}/session/logout`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('protects the tournament details', async () => {

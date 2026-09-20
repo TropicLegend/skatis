@@ -40,6 +40,7 @@ apiRouter.get('/', (_req, res) => {
         rules: 'GET /api/rules',
         createTournament: 'POST /api/tournaments',
         openSession: 'POST /api/tournaments/:tournamentId/session',
+        endSession: 'POST /api/tournaments/:tournamentId/session/logout',
         tournaments: 'GET /api/tournaments',
         tournament: 'GET /api/tournaments/:tournamentId',
         session: 'GET /api/tournaments/:tournamentId/session',

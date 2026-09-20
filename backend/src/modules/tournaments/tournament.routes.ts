@@ -4,6 +4,7 @@ import { unauthorized } from '../../lib/http-error.js';
 import { issueSessionToken } from '../../lib/tokens.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
+import { revokeSession } from '../../lib/revoked-sessions.js';
 import { auditRouter } from '../audit/audit.routes.js';
 import { listRouter } from '../lists/list.routes.js';
 import { playerRouter } from '../players/player.routes.js';
@@ -93,6 +94,18 @@ tournamentRouter.post('/:tournamentId/session', loginLimiter, async (req, res) =
       tournament,
     },
   });
+});
+
+/**
+ * Ends the presented session: the token is remembered as revoked, so it stops
+ * working at once instead of staying valid until it expires. The client throws its
+ * copy away anyway – this is what makes the token itself worthless.
+ */
+tournamentRouter.post('/:tournamentId/session/logout', authenticate(), async (req, res) => {
+  const auth = currentAuth(req);
+  await revokeSession(auth.tournamentId, auth.tokenId, auth.tokenExpiresAt);
+
+  res.status(204).end();
 });
 
 /** Details of the tournament – any of its two roles may read them. */

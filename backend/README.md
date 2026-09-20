@@ -431,6 +431,12 @@ soon as the player password is replaced, so a request with an older version is
 rejected with `401` – the change ends every running session, including the one of
 the admin who made it.
 
+A single session ends with
+[`POST …/session/logout`](#post-tournamentstournamentidsessionlogout): the token is
+written into a denylist (`revoked_sessions`) until it would have expired anyway.
+That is what makes "Abmelden" in the frontend more than forgetting the token in the
+browser: the token itself stops working.
+
 ### Domain rules
 
 - `matchdays` are ISO weekdays (`1` = Monday … `7` = Sunday). A list only exists
@@ -730,6 +736,23 @@ canonical spelling back.
 **Errors:** `401` for an unknown id **and** for a wrong password (the endpoint does
 not reveal which tournaments exist), `422` invalid payload, `429` too many requests.
 
+#### `POST /tournaments/:tournamentId/session/logout`
+
+Ends the **presented** session: the token is remembered in a denylist until it would
+have expired, so it stops working at once instead of staying valid for
+`JWT_EXPIRES_IN`. It needs the token it should end, so it carries no body:
+
+```http
+POST /api/tournaments/K7M2P4QX/session/logout
+Authorization: Bearer <token>
+```
+
+**Response** `204` – no body. That token answers `401 The session is no longer valid
+– please sign in again` from now on; the other sessions of the tournament stay
+alive. An admin who wants to end **all** of them replaces the player password.
+
+**Errors:** `401` missing, ended or unknown token.
+
 ### Health and meta
 
 | Method | Path            | Auth | Description                           |
@@ -795,6 +818,7 @@ numbers that could drift from what the API calculates.
 | GET    | `/tournaments`                         | any   | The token's tournament                                  |
 | GET    | `/tournaments/:tournamentId`           | any   | Tournament details                                      |
 | GET    | `/tournaments/:tournamentId/session`   | any   | Role behind the presented token                         |
+| POST   | `/tournaments/:tournamentId/session/logout` | any   | Ends the presented session (the token stops working)    |
 | GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
 | GET    | `/tournaments/:tournamentId/standings/history` | any | The standing at the end of every matchday, week or month |
 | GET    | `/tournaments/:tournamentId/standings/players/:playerName` | any | How one player took part in the rounds and how he did there |
@@ -2093,11 +2117,12 @@ What you have to do:
 
 Known limitations:
 
-- Tokens stay valid until they expire (`JWT_EXPIRES_IN`, default 12 h). Deleting a
-  tournament does not revoke them, but they become worthless: the middleware answers
-  `401` for a tournament that does not exist any more. Everything else – a new player
-  password – revokes them immediately: every token carries the session version of its
-  tournament and a request with an older version is rejected.
+- Tokens stay valid until they expire (`JWT_EXPIRES_IN`, default 12 h). A single
+  session can be ended (`POST …/session/logout`, denylist until the token would have
+  expired), and a new player password ends all of them at once: every token carries
+  the session version of its tournament and a request with an older version is
+  rejected. Deleting a tournament does not revoke tokens, but they become worthless:
+  the middleware answers `401` for a tournament that does not exist any more.
 - The rate limiter counts per process, not across instances.
 - The tournament id is not a secret: it is shown in the frontend and acts as the
   user name. The passwords are what protects a tournament.
@@ -2113,7 +2138,7 @@ Known limitations:
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `401 Missing bearer token`                                                        | header missing or not `Authorization: Bearer <token>`                                                                   |
 | `401 Invalid or expired session token`                                            | the token expired (`JWT_EXPIRES_IN`) – log in again                                                                     |
-| `401 The session is no longer valid – please sign in again`                       | the player password was replaced, which ends every session – sign in with the new one                                   |
+| `401 The session is no longer valid – please sign in again`                       | the player password was replaced, or this session was ended with a logout – sign in again                              |
 | `403 The session token does not grant access to this tournament`                  | the token belongs to another tournament id                                                                              |
 | `403 … is not a matchday of …`                                                    | the weekday of that date is not in `matchdays`                                                                          |
 | `403 Lists can only be created or changed on the current matchday`                | members may only touch today's list – use the admin password                                                            |
@@ -2164,7 +2189,8 @@ backend/
 │   ├── server.ts               # bootstrap + graceful shutdown
 │   ├── config/env.ts           # validated environment
 │   ├── lib/                    # dates, errors, logger, migrations, passwords,
-│   │                           # prisma, tokens, tournament id generation
+│   │                           # prisma, revoked sessions, session version,
+│   │                           # tokens, tournament id generation
 │   ├── middleware/             # auth, cors, error handler, request context,
 │   │                           # not found, rate limits
 │   ├── modules/

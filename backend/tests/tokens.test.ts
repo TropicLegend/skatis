@@ -12,19 +12,25 @@ const TOURNAMENT_ID = 'K7M2P4QX';
 describe('session tokens', () => {
   it('round-trips the claims', () => {
     const { token, expiresAt } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
+    const claims = verifySessionToken(token);
 
-    expect(verifySessionToken(token)).toEqual({
-      tournamentId: TOURNAMENT_ID,
-      role: 'ADMIN',
-      version: 0,
-    });
+    expect(claims).toMatchObject({ tournamentId: TOURNAMENT_ID, role: 'ADMIN', version: 0 });
+    expect(claims.tokenId).toEqual(expect.any(String));
+    expect(claims.expiresAt.getTime()).toBe(expiresAt.getTime());
     expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('gives every token its own id', () => {
+    const first = verifySessionToken(issueSessionToken(TOURNAMENT_ID, 'MEMBER').token);
+    const second = verifySessionToken(issueSessionToken(TOURNAMENT_ID, 'MEMBER').token);
+
+    expect(first.tokenId).not.toBe(second.tokenId);
   });
 
   it('carries the session version it was issued with', () => {
     const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER', 5);
 
-    expect(verifySessionToken(token)).toEqual({
+    expect(verifySessionToken(token)).toMatchObject({
       tournamentId: TOURNAMENT_ID,
       role: 'MEMBER',
       version: 5,
@@ -38,7 +44,11 @@ describe('session tokens', () => {
       audience: TOKEN_AUDIENCE,
     });
 
-    expect(verifySessionToken(older).version).toBe(0);
+    const claims = verifySessionToken(older);
+
+    expect(claims.version).toBe(0);
+    // Ohne `jti` lässt sich das Token nicht in die Denylist eintragen.
+    expect(claims.tokenId).toBeNull();
   });
 
   it('rejects a tampered token', () => {

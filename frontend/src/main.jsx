@@ -220,7 +220,13 @@ function App() {
     if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(error.message))
   }, [token, tournament, view])
 
-  function logout(message) {
+  function logout(message, notifyServer = true) {
+    // Dem Server sagen, dass diese Sitzung beendet ist – sonst bliebe der Token bis
+    // zu seinem Ablauf gültig. Der Aufruf darf das Abmelden nicht aufhalten.
+    if (notifyServer && token && tournament?.id) {
+      request(`/tournaments/${tournament.id}/session/logout`, { method: 'POST', token, skipSessionExpiry: true }).catch(() => {})
+    }
+
     localStorage.removeItem('skatis-token')
     localStorage.removeItem('skatis-tournament')
     localStorage.removeItem('skatis-role')
@@ -231,9 +237,10 @@ function App() {
   }
 
   // Ein abgelehntes Token (abgelaufen oder nach einem Passwortwechsel ungültig) führt
-  // zurück zur Anmeldung – egal welche Anfrage es war.
+  // zurück zur Anmeldung – egal welche Anfrage es war. Der Server weiß in dem Fall
+  // schon Bescheid, ein Logout-Aufruf wäre nur ein weiteres 401.
   useEffect(() => {
-    sessionExpiredHandler = () => logout('Deine Sitzung ist beendet – bitte melde dich neu an.')
+    sessionExpiredHandler = () => logout('Deine Sitzung ist beendet – bitte melde dich neu an.', false)
   }, [])
 
   if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} notice={loginNotice} /></div>

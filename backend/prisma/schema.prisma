@@ -43,6 +43,7 @@ model Tournament {
   lists             GameList[]
   players           Player[]
   auditLogs         AuditLog[]
+  revokedSessions   RevokedSession[]
 
   @@index([name])
   @@map("tournaments")
@@ -168,6 +169,23 @@ model Game {
 enum ActorRole {
   ADMIN
   MEMBER
+}
+
+/// A session token that was ended on purpose ("Abmelden"). Tokens are otherwise
+/// stateless and valid until they expire, so a logout has to be remembered until
+/// the token would have expired anyway – after that the row is worthless and is
+/// dropped on the next logout (see `src/lib/revoked-sessions.ts`).
+model RevokedSession {
+  /// The `jti` claim of the token.
+  id           String     @id
+  tournamentId String
+  /// When the token would have expired.
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("revoked_sessions")
 }
 
 /// The change log ("Protokoll") of a tournament. Every change that goes through

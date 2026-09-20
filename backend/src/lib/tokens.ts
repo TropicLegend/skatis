@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import jwt, { type JwtPayload, type SignOptions } from 'jsonwebtoken';
 import { env } from '../config/env.js';
 
@@ -16,6 +17,13 @@ export interface SessionClaims {
    * the player password is replaced, which makes every older token worthless.
    */
   version: number;
+  /**
+   * Id of this single token (`jti`). Ending a session means writing it into the
+   * denylist – `null` for tokens from before the denylist existed.
+   */
+  tokenId: string | null;
+  /** When the token stops being valid – the note in the denylist lives that long. */
+  expiresAt: Date;
 }
 
 export interface IssuedSessionToken {
@@ -30,6 +38,7 @@ export function issueSessionToken(
 ): IssuedSessionToken {
   const token = jwt.sign({ role, version }, env.JWT_SECRET, {
     subject: tournamentId,
+    jwtid: randomUUID(),
     expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
     issuer: TOKEN_ISSUER,
     audience: TOKEN_AUDIENCE,
@@ -54,12 +63,23 @@ export function verifySessionToken(token: string): SessionClaims {
     throw new Error('Malformed session token');
   }
 
-  const { role, version } = decoded as JwtPayload & { role?: unknown; version?: unknown };
+  const { role, version, jti } = decoded as JwtPayload & {
+    role?: unknown;
+    version?: unknown;
+    jti?: unknown;
+  };
   if (role !== 'ADMIN' && role !== 'MEMBER') {
     throw new Error('Malformed session token');
   }
 
   // Tokens from before the session version existed count as version 0 – that is
-  // exactly the version a tournament without a password change has.
-  return { tournamentId: decoded.sub, role, version: typeof version === 'number' ? version : 0 };
+  // exactly the version a tournament without a password change has. The same goes
+  // for the token id: without one the token cannot be ended early.
+  return {
+    tournamentId: decoded.sub,
+    role,
+    version: typeof version === 'number' ? version : 0,
+    tokenId: typeof jti === 'string' && jti.length > 0 ? jti : null,
+    expiresAt: decoded.exp ? new Date(decoded.exp * 1000) : new Date(),
+  };
 }

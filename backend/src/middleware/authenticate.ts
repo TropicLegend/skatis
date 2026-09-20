@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { forbidden, unauthorized } from '../lib/http-error.js';
+import { isSessionRevoked } from '../lib/revoked-sessions.js';
 import { currentSessionVersion } from '../lib/session-version.js';
 import { normalizeTournamentId } from '../lib/tournament-id.js';
 import { verifySessionToken, type TournamentRole } from '../lib/tokens.js';
@@ -7,6 +8,10 @@ import { verifySessionToken, type TournamentRole } from '../lib/tokens.js';
 export interface RequestAuth {
   tournamentId: string;
   role: TournamentRole;
+  /** Id of the token this request came with (`jti`) – `null` for very old tokens. */
+  tokenId: string | null;
+  /** When that token expires – needed to remember a logout for the right length. */
+  tokenExpiresAt: Date;
 }
 
 /**
@@ -52,16 +57,24 @@ export function authenticate(...allowedRoles: readonly TournamentRole[]): Reques
       return;
     }
 
-    // Erst nach den Checks ohne Datenbank: die Sitzungs-Version steht im Turnier.
-    // Ein neues Spielerpasswort erhöht sie, damit sind alle älteren Tokens ungültig –
-    // auch das, mit dem die Änderung gemacht wurde.
-    const version = await currentSessionVersion(claims.tournamentId);
-    if (version === null || version !== claims.version) {
+    // Erst nach den Checks ohne Datenbank: Sitzungs-Version und Denylist stehen in
+    // der Datenbank. Ein neues Spielerpasswort erhöht die Version, ein Logout trägt
+    // das Token in die Denylist ein – beides macht dieses Token wertlos.
+    const [version, revoked] = await Promise.all([
+      currentSessionVersion(claims.tournamentId),
+      isSessionRevoked(claims.tokenId),
+    ]);
+    if (version === null || version !== claims.version || revoked) {
       next(unauthorized('The session is no longer valid – please sign in again'));
       return;
     }
 
-    req.auth = { tournamentId: claims.tournamentId, role: claims.role };
+    req.auth = {
+      tournamentId: claims.tournamentId,
+      role: claims.role,
+      tokenId: claims.tokenId,
+      tokenExpiresAt: claims.expiresAt,
+    };
     next();
   };
 }
