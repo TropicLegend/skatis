@@ -108,6 +108,8 @@ td.spielpunkte.declarer{font-weight:500;color:var(--ink)}
 td.spiel-count{font-size:10px;color:var(--muted)}
 /* "+"- und "−"-Spalten des Protokolls (klassisch: zwei Spalten, modern: eine) */
 th.num,td.num{text-align:right}
+/* Klassisches Protokoll: durchgezogene Trennlinien an den Wertspalten und der Aktionsspalte */
+th.sep,td.sep{border-left:1px solid var(--line)}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
 .score-legend{margin:9px 0 0;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}

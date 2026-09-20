@@ -361,7 +361,16 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
   const classic = style === 'classic'
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
-  const columns = (classic ? 5 + lineup.length * 3 : 7) + (role === 'ADMIN' ? 1 : 0)
+  const columns = (classic ? 6 + lineup.length * 3 : 7) + (role === 'ADMIN' ? 1 : 0)
+  // Das wievielte eingepasste Spiel ist eine Zeile? Nur die eingepassten Zeilen
+  // bekommen eine Zahl – gezählt wird in der Reihenfolge der Liste.
+  const passedOutCounts = new Map()
+  let passedOut = 0
+  for (const game of games) {
+    if (!game.passedOut) continue
+    passedOut += 1
+    passedOutCounts.set(game.id, passedOut)
+  }
   const gameTypeCell = (game) => <td className="game-type-cell">{game.passedOut ? '—' : <><strong>{gameTypeLabel(game.gameType)}</strong>{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</td>
   // Die "+/-"-Spalte der modernen Tabelle: was das Spiel dem Alleinspieler
   // bringt (+50 / −50 inklusive) – die Zahl kommt aus dem Verlauf des Servers.
@@ -381,12 +390,13 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
       <thead>
         <tr>
           {classic ? <>
-            <th rowSpan={2}>#</th><th rowSpan={2}>Spielart</th><th rowSpan={2}>Spitzen</th><th rowSpan={2} className="num">+</th><th rowSpan={2} className="num">−</th>
+            <th rowSpan={2}>#</th><th rowSpan={2}>Spielart</th><th rowSpan={2}>Spitzen</th><th rowSpan={2} className="num sep">+</th><th rowSpan={2} className="num sep">−</th>
           </> : <>
             <th>#</th><th>Geber</th><th>Alleinspieler</th><th>Spielart</th><th>Spitzen</th><th className="num">+/−</th><th>Ausgang</th>
           </>}
           {classic && lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
-          {role === 'ADMIN' && <th rowSpan={classic ? 2 : undefined} />}
+          {classic && <th rowSpan={2} className="num" title="Das wievielte eingepasste Spiel dieser Liste">Eingepasst</th>}
+          {role === 'ADMIN' && <th className={classic ? 'sep' : undefined} rowSpan={classic ? 2 : undefined} />}
         </tr>
         {classic && <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>}
       </thead>
@@ -396,8 +406,8 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
             <td className="round">{game.position}</td>
             {gameTypeCell(game)}
             <td>{matadorsLabel(game)}</td>
-            <td className="value-cell num plus">{game.positiveGameValue || ''}</td>
-            <td className="value-cell num minus">{game.negativeGameValue || ''}</td>
+            <td className="value-cell num sep plus">{game.positiveGameValue || ''}</td>
+            <td className="value-cell num sep minus">{game.negativeGameValue || ''}</td>
           </> : <>
             <td className="round">{game.position}</td>
             <td>{game.dealer}</td>
@@ -415,7 +425,8 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
               <td className="spiel-count">{declarer && game.won === false ? roundValue(game, name, 'lost') ?? '' : ''}</td>
             </React.Fragment>
           })}
-          {role === 'ADMIN' && <td><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
+          {classic && <td className="value-cell num">{passedOutCounts.get(game.id) ?? ''}</td>}
+          {role === 'ADMIN' && <td className={classic ? 'sep' : undefined}><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
         </tr>) : <tr><td colSpan={columns}><div className="table-empty"><ClipboardList size={22} /><span>Noch keine Spiele eingetragen.</span><small>Der erste Eintrag beginnt mit dem Geber aus Platz 1.</small></div></td></tr>}
       </tbody>
     </table></div>
