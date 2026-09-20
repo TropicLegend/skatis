@@ -79,6 +79,45 @@ function useRules() {
   return rules
 }
 
+/**
+ * Zählt eine Zahl kurz hoch, wenn sie sich ändert – 400 ms, weich auslaufend. Bei
+ * `prefers-reduced-motion` steht der Endwert sofort da, und auch negative Werte
+ * laufen in die richtige Richtung.
+ */
+function useCountUp(value, duration = 400) {
+  const [shown, setShown] = useState(value)
+  const from = React.useRef(value)
+
+  useEffect(() => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) { setShown(value); return undefined }
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce || from.current === value) { setShown(value); from.current = value; return undefined }
+
+    const begin = from.current
+    const start = performance.now()
+    let frame = requestAnimationFrame(function tick(now) {
+      const progress = Math.min(1, (now - start) / duration)
+      const eased = 1 - (1 - progress) ** 3
+      setShown(Math.round((begin + (value - begin) * eased) * 10) / 10)
+      if (progress < 1) frame = requestAnimationFrame(tick)
+      else from.current = value
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [value, duration])
+
+  return shown
+}
+
+/** Die Zahl als Text – überall dort, wo eine Kennzahl im Vordergrund steht. */
+function CountUp({ value }) {
+  return <>{useCountUp(value)}</>
+}
+
+/** Platzhalter, solange Daten unterwegs sind – statt „wird geladen …“. */
+function Skeleton({ lines = 3 }) {
+  return <div className="skeleton-block">{Array.from({ length: lines }, (_, index) => <span key={index} className="skeleton" style={{ width: `${100 - index * 14}%` }} />)}</div>
+}
+
 /** Escape schließt ein Overlay – am Desktop die Tastatur, am Handy die Geste daneben. */
 function useEscape(onClose) {
   useEffect(() => {
@@ -256,7 +295,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   }
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Übersicht"><div className="dashboard-header"><div><span className="eyebrow">{tournament?.id}</span><h1>Die Spieltage</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
-    {showLists && <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong>{lists.length}</strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong>{days.length}</strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
+    {showLists && <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong><CountUp value={lists.length} /></strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong><CountUp value={days.length} /></strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
     {showLists && <>
       <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
       <div className="list-grid">{filtered.length ? filtered.map((list, index) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} index={index} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
@@ -328,7 +367,7 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
           <span className="rank-badge">{player.rank ?? '–'}</span>
           <span className="rank-name">{player.name}</span>
-          <span className="rank-average"><strong>{player.averageScore ?? '–'}</strong><small>Ø Punkte</small></span>
+          <span className="rank-average"><strong>{player.averageScore === null ? '–' : <CountUp value={player.averageScore} />}</strong><small>Ø Punkte</small></span>
           <ChevronRight size={18} className="rank-caret" />
         </button>
         <div className="ranking-card-body"><div className="ranking-card-inner">
@@ -361,7 +400,7 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
     </div>}
     <ProgressChart eyebrow="Punkteentwicklung" title="Durchschnittspunkte im Turnier" note="Ø Punkte je Spiel – dieselben Zahlen wie die Spalte „Ø Punkte“ der Rangliste. Die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
     {historyError && <div className="error-message">{historyError}</div>}
-    {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+    {!history && !historyError && <Skeleton lines={4} />}
   </section>
 }
 
@@ -471,7 +510,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Rollen</span><h2>Seine Aufgaben</h2></div><span className="dealer-note">in {stats?.roles.played ?? player.gamesPlayed} Spielen am Tisch</span></div>
         {statsError && <div className="error-message">{statsError}</div>}
-        {!stats && !statsError && <p className="chart-note">Die Spielstatistiken werden geladen …</p>}
+        {!stats && !statsError && <Skeleton lines={3} />}
         {stats && <div className="stat-grid">
           {item('Anteil Alleinspieler', percentLabel(stats.roles.declarerShare), `${stats.roles.declarer} × selbst gespielt`)}
           {item('Anteil Gegenspieler', percentLabel(stats.roles.defenderShare), `${stats.roles.defender} × als Gegenspieler`)}
@@ -493,7 +532,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     <section className="player-panel">
       <ProgressChart eyebrow="Entwicklung" title="Punkte über die Zeit" note="Der Kontostand nach jedem Zeitraum – er wächst nur durch eigene Alleinspiele und die Boni; die Skalierung fasst die Zeitachse zusammen." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={PROGRESS_SCALES} />
       {historyError && <div className="error-message">{historyError}</div>}
-      {!history && !historyError && <p className="chart-note">Der Verlauf wird geladen …</p>}
+      {!history && !historyError && <Skeleton lines={4} />}
     </section>
 
     <section className="player-panel">
@@ -1063,7 +1102,7 @@ function TournamentLog({ tournament, token, onClose }) {
       <h2>Was geändert wurde</h2>
       <p className="modal-copy">Jede Änderung im Turnier, neueste zuerst. Einträge mit „Admin“ stammen aus dem Admin-Passwort.</p>
       {error && <div className="error-message">{error}</div>}
-      {!entries && !error && <p className="log-empty">Wird geladen …</p>}
+      {!entries && !error && <Skeleton lines={3} />}
       {entries?.length === 0 && <p className="log-empty">Noch keine Änderungen protokolliert.</p>}
       <ol className="log-list">{entries?.map((entry) => {
         const { title, detail } = describeAuditEntry(entry)

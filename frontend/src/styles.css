@@ -211,6 +211,8 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .card-enter{animation:card-in .3s ease both;animation-delay:calc(var(--i,0) * 38ms)}
 /** Platzhalter, solange Daten geladen werden. */
 .skeleton{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,#ece7dc 0,#f7f3ea 45%,#ece7dc 90%);background-size:420px 100%;animation:shimmer 1.3s linear infinite}
+/** Ein Stapel Platzhalter, wo sonst Text mit „wird geladen …“ stand. */
+.skeleton-block{display:flex;flex-direction:column;gap:10px;padding:14px 0}
 
 /* Wer Bewegung ablehnt, bekommt alles ohne Bewegung – aber nichts fehlt. */
 @media (prefers-reduced-motion: reduce){
