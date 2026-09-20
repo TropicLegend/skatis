@@ -118,6 +118,13 @@ th.passed-col{writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 5px
 td.passed-col{padding:14px 6px}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
+/* Klassisches Protokoll: dickere Linie nach jeder vollen Geberrunde */
+.game-row.round-end td{border-bottom:2px solid var(--line)}
+/* Klassisches Protokoll: die vier Abschlusszeilen unter den Spielen */
+tr.summary>td{background:rgba(37,48,43,.03)}
+tr.summary td.spielpunkte,tr.summary td.spiel-count{color:var(--ink);font-size:11px;font-weight:800}
+tr.summary-top>td{border-top:2px solid var(--ink)}
+td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 /* Umschalter der Protokoll-Darstellung (modern / klassisch) */
 .panel-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
 .table-style{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;cursor:pointer;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}

@@ -267,13 +267,20 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   const [detailGame, setDetailGame] = useState(null)
   const [notice, setNotice] = useState('')
   const [progression, setProgression] = useState(null)
+  const [results, setResults] = useState(null)
   const [scale, setScale] = useState('round')
   const [customScale, setCustomScale] = useState(5)
 
-  // Der Kontoverlauf kommt aus der API – dort steckt die Regel "verloren zählt
-  // doppelt" samt Boni; das Board rechnet ihn nicht nach.
-  async function loadProgression() {
-    setProgression(await request(`/tournaments/${tournament.id}/lists/${list.id}/progression`, { token }))
+  // Beide Zahlenreihen kommen aus der API: der Kontoverlauf ("verloren zählt
+  // doppelt" samt Boni) und die Ergebnistabelle, aus der die vier Abschlusszeilen
+  // unter dem Protokoll ihre Summen je Spieler nehmen.
+  async function loadDetails() {
+    const [table, accounts] = await Promise.all([
+      request(`/tournaments/${tournament.id}/lists/${list.id}/results`, { token }),
+      request(`/tournaments/${tournament.id}/lists/${list.id}/progression`, { token }),
+    ])
+    setResults(table)
+    setProgression(accounts)
   }
 
   async function saveGame(game) {
@@ -283,7 +290,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
       const saved = await request(path, { method: isEditing ? 'PUT' : 'POST', token, body: game })
       const games = isEditing ? list.games.map((item) => item.id === saved.id ? saved : item) : [...(list.games || []), saved]
       onUpdated({ ...list, games, gameCount: games.length, totalGameValue: games.reduce((sum, item) => sum + (item.gameValue || 0), 0) })
-      await loadProgression()
+      await loadDetails()
       setShowWizard(false); setEditingGame(null)
       setNotice(isEditing ? 'Spiel wurde aktualisiert.' : 'Spiel wurde eingetragen.')
     } catch (e) { setNotice(e.message) }
@@ -302,7 +309,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onBack() } catch (e) { setNotice(e.message) }
   }
 
-  useEffect(() => { loadProgression().catch((error) => setNotice(error.message)) }, [list.id])
+  useEffect(() => { loadDetails().catch((error) => setNotice(error.message)) }, [list.id])
 
   const lineup = (list.players || []).map((player) => player.name)
   const rounds = roundAccounts(progression)
@@ -323,7 +330,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     </div>
     {notice && <div className="success-message">{notice}</div>}
     <div className="workspace-grid">
-      <GameTable list={list} rounds={rounds} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
+      <GameTable list={list} rounds={rounds} results={results} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
@@ -337,7 +344,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
 /** Die gewählte Darstellung des Spielprotokolls merkt sich der Browser. */
 const TABLE_STYLE_KEY = 'skatis-table-style'
 
-function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
+function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, children }) {
   const games = list.games || []
   const lineup = (list.players || []).map((player) => player.name)
   const roundsByPosition = new Map(rounds.map((round) => [round.position, round]))
@@ -359,6 +366,15 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
     passedOut += 1
     passedOutCounts.set(game.id, passedOut)
   }
+  const playersByName = new Map((results?.players ?? []).map((player) => [player.name, player]))
+  /** Ein Summenwert eines Spielers aus der Ergebnistabelle – ohne Eintrag 0. */
+  const playerSum = (name, pick) => {
+    const player = playersByName.get(name)
+    return player ? pick(player) : 0
+  }
+  // Die vier Abschlusszeilen stehen nur im klassischen Protokoll und nur, wenn es
+  // etwas zu summieren gibt.
+  const summary = classic && games.length > 0 && (results?.players?.length ?? 0) > 0
   const gameTypeCell = (game) => <td className="game-type-cell">{game.passedOut ? '—' : <><strong>{gameTypeLabel(game.gameType)}</strong>{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</td>
   // Die "+/-"-Spalte der modernen Tabelle: was das Spiel dem Alleinspieler
   // bringt (+50 / −50 inklusive) – die Zahl kommt aus dem Verlauf des Servers.
@@ -389,7 +405,7 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
         {classic && <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>}
       </thead>
       <tbody>
-        {games.length ? games.map((game) => <tr key={game.id} className="game-row" role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
+        {games.length ? games.map((game) => <tr key={game.id} className={`game-row${classic && lineup.length > 0 && game.position % lineup.length === 0 ? ' round-end' : ''}`} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
           {classic ? <>
             <td className="round">{game.position}</td>
             {gameTypeCell(game)}
@@ -416,6 +432,36 @@ function GameTable({ list, rounds = [], role, onEdit, onSelect, children }) {
           {classic && <td className="value-cell passed-col">{passedOutCounts.get(game.id) ?? ''}</td>}
           {role === 'ADMIN' && <td className={classic ? 'sep' : undefined}><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
         </tr>) : <tr><td colSpan={columns}><div className="table-empty"><ClipboardList size={22} /><span>Noch keine Spiele eingetragen.</span><small>Der erste Eintrag beginnt mit dem Geber aus Platz 1.</small></div></td></tr>}
+        {summary && <>
+          <tr className="summary summary-top">
+            <td className="summary-label" colSpan={5}>Spielpunkte</td>
+            {lineup.map((name) => <React.Fragment key={name}>
+              <td className="value-cell spielpunkte">{playerSum(name, (player) => player.points)}</td>
+              <td className="value-cell spiel-count">{playerSum(name, (player) => player.won)}</td>
+              <td className="value-cell spiel-count">{playerSum(name, (player) => player.lost)}</td>
+            </React.Fragment>)}
+            <td className="value-cell passed-col" title="Eingepasste Spiele dieser Liste">{results.passedOutCount}</td>
+            {role === 'ADMIN' && <td className="sep" />}
+          </tr>
+          <tr className="summary">
+            <td className="summary-label" colSpan={5}>(+ gewonnene - verlorene Spiele) * 50</td>
+            {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.wonBonus + player.lossPenalty))}</td>)}
+            <td className="passed-col" />
+            {role === 'ADMIN' && <td className="sep" />}
+          </tr>
+          <tr className="summary">
+            <td className="summary-label" colSpan={5}>Punkte durch gewonnene Gegenspiele</td>
+            {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.opponentBonus))}</td>)}
+            <td className="passed-col" />
+            {role === 'ADMIN' && <td className="sep" />}
+          </tr>
+          <tr className="summary">
+            <td className="summary-label" colSpan={5}>Endergebnis</td>
+            {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.total))}</td>)}
+            <td className="passed-col" />
+            {role === 'ADMIN' && <td className="sep" />}
+          </tr>
+        </>}
       </tbody>
     </table></div>
     {children}
