@@ -266,20 +266,14 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   const [editingGame, setEditingGame] = useState(null)
   const [detailGame, setDetailGame] = useState(null)
   const [notice, setNotice] = useState('')
-  const [results, setResults] = useState(null)
   const [progression, setProgression] = useState(null)
   const [scale, setScale] = useState('round')
   const [customScale, setCustomScale] = useState(5)
 
-  // Ergebnistabelle und Kontoverlauf kommen beide aus der API – der Verlauf, weil
-  // das Backend die Regel "verloren zählt doppelt" anwendet.
-  async function loadDetails() {
-    const [table, accounts] = await Promise.all([
-      request(`/tournaments/${tournament.id}/lists/${list.id}/results`, { token }),
-      request(`/tournaments/${tournament.id}/lists/${list.id}/progression`, { token }),
-    ])
-    setResults(table)
-    setProgression(accounts)
+  // Der Kontoverlauf kommt aus der API – dort steckt die Regel "verloren zählt
+  // doppelt" samt Boni; das Board rechnet ihn nicht nach.
+  async function loadProgression() {
+    setProgression(await request(`/tournaments/${tournament.id}/lists/${list.id}/progression`, { token }))
   }
 
   async function saveGame(game) {
@@ -289,7 +283,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
       const saved = await request(path, { method: isEditing ? 'PUT' : 'POST', token, body: game })
       const games = isEditing ? list.games.map((item) => item.id === saved.id ? saved : item) : [...(list.games || []), saved]
       onUpdated({ ...list, games, gameCount: games.length, totalGameValue: games.reduce((sum, item) => sum + (item.gameValue || 0), 0) })
-      await loadDetails()
+      await loadProgression()
       setShowWizard(false); setEditingGame(null)
       setNotice(isEditing ? 'Spiel wurde aktualisiert.' : 'Spiel wurde eingetragen.')
     } catch (e) { setNotice(e.message) }
@@ -308,7 +302,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onBack() } catch (e) { setNotice(e.message) }
   }
 
-  useEffect(() => { loadDetails().catch((error) => setNotice(error.message)) }, [list.id])
+  useEffect(() => { loadProgression().catch((error) => setNotice(error.message)) }, [list.id])
 
   const lineup = (list.players || []).map((player) => player.name)
   const rounds = roundAccounts(progression)
@@ -330,16 +324,10 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     {notice && <div className="success-message">{notice}</div>}
     <div className="workspace-grid">
       <GameTable list={list} rounds={rounds} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
-        <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist damit der Gesamtstand der Ergebnistabelle; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
+        <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
       </GameTable>
-      <aside className="score-card">
-        <div className="score-card-head"><span className="eyebrow">Ergebnistabelle</span><Trophy size={20} /></div>
-        <p className="score-legend" title="Gewonnene Alleinspiele / verlorene Alleinspiele / gewonnene Gegenspiele (ein anderer Spieler der Liste hat verloren)">Gew / Verl / Gegner</p>
-        {results?.players?.length ? results.players.map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><span className="score-bills" title={`${player.won} gewonnen, ${player.lost} verloren, ${player.opponentWon} Spiele der Mitspieler verloren`}>{player.won}/{player.lost}/{player.opponentWon}</span><strong>{player.total}</strong></div>) : (list.players || []).map((player) => <div className="score-row" key={player.name}><span>{player.name}</span><span className="score-bills">0/0/0</span><strong>0</strong></div>)}
-        <div className="score-total"><span>Rundenwert</span><strong>{results?.totalGameValue ?? list.totalGameValue ?? 0}</strong></div>
-      </aside>
     </div>
     {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} onClose={() => { setShowWizard(false); setEditingGame(null) }} onSave={saveGame} />}
     {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} onClose={() => setDetailGame(null)} onEdit={role === 'ADMIN' ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} />}
