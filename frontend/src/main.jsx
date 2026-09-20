@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, C
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
-import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, SUIT_GAME_TYPES, withStep } from './lib/skat.js'
+import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withStep } from './lib/skat.js'
 import './styles.css'
 
 const API = 'https://skatis.online/api'
@@ -340,11 +340,12 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     .filter((entry) => entry.row)
   const changeClass = (value) => (value === null ? '' : value > 0 ? 'up' : value < 0 ? 'down' : '')
   const percentLabel = (value) => (value === null || value === undefined ? '–' : `${value} %`)
-  // Farbspiele getrennt: „Lieblingsfarben“ nach Häufigkeit, „Beste Farben“ nach
-  // Gewinnchance – beides aus den Zahlen des Servers, hier wird nur sortiert.
-  const suits = (stats?.gameTypes ?? []).filter((entry) => SUIT_GAME_TYPES.includes(entry.gameType))
-  const favourite = [...suits].sort((a, b) => b.played - a.played || a.gameType.localeCompare(b.gameType))
-  const bestSuits = [...suits].sort((a, b) => (b.winShare ?? 0) - (a.winShare ?? 0) || b.played - a.played)
+  // Alle Spielarten zusammen – Grand und Null eingeschlossen: „Lieblingsspiele“
+  // nach Häufigkeit, „Beste Spiele“ nach Gewinnchance. Beides aus den Zahlen des
+  // Servers, hier wird nur sortiert.
+  const playedTypes = stats?.gameTypes ?? []
+  const favourite = [...playedTypes].sort((a, b) => b.played - a.played || a.gameType.localeCompare(b.gameType))
+  const bestGames = [...playedTypes].sort((a, b) => (b.winShare ?? 0) - (a.winShare ?? 0) || b.played - a.played)
   const pieSlices = (stats?.gameTypeGroups ?? []).map((group) => ({
     label: GAME_TYPE_GROUPS[group.group]?.label ?? group.group,
     value: group.played,
@@ -397,9 +398,9 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
         <div className="section-heading"><div><span className="eyebrow">Quoten</span><h2>Wie er abschneidet</h2></div></div>
         {stats && <div className="stat-grid">
           {item('Alleinspiele gewonnen', percentLabel(stats.declarer.winShare), `${stats.declarer.won} von ${stats.declarer.played}`)}
-          {item('Hand angesagt', percentLabel(stats.hand.share), `${stats.hand.played} von ${stats.declarer.played} Alleinspielen`)}
-          {item('Hand gewonnen', percentLabel(stats.hand.winShare), `${stats.hand.won} von ${stats.hand.played}`)}
           {item('Gegenspiele gewonnen', percentLabel(stats.defender.winShare), `${stats.defender.won} von ${stats.defender.played}`)}
+          {item('Hand gewonnen', percentLabel(stats.hand.winShare), `${stats.hand.won} von ${stats.hand.played}`)}
+          {item('Hand angesagt', percentLabel(stats.hand.share), `${stats.hand.played} von ${stats.declarer.played} Alleinspielen`)}
         </div>}
       </section>
     </div>
@@ -416,12 +417,12 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
         <PieChart slices={pieSlices} centerLabel="Alleinspiele" emptyHint="Noch keine Alleinspiele eingetragen." />
         <div className="bar-lists">
           <div>
-            <div className="section-heading"><div><span className="eyebrow">Farben</span><h3>Lieblingsfarben</h3></div><span className="dealer-note">nach Häufigkeit</span></div>
-            {favourite.length ? <ul className="bar-list">{favourite.map((entry) => barRow(entry, `${entry.played}×`, entry.share, `${entry.share} % seiner Alleinspiele · ${entry.won} gewonnen`))}</ul> : <p className="chart-note">Noch kein Farbspiel gespielt.</p>}
+            <div className="section-heading"><div><span className="eyebrow">Spiele</span><h3>Lieblingsspiele</h3></div><span className="dealer-note">nach Häufigkeit</span></div>
+            {favourite.length ? <ul className="bar-list">{favourite.map((entry) => barRow(entry, `${entry.played}×`, entry.share, `${entry.share} % seiner Alleinspiele · ${entry.won} gewonnen`))}</ul> : <p className="chart-note">Noch kein Alleinspiel gespielt.</p>}
           </div>
           <div>
-            <div className="section-heading"><div><span className="eyebrow">Farben</span><h3>Beste Farben</h3></div><span className="dealer-note">nach Gewinnchance</span></div>
-            {bestSuits.length ? <ul className="bar-list">{bestSuits.map((entry) => barRow(entry, percentLabel(entry.winShare), entry.winShare ?? 0, `${entry.won} von ${entry.played} gewonnen`))}</ul> : <p className="chart-note">Noch kein Farbspiel gespielt.</p>}
+            <div className="section-heading"><div><span className="eyebrow">Spiele</span><h3>Beste Spiele</h3></div><span className="dealer-note">nach Gewinnchance</span></div>
+            {bestGames.length ? <ul className="bar-list">{bestGames.map((entry) => barRow(entry, percentLabel(entry.winShare), entry.winShare ?? 0, `${entry.won} von ${entry.played} gewonnen`))}</ul> : <p className="chart-note">Noch kein Alleinspiel gespielt.</p>}
           </div>
         </div>
       </div>}
