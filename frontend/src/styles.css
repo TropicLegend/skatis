@@ -203,7 +203,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 @keyframes pop-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
 @keyframes shimmer{from{background-position:-420px 0}to{background-position:420px 0}}
 @keyframes draw-line{to{stroke-dashoffset:0}}
-@keyframes pie-in{from{opacity:0;transform:rotate(-22deg) scale(.94)}to{opacity:1;transform:none}}
+@keyframes pie-in{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
 
 /** Ein Screen-Wechsel: kurz eingerückt und eingeblendet. */
 .screen{animation:screen-in .26s ease both}
@@ -426,6 +426,39 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .modal-actions .primary-button,.modal-actions .secondary-button{width:100%;justify-content:center}
   .primary-button.danger{background:#a8412c;border-color:#a8412c;color:#fdf6f0}
+}
+
+/* ---------------------------------------------------------------------------
+   Diagramme: sie bauen sich einmal auf, wenn sie erscheinen – die Linie zieht
+   sich, Punkte und Ring kommen nach. Nur `transform`/`opacity`, damit es auf
+   kleinen Geräten günstig bleibt; `prefers-reduced-motion` schaltet alles ab.
+   --------------------------------------------------------------------------- */
+.chart-line{stroke-dasharray:2600;stroke-dashoffset:2600;animation:draw-line 1s ease forwards}
+.chart-point{animation:pop-in .32s ease both;animation-delay:calc(var(--i,0) * 18ms)}
+.pie-canvas{animation:pie-in .5s ease both}
+.pie-slice{cursor:pointer}
+.pie-legend-item{cursor:pointer}
+.pie-detail{display:flex;align-items:center;gap:10px;margin:10px 0 0;font-size:13px;color:var(--ink)}
+.pie-detail i{width:10px;height:10px;border-radius:3px;flex:none}
+.pie-detail strong{font:600 14px 'DM Mono',monospace}
+.pie-detail small{font-size:12px;color:var(--muted)}
+
+@media (max-width:600px){
+  .chart-block{padding:16px 12px}
+  .chart-tick{font-size:15px}
+  .chart-touch{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;min-height:54px;margin-top:12px;padding:10px 12px;border-radius:14px;background:rgba(29,35,31,.04)}
+  .chart-touch-hint{font-size:12px;color:var(--muted)}
+  .chart-touch-title{width:100%;font:500 12px 'DM Mono',monospace;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+  .chart-touch-row{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink)}
+  .chart-touch-row i{width:9px;height:9px;border-radius:3px;flex:none}
+  .chart-touch-row strong{font:600 14px 'DM Mono',monospace}
+  .chart-legend{flex-wrap:wrap;gap:8px 14px}
+  .chart-legend-item{font-size:12px}
+  .chart-legend-item strong{font-size:13px}
+  .pie-layout{gap:18px}
+  .pie-detail{font-size:14px}
+  .pie-legend-item{min-height:40px}
+  .bar-track{height:9px}
 }
 
 

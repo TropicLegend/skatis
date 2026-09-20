@@ -19,6 +19,9 @@ const GAP = 4
 
 function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
   const [hover, setHover] = useState(null)
+  // Am Handy gibt es kein Überfahren: ein Tippen auf Segment oder Legende wählt aus
+  // und bleibt stehen, bis etwas anderes getippt wird.
+  const [selected, setSelected] = useState(null)
   const drawn = slices.filter((slice) => Number(slice.value) > 0)
   const total = drawn.reduce((sum, slice) => sum + Number(slice.value), 0)
 
@@ -38,6 +41,8 @@ function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
     offset += length
     return arc
   })
+
+  const active = arcs.find((arc) => arc.label === (selected ?? hover)) ?? null
 
   return (
     <figure className="pie">
@@ -62,6 +67,7 @@ function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
               strokeDasharray={`${Math.max(arc.length - GAP, 1)} ${CIRCUMFERENCE}`}
               strokeDashoffset={-arc.offset}
               onPointerEnter={() => setHover(arc.label)}
+              onClick={() => setSelected(selected === arc.label ? null : arc.label)}
             />
           ))}
         </g>
@@ -76,6 +82,7 @@ function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
             title={`${arc.label}: ${arc.value} von ${total} (${arc.share} %)`}
             onPointerEnter={() => setHover(arc.label)}
             onPointerLeave={() => setHover(null)}
+            onClick={() => setSelected(selected === arc.label ? null : arc.label)}
           >
             <i style={{ background: arc.color }} />
             {arc.label}
@@ -84,6 +91,15 @@ function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
           </span>
         ))}
       </figcaption>
+
+      {active && (
+        <p className="pie-detail">
+          <i style={{ background: active.color }} />
+          <span>{active.label}</span>
+          <strong>{active.share} %</strong>
+          <small>{active.value} von {total}</small>
+        </p>
+      )}
     </figure>
   )
 }
