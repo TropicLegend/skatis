@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit } from '../audit/audit-log.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
+import { renameInGame } from './player-names.js';
 import type { CreatePlayerInput } from './player.schemas.js';
 
 export interface PlayerDto {
@@ -123,9 +124,15 @@ export async function renamePlayer(
     throw conflict(`"${newName}" is already a player of this tournament`);
   }
 
+  // Every name of the tournament's games is a candidate – the Geber of a round
+  // sits out with four players and is therefore not necessarily part of the
+  // three `players` of that game.
   const games = await prisma.game.findMany({
-    where: { list: { lineup: { some: { playerId: player.id } } } },
-    select: { id: true, players: true, declarer: true },
+    where: {
+      list: { tournamentId: tournament.id },
+      OR: [{ dealer: name }, { declarer: name }, { players: { has: name } }],
+    },
+    select: { id: true, players: true, dealer: true, declarer: true },
   });
 
   await prisma.$transaction(async (transaction) => {
@@ -136,10 +143,7 @@ export async function renamePlayer(
     for (const game of games) {
       await transaction.game.update({
         where: { id: game.id },
-        data: {
-          players: game.players.map((entry) => (entry === name ? newName : entry)),
-          ...(game.declarer === name ? { declarer: newName } : {}),
-        },
+        data: renameInGame(game, name, newName),
       });
     }
   });

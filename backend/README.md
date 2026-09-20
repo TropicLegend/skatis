@@ -1170,8 +1170,10 @@ Content-Type: application/json
 **Response** `200` → `{ "data": { "name": "Bert" } }`
 
 Corrects a typo – the only way to fix one, because a player who plays in a list
-cannot be deleted. The names recorded in already entered games are rewritten as
-well, and a rename to the same name is a no-op.
+cannot be deleted. All names recorded in already entered games are rewritten as
+well: the three `players` of a game, the Alleinspieler and the Geber – the Geber
+sits out with four players and is therefore not among the three. A rename to the
+same name is a no-op.
 
 **Errors:** `403` member token, `404` unknown player, `409` the new name is
 already taken.
