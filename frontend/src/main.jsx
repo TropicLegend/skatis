@@ -220,12 +220,14 @@ function App() {
     if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(error.message))
   }, [token, tournament, view])
 
-  function logout(message = '') {
+  function logout(message) {
     localStorage.removeItem('skatis-token')
     localStorage.removeItem('skatis-tournament')
     localStorage.removeItem('skatis-role')
     setToken(null); setRole(null); setTournament(null); setView('login'); setSelectedList(null)
-    setLoginNotice(message)
+    // Nur echte Texte sind ein Hinweis. Ein Klick-Event darf hier nicht landen – als
+    // React-Kind wäre es ein Fehler und die Seite bliebe leer.
+    setLoginNotice(typeof message === 'string' ? message : '')
   }
 
   // Ein abgelehntes Token (abgelaufen oder nach einem Passwortwechsel ungültig) führt
@@ -299,7 +301,7 @@ function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnier
         {role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}
         <button className="icon-button help-button" title="Hilfe"><CircleHelp size={18} /></button>
         <button className="icon-button topbar-log" title="Protokoll der Änderungen" aria-label="Protokoll der Änderungen" onClick={() => setShowLog(true)}><History size={18} /></button>
-        <button className="icon-button" title="Abmelden" onClick={onLogout}><LogOut size={18} /></button>
+        <button className="icon-button" title="Abmelden" aria-label="Abmelden" onClick={() => onLogout()}><LogOut size={18} /></button>
       </div>
     </header>
     <main>{children}</main>
