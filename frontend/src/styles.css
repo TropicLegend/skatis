@@ -540,7 +540,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 
 /* Auf größeren Bildschirmen steht die Rolle nur einmal – oben in der Kopfzeile. */
 @media (min-width:601px){
-  .dashboard-id-row .role-chip{display:none}
+  .dashboard-id-row{display:none}
 }
 
 
