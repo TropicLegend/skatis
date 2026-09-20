@@ -110,6 +110,12 @@ td.spiel-count{font-size:10px;color:var(--muted)}
 th.num,td.num{text-align:right}
 /* Klassisches Protokoll: durchgezogene Trennlinien an den Wertspalten und der Aktionsspalte */
 th.sep,td.sep{border-left:1px solid var(--line)}
+/* Klassisches Protokoll: die "+"/"−"-Kopfsymbole größer und mittig */
+th.sign{text-align:center;font-size:15px;font-weight:600;color:var(--ink);padding:8px 8px}
+/* Klassisches Protokoll: schmale Spalte "Eingepasst", senkrecht beschriftet, mit Linie auf beiden Seiten */
+th.passed-col,td.passed-col{border-left:1px solid var(--line);border-right:1px solid var(--line);text-align:center;width:1%;white-space:nowrap}
+th.passed-col{writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 5px;vertical-align:bottom;letter-spacing:.3px}
+td.passed-col{padding:14px 6px}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
 .score-legend{margin:9px 0 0;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
