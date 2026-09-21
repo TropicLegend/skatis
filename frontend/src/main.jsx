@@ -62,6 +62,8 @@ function signedValue(value) {
  * Wird aufgerufen, wenn der Server ein Token ablehnt: abgelaufen oder durch einen
  * Passwortwechsel ungültig. `App` hängt dort das Abmelden ein – so landet jede
  * Anfrage, die ein totes Token benutzt, auf der Anmeldeseite statt in einem Fehler.
+ * Der Handler bekommt das abgelehnte Token mit: nur wenn es noch die aktuelle
+ * Sitzung ist, wird wirklich abgemeldet.
  */
 let sessionExpiredHandler = null
 
@@ -74,12 +76,29 @@ async function request(path, options = {}) {
   })
   const payload = response.status === 204 ? null : await response.json()
   if (!response.ok) {
+    const error = new Error(payload?.error?.message || 'Die Anfrage konnte nicht verarbeitet werden.')
     // Beim Anmelden selbst bedeutet 401 nur „falsches Passwort“ – dort darf die
-    // Sitzungs-Meldung nicht dazwischenfunken.
-    if (response.status === 401 && !skipSessionExpiry && sessionExpiredHandler) sessionExpiredHandler()
-    throw new Error(payload?.error?.message || 'Die Anfrage konnte nicht verarbeitet werden.')
+    // Sitzungs-Meldung nicht dazwischenfunken. Sonst ist ein 401 der Beweis,
+    // dass dieses Token nicht mehr gilt: Der Fehler wird als Sitzungs-Ablehnung
+    // markiert, damit sein Text nirgends als Meldung stehen bleibt – er gehört
+    // zur alten Sitzung und würde sonst noch nach dem nächsten Anmelden als
+    // „token ungültig“-Meldung auf einem funktionierenden Board kleben.
+    if (response.status === 401 && !skipSessionExpiry) {
+      error.sessionRejected = true
+      sessionExpiredHandler?.(token)
+    }
+    throw error
   }
   return payload?.data
+}
+
+/**
+ * Die Meldung, die ein Aufrufer anzeigen soll – leer für eine abgelehnte Sitzung:
+ * die Abmeldung samt Hinweis auf der Anmeldeseite erledigt schon der
+ * `sessionExpiredHandler`, ein zweiter Text wäre nur eine Karteileiche.
+ */
+function errorNotice(error) {
+  return error?.sessionRejected ? '' : error?.message ?? ''
 }
 
 const initialGame = { passedOut: false, declarer: '', gameType: '', hand: false, schneiderAnnounced: false, schwarzAnnounced: false, offen: false, matadors: { suit: 'WITH', count: 1 }, schneider: false, schwarz: false, won: true, note: '' }
@@ -227,7 +246,10 @@ function App() {
     localStorage.setItem('skatis-token', session.token)
     localStorage.setItem('skatis-tournament', JSON.stringify(session.tournament))
     localStorage.setItem('skatis-role', session.role)
+    // Meldungen der letzten Sitzung gehören nicht auf das frische Board – sonst
+    // stünde hier nach dem Anmelden noch ein „Token ungültig“ der alten.
     setLoginNotice('')
+    setNotice('')
     setToken(session.token)
     setRole(session.role)
     setTournament(session.tournament)
@@ -243,6 +265,7 @@ function App() {
     if (!token || !tournament?.id) return
     const result = await request(`/tournaments/${tournament.id}/lists?limit=100`, { token })
     setLists(result || [])
+    setNotice('')
   }
 
   async function openList(list) {
@@ -252,7 +275,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(error.message))
+    if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(errorNotice(error)))
   }, [token, tournament, view])
 
   function logout(message, notifyServer = true) {
@@ -266,6 +289,8 @@ function App() {
     localStorage.removeItem('skatis-tournament')
     localStorage.removeItem('skatis-role')
     setToken(null); setRole(null); setTournament(null); setView('login'); setSelectedList(null)
+    // Meldungen der beendeten Sitzung mitnehmen wäre verwirrend – das Board ist weg.
+    setNotice('')
     // Nur echte Texte sind ein Hinweis. Ein Klick-Event darf hier nicht landen – als
     // React-Kind wäre es ein Fehler und die Seite bliebe leer.
     setLoginNotice(typeof message === 'string' ? message : '')
@@ -273,10 +298,15 @@ function App() {
 
   // Ein abgelehntes Token (abgelaufen oder nach einem Passwortwechsel ungültig) führt
   // zurück zur Anmeldung – egal welche Anfrage es war. Der Server weiß in dem Fall
-  // schon Bescheid, ein Logout-Aufruf wäre nur ein weiteres 401.
+  // schon Bescheid, ein Logout-Aufruf wäre nur ein weiteres 401. Abgemeldet wird nur
+  // die eigene, noch aktuelle Sitzung: Antworten einer längst ersetzten Sitzung
+  // dürfen eine frische Anmeldung nicht wieder hinauswerfen.
   useEffect(() => {
-    sessionExpiredHandler = () => logout('Deine Sitzung ist beendet – bitte melde dich neu an.', false)
-  }, [])
+    sessionExpiredHandler = (rejected) => {
+      if (rejected && rejected === token) logout('Deine Sitzung ist beendet – bitte melde dich neu an.', false)
+    }
+    return () => { sessionExpiredHandler = null }
+  }, [token])
 
   if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} notice={loginNotice} /></div>
   if (view === 'dashboard') return <div className="screen"><Dashboard tournament={tournament} role={role} lists={lists} notice={notice} onOpenList={openList} onLogout={logout} token={token} onCreated={refreshLists} onTournamentUpdated={(updated) => { setTournament(updated); localStorage.setItem('skatis-tournament', JSON.stringify(updated)) }} /></div>
@@ -406,11 +436,11 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const showLists = !mobile || section === 'lists'
   const showRanking = !mobile || section === 'ranking'
   const showPlayers = !mobile || section === 'players'
-  async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })) }
-  async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(error.message) } }
+  async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })); setPlayerError('') }
+  async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
   function startEditing(player) { setEditingPlayer(player.name); setEditedPlayerName(player.name); setPlayerError('') }
-  async function renamePlayer(event, oldName) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players/${encodeURIComponent(oldName)}`, { method: 'PATCH', token, body: { name: editedPlayerName } }); setEditingPlayer(null); await loadPlayers() } catch (error) { setPlayerError(error.message) } }
-  useEffect(() => { loadPlayers().catch((error) => setPlayerError(error.message)) }, [tournament?.id])
+  async function renamePlayer(event, oldName) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players/${encodeURIComponent(oldName)}`, { method: 'PATCH', token, body: { name: editedPlayerName } }); setEditingPlayer(null); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
+  useEffect(() => { loadPlayers().catch((error) => setPlayerError(errorNotice(error))) }, [tournament?.id])
   useEffect(() => {
     Promise.all(lists.map(async (list) => [list.id, await request(`/tournaments/${tournament.id}/lists/${list.id}/results`, { token })]))
       .then((entries) => setListRankings(Object.fromEntries(entries)))
@@ -487,8 +517,8 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
     if (!tournament?.id || histories[scale]) return undefined
     let active = true
     request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}`, { token })
-      .then((history) => { if (active) setHistories((current) => ({ ...current, [scale]: history })) })
-      .catch((problem) => { if (active) setHistoryError(problem.message) })
+      .then((history) => { if (active) { setHistories((current) => ({ ...current, [scale]: history })); setHistoryError('') } })
+      .catch((problem) => { if (active) setHistoryError(errorNotice(problem)) })
     return () => { active = false }
   }, [tournament?.id, token, scale, histories])
 
@@ -554,8 +584,8 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     if (!tournament?.id || histories[scale]) return undefined
     let active = true
     request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}`, { token })
-      .then((history) => { if (active) setHistories((current) => ({ ...current, [scale]: history })) })
-      .catch((problem) => { if (active) setHistoryError(problem.message) })
+      .then((history) => { if (active) { setHistories((current) => ({ ...current, [scale]: history })); setHistoryError('') } })
+      .catch((problem) => { if (active) setHistoryError(errorNotice(problem)) })
     return () => { active = false }
   }, [tournament?.id, token, scale, histories])
 
@@ -568,7 +598,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     let active = true
     request(`/tournaments/${tournament.id}/standings/players/${encodeURIComponent(player.name)}`, { token })
       .then((value) => { if (active) { setStats(value); setStatsError('') } })
-      .catch((problem) => { if (active) setStatsError(problem.message) })
+      .catch((problem) => { if (active) setStatsError(errorNotice(problem)) })
     return () => { active = false }
   }, [tournament?.id, player?.name, token])
 
@@ -719,6 +749,7 @@ function CreateListModal({ token, tournament, players = [], lists = [], canManag
 function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpdated }) {
   const [showWizard, setShowWizard] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmGame, setConfirmGame] = useState(null)
   const [editingGame, setEditingGame] = useState(null)
   const [detailGame, setDetailGame] = useState(null)
   const [notice, setNotice] = useState('')
@@ -726,6 +757,11 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   const [results, setResults] = useState(null)
   const [scale, setScale] = useState('round')
   const [customScale, setCustomScale] = useState(5)
+
+  // Spiele sind korrigierbar, solange die Liste es zulässt: für Mitglieder heißt
+  // das „offen und heute“, für den Admin immer – auch nach dem Schließen. Der
+  // Server prüft dasselbe noch einmal, das Flag kommt von dort (`list.locked`).
+  const canEdit = role === 'ADMIN' || !list.locked
 
   // Beide Zahlenreihen kommen aus der API: der Kontoverlauf ("verloren zählt
   // doppelt" samt Boni) und die Ergebnistabelle, aus der die vier Abschlusszeilen
@@ -749,7 +785,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
       await loadDetails()
       setShowWizard(false); setEditingGame(null)
       setNotice(isEditing ? 'Spiel wurde aktualisiert.' : 'Spiel wurde eingetragen.')
-    } catch (e) { setNotice(e.message) }
+    } catch (e) { setNotice(errorNotice(e)) }
   }
 
   async function updateList(action) {
@@ -757,17 +793,31 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
       const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}/${action}`, { method: 'POST', token })
       onUpdated(updated)
       setNotice(action === 'submit' ? 'Liste wurde geschlossen.' : 'Liste wurde wieder geöffnet.')
-    } catch (e) { setNotice(e.message) }
+    } catch (e) { setNotice(errorNotice(e)) }
   }
 
   function deleteList() { setConfirmDelete(true) }
 
   async function removeList() {
     setConfirmDelete(false)
-    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onBack() } catch (e) { setNotice(e.message) }
+    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onBack() } catch (e) { setNotice(errorNotice(e)) }
   }
 
-  useEffect(() => { loadDetails().catch((error) => setNotice(error.message)) }, [list.id])
+  // Ein Spiel entfernen: Die übrigen Runden behalten ihre Nummer und ihren Geber –
+  // das nächste neue Spiel knüpft an der letzten Runde an.
+  async function removeGame() {
+    const game = confirmGame
+    setConfirmGame(null); setDetailGame(null)
+    try {
+      await request(`/tournaments/${tournament.id}/lists/${list.id}/games/${game.id}`, { method: 'DELETE', token })
+      const games = (list.games || []).filter((item) => item.id !== game.id)
+      onUpdated({ ...list, games, gameCount: games.length, totalGameValue: games.reduce((sum, item) => sum + (item.gameValue || 0), 0) })
+      await loadDetails()
+      setNotice('Spiel wurde gelöscht.')
+    } catch (e) { setNotice(errorNotice(e)) }
+  }
+
+  useEffect(() => { loadDetails().catch((error) => setNotice(errorNotice(error))) }, [list.id])
 
   const lineup = (list.players || []).map((player) => player.name)
   const rounds = roundAccounts(progression)
@@ -788,7 +838,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     </div>
     {notice && <div className="success-message">{notice}</div>}
     <div className="workspace-grid">
-      <GameTable list={list} rounds={rounds} results={results} role={role} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
+      <GameTable list={list} rounds={rounds} results={results} canEdit={canEdit} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
@@ -796,14 +846,15 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     </div>
     {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} onClose={() => { setShowWizard(false); setEditingGame(null) }} onSave={saveGame} />}
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
-    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} onClose={() => setDetailGame(null)} onEdit={role === 'ADMIN' ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} />}
+    {confirmGame && <ConfirmSheet title={`Runde ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
+    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
   </Shell>
 }
 
 /** Die gewählte Darstellung des Spielprotokolls merkt sich der Browser. */
 const TABLE_STYLE_KEY = 'skatis-table-style'
 
-function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, children }) {
+function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit, onSelect, children }) {
   const games = list.games || []
   const lineup = (list.players || []).map((player) => player.name)
   const roundsByPosition = new Map(rounds.map((round) => [round.position, round]))
@@ -818,7 +869,7 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
   const mobile = useMobile()
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
-  const columns = (classic ? 6 + lineup.length * 3 : 7) + (role === 'ADMIN' ? 1 : 0)
+  const columns = (classic ? 6 + lineup.length * 3 : 7) + (canEdit ? 1 : 0)
   // Das wievielte eingepasste Spiel ist eine Zeile? Nur die eingepassten Zeilen
   // bekommen eine Zahl – gezählt wird in der Reihenfolge der Liste.
   const passedOutCounts = new Map()
@@ -860,7 +911,7 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
             <span className="game-card-round">Runde {game.position}</span>
             <span className="game-card-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
             <span className={`game-card-result ${game.passedOut ? 'muted' : game.won ? 'won' : 'lost'}`}>{game.passedOut ? '—' : outcomeLabel(game)}</span>
-            {role === 'ADMIN' && <button className="icon-button game-card-edit" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button>}
+            {canEdit && <button className="icon-button game-card-edit" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button>}
           </div>
           <div className="game-card-values">
             <span className="game-card-value"><strong>{game.passedOut ? '–' : game.gameValue}</strong><small>Spielwert</small></span>
@@ -896,7 +947,7 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
           </>}
           {classic && lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
           {classic && <th rowSpan={2} className="passed-col" title="Das wievielte eingepasste Spiel dieser Liste">Eingepasst</th>}
-          {role === 'ADMIN' && <th className={classic ? 'sep' : undefined} rowSpan={classic ? 2 : undefined} />}
+          {canEdit && <th className={classic ? 'sep' : undefined} rowSpan={classic ? 2 : undefined} />}
         </tr>
         {classic && <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>}
       </thead>
@@ -926,7 +977,7 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
             </React.Fragment>
           })}
           {classic && <td className="value-cell passed-col">{passedOutCounts.get(game.id) ?? ''}</td>}
-          {role === 'ADMIN' && <td className={classic ? 'sep' : undefined}><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
+          {canEdit && <td className={classic ? 'sep' : undefined}><button className="icon-button" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button></td>}
         </tr>) : <tr><td colSpan={columns}><div className="table-empty"><ClipboardList size={22} /><span>Noch keine Spiele eingetragen.</span><small>Der erste Eintrag beginnt mit dem Geber aus Platz 1.</small></div></td></tr>}
         {summary && <>
           <tr className="summary summary-top">
@@ -937,25 +988,25 @@ function GameTable({ list, rounds = [], results = null, role, onEdit, onSelect, 
               <td className="value-cell spiel-count">{playerSum(name, (player) => player.lost)}</td>
             </React.Fragment>)}
             <td className="value-cell passed-col" title="Eingepasste Spiele dieser Liste">{results.passedOutCount}</td>
-            {role === 'ADMIN' && <td className="sep" />}
+            {canEdit && <td className="sep" />}
           </tr>
           <tr className="summary">
             <td className="summary-label" colSpan={5}>(+ gewonnene - verlorene Spiele) * 50</td>
             {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.wonBonus + player.lossPenalty))}</td>)}
             <td className="passed-col" />
-            {role === 'ADMIN' && <td className="sep" />}
+            {canEdit && <td className="sep" />}
           </tr>
           <tr className="summary">
             <td className="summary-label" colSpan={5}>Punkte durch gewonnene Gegenspiele</td>
             {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.opponentBonus))}</td>)}
             <td className="passed-col" />
-            {role === 'ADMIN' && <td className="sep" />}
+            {canEdit && <td className="sep" />}
           </tr>
           <tr className="summary">
             <td className="summary-label" colSpan={5}>Endergebnis</td>
             {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{signedValue(playerSum(name, (player) => player.total))}</td>)}
             <td className="passed-col" />
-            {role === 'ADMIN' && <td className="sep" />}
+            {canEdit && <td className="sep" />}
           </tr>
         </>}
       </tbody>
@@ -1023,7 +1074,7 @@ function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, s
 }
 
 /** Ein Spiel im Detail – inklusive Spielstand vor und nach dieser Runde. */
-function GameDetail({ list, game, round, onClose, onEdit }) {
+function GameDetail({ list, game, round, onClose, onEdit, onDelete }) {
   useEscape(onClose)
   useScrollLock()
   if (!game) return null
@@ -1058,7 +1109,7 @@ function GameDetail({ list, game, round, onClose, onEdit }) {
       <p className="detail-note">{game.passedOut ? 'Ein eingepasstes Spiel verändert kein Konto.' : 'Ein gewonnenes Alleinspiel bringt den Spielwert plus 50, ein verlorenes kostet den doppelten Spielwert plus 50. Der Gegnerbonus für ein verlorenes Alleinspiel eines Mitspielers ist schon eingerechnet.'}</p>
       {game.note && <p className="detail-note"><strong>Notiz:</strong> {game.note}</p>}
       <p className="detail-note">Eingetragen am {new Date(game.createdAt).toLocaleString('de-DE')}.</p>
-      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>
+      <div className="modal-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>
     </div>
   </div>
 }
@@ -1066,10 +1117,16 @@ function GameDetail({ list, game, round, onClose, onEdit }) {
 function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }) {
   useEscape(onClose)
   useScrollLock()
-  const [step, setStep] = useState(existingGame ? 4 : 1)
+  // Ein bestehendes Spiel beginnt beim Ergebnis – außer einem eingepassten: das
+  // hat keine Spiel-Eigenschaften, hier geht es von vorne los (Alleinspieler
+  // wählen oder es eingepasst lassen).
+  const [step, setStep] = useState(existingGame && !existingGame.passedOut ? 4 : 1)
   // In welche Richtung der nächste Schritt gleitet – vorwärts von links, zurück von rechts.
   const [direction, setDirection] = useState('forward')
-  const [game, setGame] = useState(existingGame ? { ...initialGame, ...existingGame, nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal' } : { ...initialGame, nullVariant: 'normal' })
+  // Der Server liefert für ein Nullspiel `matadors: null` – im Wizard bleiben die
+  // Spitzen aber immer ein Objekt, sonst bricht Schritt 3 zusammen (Zurückgehen
+  // vom Ergebnis).
+  const [game, setGame] = useState(existingGame ? { ...initialGame, ...existingGame, matadors: existingGame.matadors ?? initialGame.matadors, nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal' } : { ...initialGame, nullVariant: 'normal' })
   const [custom, setCustom] = useState(false)
   const players = list.players?.map((p) => p.name) || []
   const matadorChoices = [1, 2, 3, 4]
@@ -1115,6 +1172,9 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   }
 
   const canNext = step === 1 ? game.passedOut || playing.includes(game.declarer) : step === 2 ? game.gameType : step === 3 ? game.matadors.count : true
+  // Ein Nullspiel kennt keine Spitzen: Schritt 3 wird in beide Richtungen
+  // übersprungen – vorwärts (siehe `next`) und zurück von Schritt 4.
+  const previousStep = step === 4 && game.gameType === 'NULL' ? 2 : step - 1
 
   function go(target) {
     setDirection(target > step ? 'forward' : 'back')
@@ -1209,8 +1269,8 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
       </div>
 
       <div className="wizard-footer">
-        <button className="secondary-button" onClick={() => step > 1 ? go(step - 1) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
-        <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || (step === 2 && game.gameType === 'NULL') || game.passedOut ? 'Spiel eintragen' : 'Weiter'} <ArrowRight size={16} /></button>
+        <button className="secondary-button" onClick={() => step > 1 ? go(previousStep) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
+        <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || (step === 2 && game.gameType === 'NULL') || game.passedOut ? (existingGame ? 'Spiel aktualisieren' : 'Spiel eintragen') : 'Weiter'} <ArrowRight size={16} /></button>
       </div>
     </div>
   </div>
