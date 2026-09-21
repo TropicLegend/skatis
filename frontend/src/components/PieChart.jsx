@@ -51,6 +51,7 @@ function PieChart({ slices = [], centerLabel = 'Spiele', emptyHint }) {
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         role="img"
         aria-label={`Verteilung von ${arcs.map((arc) => arc.label).join(', ')}`}
+        onContextMenu={(event) => event.preventDefault()}
         onPointerLeave={() => setHover(null)}
       >
         <g transform={`rotate(-90 ${CENTER} ${CENTER})`}>

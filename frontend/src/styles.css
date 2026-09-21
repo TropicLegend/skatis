@@ -569,6 +569,14 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
   .detail-modal .modal-actions .primary-button{grid-column:1/-1}
 }
 
+/* ---------------------------------------------------------------------------
+   Diagramme: Halten/Tippen zeigt nur den Tooltip. Ohne diese Regeln „markiert“
+   ein langer Tipp auf dem iPhone die Grafik – iOS blendet Auswahl-Lupe und
+   Kontextmenü über der Linie ein, statt den Wert anzuzeigen.
+   --------------------------------------------------------------------------- */
+.chart,.chart *,.pie,.pie *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.chart,.pie{-webkit-tap-highlight-color:transparent}
+
 
 
 

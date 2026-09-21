@@ -115,6 +115,9 @@ function LineChart({ labels = [], series = [], height = DEFAULT_HEIGHT, unit = '
         style={{ touchAction: mobile ? 'pan-y' : undefined }}
         onPointerDown={pick}
         onPointerMove={(event) => { if (event.buttons > 0 || event.pointerType === 'touch') pick(event) }}
+        // Ein langer Tipp darf kein Kontextmenü öffnen (iOS/Android) – er gehört
+        // dem Tooltip.
+        onContextMenu={(event) => event.preventDefault()}
         role="img"
         aria-label={`Punkteentwicklung von ${drawn.map((serie) => serie.name).join(', ')}`}
         onPointerLeave={() => setHover(null)}
