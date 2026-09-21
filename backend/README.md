@@ -59,6 +59,50 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 Everything is installed locally – no global packages and no root privileges are
 required.
 
+### NixOS: there are no prebuilt Prisma engines
+
+Prisma publishes engines for common Linux targets, but **not for `linux-nixos`**.
+On NixOS the `postinstall` therefore ends in
+
+```
+Error: Failed to fetch sha256 checksum at …/linux-nixos/libquery_engine.so.node.sha256 - 404 Not Found
+```
+
+and npm aborts the whole install.
+
+Prisma is **not** optional for the API: every query goes through
+`@prisma/client` and its query engine, and the server runs
+`prisma migrate deploy` on startup – which is why the CLI is a devDependency but
+still has to be present in the running image. The frontend does not touch Prisma
+at all.
+
+Depending on what you need:
+
+- **Typecheck, build or unit tests (without a database):** `npm install
+  --ignore-scripts`, then `npx prisma generate --no-engine`. That creates the
+  client without downloading an engine – enough for `npm run typecheck`,
+  `npm run build` and `npm test` (all tests except the two that query a real
+  database). Without `prisma generate` even the tests fail with `Cannot find
+  module '.prisma/client/default'`.
+- **Run the API:** build it in Docker (`docker build -t skatis-backend backend`).
+  The Alpine image is served with `linux-musl-openssl-3.0.x` engines, so it
+  installs and builds without any extra step.
+- **Engines from nixpkgs:** point the Prisma CLI at the engines of
+  `pkgs.prisma-engines` – the file names depend on the nixpkgs revision, so look
+  at them first:
+
+  ```bash
+  ENGINES=$(nix-build '<nixpkgs>' -A prisma-engines)
+  ls "$ENGINES/lib" "$ENGINES/bin"
+  export PRISMA_QUERY_ENGINE_LIBRARY="$ENGINES/lib/libquery_engine.node"
+  export PRISMA_SCHEMA_ENGINE_BINARY="$ENGINES/bin/schema-engine"
+  npm install
+  ```
+
+  The nixpkgs engines have to match the `prisma` version in `package.json`
+  (`6.19.x`) – on a mismatch `prisma generate` and `migrate deploy` refuse to
+  work.
+
 ### Database migrations
 
 The server **applies pending migrations by itself on startup**: before it starts
@@ -2193,6 +2237,7 @@ Known limitations:
 | `429 Too many requests`                                                           | wait for `Retry-After` seconds                                                                                          |
 | `503 Database is unavailable`                                                     | check `DATABASE_URL` and `GET /api/health/ready`                                                                        |
 | startup aborts with `database schema could not be prepared`                       | the database was unreachable or the user may not migrate: fix it, apply migrations manually or set `AUTO_MIGRATE=false` |
+| `npm install` ends in `Failed to fetch sha256 checksum … linux-nixos … 404`       | NixOS has no prebuilt Prisma engines – see [NixOS](#nixos-there-are-no-prebuilt-prisma-engines): `--ignore-scripts`, Docker, or the engines of nixpkgs |
 
 ## Configuration
 
