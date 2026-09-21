@@ -52,6 +52,30 @@ describe('createTournamentSchema', () => {
   it('rejects names with slashes', () => {
     expect(() => createTournamentSchema.parse({ ...validTournament, name: 'a/b' })).toThrow();
   });
+
+  it('accepts optional playing times', () => {
+    const windows = { '3': { from: '18:00', to: '22:30' } };
+    expect(createTournamentSchema.parse({ ...validTournament, matchdayWindows: windows })).toEqual({
+      ...validTournament,
+      matchdayWindows: windows,
+    });
+    expect(createTournamentSchema.parse(validTournament).matchdayWindows).toBeUndefined();
+  });
+
+  it('rejects invalid playing times', () => {
+    expect(() =>
+      createTournamentSchema.parse({
+        ...validTournament,
+        matchdayWindows: { '3': { from: '22:00', to: '18:00' } },
+      }),
+    ).toThrow();
+    expect(() =>
+      createTournamentSchema.parse({
+        ...validTournament,
+        matchdayWindows: { '3': { from: '8:00', to: '22:30' } },
+      }),
+    ).toThrow();
+  });
 });
 
 describe('updateTournamentSchema', () => {

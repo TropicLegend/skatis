@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, Clock, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
@@ -81,6 +81,32 @@ function windowState(tournament, isoDate, now = new Date()) {
   if (time < window.from) return 'before'
   if (time >= window.to) return 'over'
   return null
+}
+
+/** "18:30" – eine vollständige Uhrzeit im 24-Stunden-Format. */
+function isClockTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value ?? '')
+}
+
+/**
+ * Die Spielzeiten der gewählten Tage einsammeln: je Tag entweder beide Zeiten
+ * oder keine – und die Bis-Zeit muss nach der Von-Zeit liegen. Liefert die
+ * fertige Map oder die Fehlermeldung fürs Formular.
+ */
+function windowsFrom(matchdays, windows) {
+  const collected = {}
+  for (const day of matchdays) {
+    const window = windows?.[day]
+    if (!window || (!window.from && !window.to)) continue
+    if (!isClockTime(window.from) || !isClockTime(window.to)) {
+      return { error: `Für ${weekdayLabel(day)} bitte Von- und Bis-Zeit als HH:MM angeben.` }
+    }
+    if (window.from >= window.to) {
+      return { error: `Bei ${weekdayLabel(day)} muss die Bis-Zeit nach der Von-Zeit liegen.` }
+    }
+    collected[day] = { from: window.from, to: window.to }
+  }
+  return { windows: collected }
 }
 
 /** Punkte mit Vorzeichen – `+170`, `−98`, `0`. */
@@ -421,12 +447,18 @@ function Login({ onLogin, onCreate, notice = '' }) {
   const [mode, setMode] = useState('login')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState({ id: '', password: '', name: '', adminPassword: '', matchdays: [3] })
+  const [form, setForm] = useState({ id: '', password: '', name: '', adminPassword: '', matchdays: [3], windows: {} })
+  // Das Anlegen kommt ohne Uhrzeiten aus – der Knopf blendet sie optional ein.
+  const [showTimes, setShowTimes] = useState(false)
   const update = (key, value) => setForm({ ...form, [key]: value })
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('')
-    try { mode === 'login' ? await onLogin(form.id, form.password) : await onCreate({ name: form.name, password: form.password, adminPassword: form.adminPassword, matchdays: form.matchdays }) }
-    catch (e) { setError(e.message) } finally { setBusy(false) }
+    try {
+      if (mode === 'login') { await onLogin(form.id, form.password); return }
+      const { windows: matchdayWindows, error: windowError } = showTimes ? windowsFrom(form.matchdays, form.windows) : {}
+      if (windowError) { setError(windowError); return }
+      await onCreate({ name: form.name, password: form.password, adminPassword: form.adminPassword, matchdays: form.matchdays, matchdayWindows })
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return <div className="login-page">
     <div className="login-art"><div className="art-kicker">DIE RUNDE BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Skatis ist die beste Platform, um Turniere und Skatlisten zu verwalten! Dein digitales Skatblatt für faire Runden, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
@@ -435,7 +467,7 @@ function Login({ onLogin, onCreate, notice = '' }) {
       <div className="mode-tabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Einloggen</button><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Turnier erstellen</button></div>
       {notice && <div className="info-message">{notice}</div>}
       <form onSubmit={submit}>
-        {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsrunde" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} /></>}
+        {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsrunde" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} windows={form.windows} onWindowsChange={showTimes ? (windows) => update('windows', windows) : undefined} />{showTimes ? <button type="button" className="times-toggle" onClick={() => { setShowTimes(false); update('windows', {}) }}><X size={14} /> Uhrzeiten entfernen</button> : <button type="button" className="times-toggle" onClick={() => setShowTimes(true)}><Clock size={14} /> Uhrzeiten festlegen (optional)</button>}</>}
         {error && <div className="error-message">{error}</div>}
         <button className="primary-button full" disabled={busy}>{busy ? 'Einen Moment …' : mode === 'login' ? <>Turnier öffnen <ArrowRight size={17} /></> : <>Turnier erstellen <Plus size={17} /></>}</button>
       </form>
@@ -520,13 +552,30 @@ function SectionTabs({ value, onChange }) {
   </nav>
 }
 
+/**
+ * Uhrzeit-Feld im 24-Stunden-Format. Das native `<input type="time">` zeigt in
+ * manchen Browsern „06:30 PM“ – hier wird getippt: „1830“ wird zu „18:30“, ein
+ * einzelnes „930“ beim Verlassen zu „09:30“.
+ */
+function TimeField({ value, onChange, label }) {
+  function format(raw) {
+    const digits = raw.replace(/\D/g, '').slice(0, 4)
+    return digits.length <= 2 ? digits : `${digits.slice(0, 2)}:${digits.slice(2)}`
+  }
+  function complete() {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length === 3) onChange(`0${digits[0]}:${digits.slice(1)}`)
+  }
+  return <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} placeholder="18:00" aria-label={label} value={value} onChange={(event) => onChange(format(event.target.value))} onBlur={complete} />
+}
+
 function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
   function toggle(day) { onChange(value.includes(day) ? value.filter((item) => item !== day) : [...value, day].sort()) }
   // Mit `onWindowsChange` zeigt der Picker je gewähltem Tag eine Spielzeit – das
   // Anlege-Formular kommt ohne, die Turnier-Einstellungen nicht.
   const withTimes = typeof onWindowsChange === 'function'
   const setTime = (day, key, time) => onWindowsChange({ ...windows, [day]: { from: '', to: '', ...windows[day], [key]: time } })
-  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für die Turnierrunde.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><input type="time" value={windows[day]?.from ?? ''} onChange={(event) => setTime(day, 'from', event.target.value)} aria-label={`Beginn ${weekdayLabel(day)}`} /><em>bis</em><input type="time" value={windows[day]?.to ?? ''} onChange={(event) => setTime(day, 'to', event.target.value)} aria-label={`Ende ${weekdayLabel(day)}`} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
+  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für die Turnierrunde.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><TimeField label={`Beginn ${weekdayLabel(day)}`} value={windows[day]?.from ?? ''} onChange={(time) => setTime(day, 'from', time)} /><em>bis</em><TimeField label={`Ende ${weekdayLabel(day)}`} value={windows[day]?.to ?? ''} onChange={(time) => setTime(day, 'to', time)} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis im 24-Stunden-Format. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
 }
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
@@ -536,23 +585,12 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   const [windows, setWindows] = useState(tournament.matchdayWindows || {})
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  // Die Spielzeiten der gewählten Tage einsammeln: je Tag entweder beide Zeiten
-  // oder keine – und die Bis-Zeit muss nach der Von-Zeit liegen.
-  function collectedWindows() {
-    const collected = {}
-    for (const day of matchdays) {
-      const window = windows[day]
-      if (!window || (!window.from && !window.to)) continue
-      if (!window.from || !window.to) { setError(`Für ${weekdayLabel(day)} fehlt entweder die Von- oder die Bis-Zeit.`); return null }
-      if (window.from >= window.to) { setError(`Bei ${weekdayLabel(day)} muss die Bis-Zeit nach der Von-Zeit liegen.`); return null }
-      collected[day] = { from: window.from, to: window.to }
-    }
-    return collected
-  }
+  // Die Spielzeiten der gewählten Tage einsammeln – dieselbe Prüfung wie beim
+  // Anlegen: je Tag entweder beide Zeiten oder keine, „von“ vor „bis“.
   async function submit(event) {
     event.preventDefault(); setError('')
-    const matchdayWindows = collectedWindows()
-    if (matchdayWindows === null) return
+    const { windows: matchdayWindows, error: windowError } = windowsFrom(matchdays, windows)
+    if (windowError) { setError(windowError); return }
     try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, matchdayWindows, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) }
   }
   return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>

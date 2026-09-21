@@ -83,6 +83,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<To
   const tournament = {
     name: input.name,
     matchdays: sortedDays(input.matchdays),
+    // Ohne Angabe bleibt die Map leer – „kein Tag hat eine Spielzeit“.
+    matchdayWindows: input.matchdayWindows ?? {},
     adminPasswordHash,
     passwordHash,
   };

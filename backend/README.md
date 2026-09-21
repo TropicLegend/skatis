@@ -108,7 +108,7 @@ sequenceDiagram
     participant A as API
     participant D as PostgreSQL
 
-    F->>A: POST /api/tournaments {name, password, adminPassword, matchdays}
+    F->>A: POST /api/tournaments {name, password, adminPassword, matchdays, matchdayWindows?}
     A->>D: INSERT tournament (id = K7M2P4QX)
     A-->>F: 201 {id: "K7M2P4QX", name, matchdays, …}
     Note over F: show the id so users can log in later
@@ -669,6 +669,7 @@ Both need no token, so both are [rate limited](#rate-limits) per caller address.
 | `password`      | string   | 8–128 characters – the normal password               |
 | `adminPassword` | string   | 8–128 characters – the admin password                |
 | `matchdays`     | number[] | 1–7 unique ISO weekdays, `1` = Monday … `7` = Sunday |
+| `matchdayWindows` | object | optional – playing times by weekday (see the example) |
 
 **Request**
 
@@ -677,7 +678,8 @@ Both need no token, so both are [rate limited](#rate-limits) per caller address.
   "name": "Mittwochsrunde",
   "password": "member-secret",
   "adminPassword": "admin-secret",
-  "matchdays": [3]
+  "matchdays": [3],
+  "matchdayWindows": { "3": { "from": "18:00", "to": "22:30" } }
 }
 ```
 
@@ -689,12 +691,16 @@ Both need no token, so both are [rate limited](#rate-limits) per caller address.
     "id": "K7M2P4QX",
     "name": "Mittwochsrunde",
     "matchdays": [3],
+    "matchdayWindows": { "3": { "from": "18:00", "to": "22:30" } },
     "listCount": 0,
     "createdAt": "2026-09-18T17:05:12.431Z",
     "updatedAt": "2026-09-18T17:05:12.431Z"
   }
 }
 ```
+
+The playing times are **optional** here – a tournament can also be created without
+them and get them later with `PATCH /tournaments/:tournamentId`.
 
 **Show the `id` to the user** – it is the only handle for the tournament from now
 on, and together with a password the only thing needed to log in. Names may
@@ -733,6 +739,7 @@ Content-Type: application/json
       "id": "K7M2P4QX",
       "name": "Mittwochsrunde",
       "matchdays": [3],
+      "matchdayWindows": {},
       "listCount": 0,
       "createdAt": "2026-09-18T17:05:12.431Z",
       "updatedAt": "2026-09-18T17:05:12.431Z"
@@ -862,6 +869,7 @@ Authorization: Bearer <token>
       "id": "K7M2P4QX",
       "name": "Mittwochsrunde",
       "matchdays": [3],
+      "matchdayWindows": {},
       "listCount": 4,
       "createdAt": "2026-09-18T17:05:12.431Z",
       "updatedAt": "2026-09-18T17:05:12.431Z"
@@ -887,6 +895,7 @@ and an unauthenticated caller learns nothing about them.
     "id": "K7M2P4QX",
     "name": "Mittwochsrunde",
     "matchdays": [3],
+    "matchdayWindows": {},
     "listCount": 4,
     "createdAt": "2026-09-18T17:05:12.431Z",
     "updatedAt": "2026-09-18T19:42:11.000Z"

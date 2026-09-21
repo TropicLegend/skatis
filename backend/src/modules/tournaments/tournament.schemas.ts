@@ -80,6 +80,8 @@ export const createTournamentSchema = z.object({
   adminPassword: passwordSchema,
   password: passwordSchema,
   matchdays: matchdaysSchema,
+  /** Optional: the playing times can also be set later via PATCH. */
+  matchdayWindows: matchdayWindowsSchema.optional(),
 });
 
 /**
