@@ -1393,7 +1393,8 @@ Query: `?matchday=` (exactly one date – the evening with all its tables),
 stored), `?counted=true|false` (whether the list already counts for the standing:
 handed in or of a past day), `?limit=` (1–100, default 20), `?offset=` (default
 0). Newest matchday first, then by series and table – so the sheets of an evening
-come in the order of the room.
+come in the order of the room. A place that was used twice (a slot is free again
+after a submission) lists the younger sheet first.
 
 `?matchday=` is the one to use for "the lists of tonight": it answers every table
 of that date in a single request and is what a scoreboard of the evening needs.
