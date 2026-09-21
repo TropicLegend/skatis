@@ -1123,7 +1123,10 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   const [step, setStep] = useState(existingGame && !existingGame.passedOut ? 4 : 1)
   // In welche Richtung der nächste Schritt gleitet – vorwärts von links, zurück von rechts.
   const [direction, setDirection] = useState('forward')
-  const [game, setGame] = useState(existingGame ? { ...initialGame, ...existingGame, nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal' } : { ...initialGame, nullVariant: 'normal' })
+  // Der Server liefert für ein Nullspiel `matadors: null` – im Wizard bleiben die
+  // Spitzen aber immer ein Objekt, sonst bricht Schritt 3 zusammen (Zurückgehen
+  // vom Ergebnis).
+  const [game, setGame] = useState(existingGame ? { ...initialGame, ...existingGame, matadors: existingGame.matadors ?? initialGame.matadors, nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal' } : { ...initialGame, nullVariant: 'normal' })
   const [custom, setCustom] = useState(false)
   const players = list.players?.map((p) => p.name) || []
   const matadorChoices = [1, 2, 3, 4]
@@ -1169,6 +1172,9 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   }
 
   const canNext = step === 1 ? game.passedOut || playing.includes(game.declarer) : step === 2 ? game.gameType : step === 3 ? game.matadors.count : true
+  // Ein Nullspiel kennt keine Spitzen: Schritt 3 wird in beide Richtungen
+  // übersprungen – vorwärts (siehe `next`) und zurück von Schritt 4.
+  const previousStep = step === 4 && game.gameType === 'NULL' ? 2 : step - 1
 
   function go(target) {
     setDirection(target > step ? 'forward' : 'back')
@@ -1263,7 +1269,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
       </div>
 
       <div className="wizard-footer">
-        <button className="secondary-button" onClick={() => step > 1 ? go(step - 1) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
+        <button className="secondary-button" onClick={() => step > 1 ? go(previousStep) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
         <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || (step === 2 && game.gameType === 'NULL') || game.passedOut ? (existingGame ? 'Spiel aktualisieren' : 'Spiel eintragen') : 'Weiter'} <ArrowRight size={16} /></button>
       </div>
     </div>
