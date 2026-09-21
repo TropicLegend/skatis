@@ -1,17 +1,48 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Pencil, Plus, RotateCcw, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withLevelChain, withStep } from './lib/skat.js'
-import { useMobile } from './lib/useMedia.js'
+import { setDesktopOverride, useMobile } from './lib/useMedia.js'
 import './styles.css'
 
 // Die Basis-URL der API lässt sich beim Bauen überschreiben (`VITE_API_BASE`), damit
 // ein Handy im WLAN gegen einen lokalen Server testen kann – sonst bleibt es die
 // ausgelieferte Adresse.
 const API = import.meta.env.VITE_API_BASE ?? 'https://skatis.online/api'
+
+// Am Handy zeigt das Board die schmale Fassung: Tab-Leiste statt langer Seite,
+// Karten statt breiter Tabellen. „Desktop-Ansicht“ setzt stattdessen eine feste
+// Layout-Breite – dadurch greifen die Handy-Media-Queries nicht mehr, und
+// `useMobile()` meldet von selbst wieder „Desktop“. Die Wahl übersteht ein Neuladen.
+const DESKTOP_MODE_KEY = 'skatis-desktop-mode'
+const VIEWPORT_MOBILE = 'width=device-width, initial-scale=1.0, viewport-fit=cover'
+const VIEWPORT_DESKTOP = 'width=1024'
+
+/** Ist die breite Ansicht festgesetzt? */
+function desktopModeStored() {
+  try { return localStorage.getItem(DESKTOP_MODE_KEY) === '1' } catch { return false }
+}
+
+/** Breite, Marker und `useMobile()` setzen – so schaltet die Ansicht wirklich um. */
+function applyDesktopMode(on) {
+  const viewport = document.querySelector('meta[name="viewport"]')
+  if (viewport) viewport.setAttribute('content', on ? VIEWPORT_DESKTOP : VIEWPORT_MOBILE)
+  document.documentElement.classList.toggle('desktop-mode', on)
+  setDesktopOverride(on)
+}
+
+/** Umschalten und die Wahl merken. */
+function setDesktopMode(on) {
+  applyDesktopMode(on)
+  try { localStorage.setItem(DESKTOP_MODE_KEY, on ? '1' : '0') } catch { /* ohne Speicher gilt sie nur für diese Seite */ }
+}
+
+// Vor dem ersten Rendern anwenden, damit die Ansicht nicht kurz umspringt.
+applyDesktopMode(desktopModeStored())
+
 const today = new Date().toISOString().slice(0, 10)
 const weekdays = [['1', 'Montag'], ['2', 'Dienstag'], ['3', 'Mittwoch'], ['4', 'Donnerstag'], ['5', 'Freitag'], ['6', 'Samstag'], ['7', 'Sonntag']]
 
@@ -310,6 +341,8 @@ function Shell({ children, tournament, role, token, onLogout, eyebrow = 'Turnier
       <div className="topbar-right">
         {tournament && <IdChip id={tournament.id} name={tournament.name} label="ID" compact />}
         {role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}
+        <button className="icon-button topbar-desktop" type="button" title="Desktop-Ansicht" aria-label="Desktop-Ansicht einschalten" onClick={() => setDesktopMode(true)}><Monitor size={18} /></button>
+        <button className="icon-button topbar-mobile" type="button" title="Handy-Ansicht" aria-label="Zur Handy-Ansicht wechseln" onClick={() => setDesktopMode(false)}><Smartphone size={18} /></button>
         <button className="icon-button help-button" title="Hilfe"><CircleHelp size={18} /></button>
         <button className="icon-button topbar-log" title="Protokoll der Änderungen" aria-label="Protokoll der Änderungen" onClick={() => setShowLog(true)}><History size={18} /></button>
         <button className="icon-button" title="Abmelden" aria-label="Abmelden" onClick={() => onLogout()}><LogOut size={18} /></button>
@@ -334,7 +367,7 @@ function Login({ onLogin, onCreate, notice = '' }) {
     catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return <div className="login-page">
-    <div className="login-art"><div className="art-kicker">DIE RUNDE BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Dein digitales Skatblatt für faire Runden, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
+    <div className="login-art"><div className="art-kicker">DIE RUNDE BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Skatis ist die beste Platform, um Turniere und Skatlisten zu verwalten! Dein digitales Skatblatt für faire Runden, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
     <div className="login-panel">
       <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deine nächste Skatrunde. Die Turnier-ID bekommst du danach zum Weitergeben.'}</p>{mode === 'login' && <p className="id-hint">Die ID bekommst du von der Person, die das Turnier angelegt hat. Sie steht später immer oben in der App und lässt sich dort antippen und kopieren.</p>}</div>
       <div className="mode-tabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Einloggen</button><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Turnier erstellen</button></div>

@@ -546,6 +546,21 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .dashboard-id-row{display:none}
 }
 
+/* ---------------------------------------------------------------------------
+   Ansicht umschalten: Im Handy-Port führt ein Knopf in der Kopfzeile zur breiten
+   Desktop-Ansicht (`main.jsx` setzt dafür die Layout-Breite fest). Ist sie
+   festgesetzt, führt derselbe Platz wieder zurück zum Handy-Port.
+   --------------------------------------------------------------------------- */
+.topbar-desktop,.topbar-mobile{display:none}
+
+@media (max-width:600px){
+  .topbar-desktop{display:inline-grid}
+}
+
+/* Ist die breite Ansicht festgesetzt, führt nur noch dieser Knopf zurück. */
+html.desktop-mode .topbar-desktop{display:none}
+html.desktop-mode .topbar-mobile{display:inline-grid}
+
 
 
 

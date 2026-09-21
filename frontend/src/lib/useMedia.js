@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 
 /**
  * Eine Media-Query als React-Zustand. Das Board nutzt sie als Weiche „Handy oder
@@ -23,7 +23,31 @@ export function useMedia(query) {
 /** Die eine Grenze, bis zu der das Board „Handy“ ist – identisch zum CSS. */
 export const MOBILE_QUERY = '(max-width: 600px)'
 
+/**
+ * „Desktop-Ansicht“ am Handy: Der Knopf in der Kopfzeile setzt eine feste
+ * Layout-Breite (siehe `main.jsx`). Wo der Browser das sofort umsetzt, kippen die
+ * Media-Queries von selbst; wo nicht, überstimmt diese Wahl die Fensterbreite.
+ * So schaltet die Ansicht überall um und nicht nur scheinbar.
+ */
+let desktopOverride = false
+const overrideListeners = new Set()
+
+export function setDesktopOverride(value) {
+  if (desktopOverride === value) return
+  desktopOverride = value
+  overrideListeners.forEach((listener) => listener())
+}
+
+function subscribeOverride(listener) {
+  overrideListeners.add(listener)
+  return () => { overrideListeners.delete(listener) }
+}
+
+function readOverride() { return desktopOverride }
+
 /** Kurzform für die häufigste Frage. */
 export function useMobile() {
-  return useMedia(MOBILE_QUERY)
+  const matches = useMedia(MOBILE_QUERY)
+  const forced = useSyncExternalStore(subscribeOverride, readOverride, readOverride)
+  return matches && !forced
 }
