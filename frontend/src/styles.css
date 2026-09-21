@@ -561,14 +561,6 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 html.desktop-mode .topbar-desktop{display:none}
 html.desktop-mode .topbar-mobile{display:inline-grid}
 
-/* ---------------------------------------------------------------------------
-   Spiel-Details: „Löschen“ steht neben „Schließen“, die Hauptaktion (Bearbeiten)
-   darunter über die volle Breite – so bleiben es am Handy zwei saubere Reihen.
-   --------------------------------------------------------------------------- */
-@media (max-width:600px){
-  .detail-modal .modal-actions .primary-button{grid-column:1/-1}
-}
-
 
 
 
