@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, Clock, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
@@ -145,6 +145,9 @@ async function request(path, options = {}) {
       error.sessionRejected = true
       sessionExpiredHandler?.(token)
     }
+    // Der Status macht Fehler für Aufrufer unterscheidbar (z. B. eine inzwischen
+    // gelöschte Liste beim Zurückgehen).
+    error.status = response.status
     throw error
   }
   return payload?.data
@@ -264,6 +267,39 @@ function useScrollLock() {
   }, [])
 }
 
+/** Zählt die Historie-Einträge offener Blätter, damit sie unterscheidbar bleiben. */
+let overlayKey = 0
+
+/**
+ * Der Zurück-Knopf des Browsers soll ein offenes Blatt schließen, statt die Seite
+ * zu verlassen: Solange das Blatt offen ist, gehört ihm ein Eintrag der Historie.
+ * Wird es in der App geschlossen, räumt ein Aufräumschritt den Eintrag wieder weg –
+ * aber nur, wenn er noch der eigene ist (erst etwas später prüfen: beim Wechsel von
+ * den Spieldetails in den Bearbeiten-Dialog liegt schon dessen Eintrag oben).
+ *
+ * Verschachtelte Blätter bekommen eigene Schlüssel: Wer beim Zurückgehen auf
+ * seinem eigenen Eintrag landet, bleibt offen; alle darüber schließen sich.
+ */
+function useBackToClose(onClose) {
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => {
+    const key = `overlay-${(overlayKey += 1)}`
+    window.history.pushState({ skatis: { screen: 'overlay', key } }, '')
+    function onPop(event) {
+      if (event.state?.skatis?.key === key) return
+      close.current()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      setTimeout(() => {
+        if (window.history.state?.skatis?.key === key) window.history.back()
+      }, 0)
+    }
+  }, [])
+}
+
 /**
  * Eine Rückfrage als kleines Blatt: `window.confirm` sieht auf dem Handy fremd aus
  * und lässt sich nicht gestalten. Aufbau und Verhalten sind wie bei den anderen
@@ -271,6 +307,7 @@ function useScrollLock() {
  */
 function ConfirmSheet({ title, text, confirmLabel = 'Löschen', onConfirm, onCancel }) {
   useEscape(onCancel)
+  useBackToClose(onCancel)
   useScrollLock()
   return <div className="modal-backdrop" onClick={onCancel}>
     <div className="modal confirm-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
@@ -330,11 +367,73 @@ function App() {
     const detail = await request(`/tournaments/${tournament.id}/lists/${list.id}`, { token })
     setSelectedList(detail)
     setView('list')
+    // Der Schritt in die Liste gehört der Historie: „Zurück“ kommt hierher zurück.
+    window.history.pushState({ skatis: { screen: 'list', listId: list.id } }, '')
   }
+
+  // Die Browser-Historie führt durch die App: Jeder Schritt nach „tiefer“ legt einen
+  // Eintrag an, der Zurück-Knopf nimmt ihn wieder weg – statt die Seite zu verlassen.
+  // Die Einträge tragen nur, was sie brauchen: Eine Liste wird über ihre id neu
+  // geladen, wenn sie nicht mehr im Zustand liegt.
+  const navRef = useRef({ view: 'dashboard', listId: null })
+  navRef.current = { view, listId: selectedList?.id ?? null }
+
+  /**
+   * Eine Liste aus einem Historie-Eintrag öffnen. Ist sie inzwischen gelöscht, geht
+   * es still zurück zur Übersicht – eine Fehlermeldung wäre hier nur Verwirrung.
+   */
+  async function openListFromHistory(listId) {
+    if (navRef.current.view === 'list' && navRef.current.listId === listId) return
+    try {
+      const detail = await request(`/tournaments/${tournament.id}/lists/${listId}`, { token })
+      setSelectedList(detail)
+      setView('list')
+    } catch (error) {
+      if (error?.status !== 404) setNotice(errorNotice(error))
+      window.history.replaceState({ skatis: { screen: 'dashboard' } }, '')
+      setView('dashboard')
+    }
+  }
+
+  // Zurück und Vorwärts des Browsers führen durch die Ansichten der App. Einträge
+  // offener Blätter regeln sich selbst (siehe `useBackToClose`) und werden hier
+  // übersprungen – sie sind nur ein Zwischenstand.
+  useEffect(() => {
+    function onPop(event) {
+      if (!token) return
+      const screen = event.state?.skatis
+      if (screen?.screen === 'overlay') return
+      if (screen?.screen === 'list' && screen.listId) {
+        openListFromHistory(screen.listId).catch(() => {})
+        return
+      }
+      if (navRef.current.view !== 'dashboard') setView('dashboard')
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [token, tournament?.id])
+
+  // Nach einem Neuladen steht die Ansicht des Eintrags wieder da, statt auf der
+  // Übersicht zu landen.
+  useEffect(() => {
+    const screen = window.history.state?.skatis
+    if (!token || screen?.screen !== 'list' || !screen.listId) return
+    openListFromHistory(screen.listId).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (token && view === 'dashboard') refreshLists().catch((error) => setNotice(errorNotice(error)))
   }, [token, tournament, view])
+
+  /**
+   * Nach dem Löschen gibt es keine Liste mehr, zu der man zurückkehren könnte:
+   * Der Eintrag der Liste wird zur Übersicht – so bleibt die Historie stimmig.
+   */
+  function leaveDeletedList() {
+    window.history.replaceState({ skatis: { screen: 'dashboard' } }, '')
+    setSelectedList(null)
+    setView('dashboard')
+  }
 
   function logout(message, notifyServer = true) {
     // Dem Server sagen, dass diese Sitzung beendet ist – sonst bliebe der Token bis
@@ -347,6 +446,9 @@ function App() {
     localStorage.removeItem('skatis-tournament')
     localStorage.removeItem('skatis-role')
     setToken(null); setRole(null); setTournament(null); setView('login'); setSelectedList(null)
+    // Auch die Historie gehört der alten Sitzung: Der aktuelle Eintrag wird zur
+    // Übersicht, damit „Zurück“ nicht in ihre Ansicht führt.
+    window.history.replaceState({ skatis: { screen: 'dashboard' } }, '')
     // Meldungen der beendeten Sitzung mitnehmen wäre verwirrend – das Board ist weg.
     setNotice('')
     // Nur echte Texte sind ein Hinweis. Ein Klick-Event darf hier nicht landen – als
@@ -368,7 +470,7 @@ function App() {
 
   if (view === 'login') return <div className="screen"><Login onLogin={login} onCreate={createTournament} notice={loginNotice} /></div>
   if (view === 'dashboard') return <div className="screen"><Dashboard tournament={tournament} role={role} lists={lists} notice={notice} onOpenList={openList} onLogout={logout} token={token} onCreated={refreshLists} onTournamentUpdated={(updated) => { setTournament(updated); localStorage.setItem('skatis-tournament', JSON.stringify(updated)) }} /></div>
-  return <div className="screen"><ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => setView('dashboard')} onLogout={logout} onUpdated={setSelectedList} /></div>
+  return <div className="screen"><ListWorkspace list={selectedList} tournament={tournament} role={role} token={token} onBack={() => window.history.back()} onDeleted={leaveDeletedList} onLogout={logout} onUpdated={setSelectedList} /></div>
 }
 
 /**
@@ -486,7 +588,12 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [editedPlayerName, setEditedPlayerName] = useState('')
   const [listRankings, setListRankings] = useState({})
   const [standing, setStanding] = useState(null)
-  const [detailPlayer, setDetailPlayer] = useState(null)
+  // Die Spieler-Seite ist ein eigener Schritt der Historie: „Zurück“ führt wieder
+  // zur Übersicht, auf der sie geöffnet wurde.
+  const [detailPlayer, setDetailPlayer] = useState(() => {
+    const screen = window.history.state?.skatis
+    return screen?.screen === 'player' && screen.name ? { name: screen.name } : null
+  })
   const [filter, setFilter] = useState('all')
   // Auf dem Handy stehen die drei Bereiche nicht untereinander, sondern hinter
   // der Tab-Leiste: nur der gewählte Abschnitt wird gebaut – das spart auch die
@@ -514,13 +621,31 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       .catch(() => setListRankings({}))
     request(`/tournaments/${tournament.id}/standings`, { token }).then(setStanding).catch(() => setStanding(null))
   }, [lists, tournament?.id, token])
+
+  /** Die Spieler-Seite als Schritt in der Historie öffnen. */
+  function openPlayer(player) {
+    window.history.pushState({ skatis: { screen: 'player', name: player.name } }, '')
+    setDetailPlayer(player)
+  }
+
+  // Der Zurück-Knopf des Browsers bringt genau den Spieler zurück, dessen Eintrag
+  // angesteuert wird – ohne Eintrag zeigt die Übersicht die Rangliste.
+  useEffect(() => {
+    function onPop(event) {
+      const screen = event.state?.skatis
+      if (screen?.screen === 'overlay') return
+      setDetailPlayer(screen?.screen === 'player' && screen.name ? { name: screen.name } : null)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
   // Die Spieler-Details sind eine eigene Ansicht, kein Popup: sie treten an die
   // Stelle der Übersicht und haben Kopfzeile und Zurück-Link. Die Zahlen kommen
   // frisch aus der Rangliste, damit die Seite nach einem Nachladen mitzieht.
   if (detailPlayer) {
     const player = standing?.players?.find((entry) => entry.name === detailPlayer.name) ?? detailPlayer
     return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Spieler">
-      <div className="screen" key={`player-${player.name}`}><PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => setDetailPlayer(null)} onOpenList={onOpenList} /></div>
+      <div className="screen" key={`player-${player.name}`}><PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => window.history.back()} onOpenList={onOpenList} /></div>
     </Shell>
   }
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token}><div className="dashboard-header"><div><div className="dashboard-id-row">{role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}</div><h1>Übersicht</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p><p className="id-hint">Zum Mitspielen braucht jeder die Turnier-ID aus der Kopfzeile und das Passwort – antippen kopiert sie.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
@@ -530,7 +655,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
       <div className="list-grid">{filtered.length ? filtered.map((list, index) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} index={index} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
     </>}
-    {showRanking && standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={setDetailPlayer} />}
+    {showRanking && standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={openPlayer} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
@@ -580,6 +705,7 @@ function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [windows, setWindows] = useState(tournament.matchdayWindows || {})
@@ -831,6 +957,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
 
 function CreateListModal({ token, tournament, role, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   const rules = useRules()
   const [form, setForm] = useState({ matchday: today, series: 1, table: 1 }); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
@@ -854,6 +981,7 @@ function CreateListModal({ token, tournament, role, players = [], lists = [], ca
  */
 function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   const [form, setForm] = useState({ series: list.series, table: list.table })
   const [error, setError] = useState('')
@@ -868,7 +996,7 @@ function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
   return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Tisch und Serie ändern" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Korrektur</span><h2>Tisch und Serie ändern</h2><p className="modal-copy">Falls sich ein Mitglied vertan hat: Hier lässt sich der Platz der Liste korrigieren. Spiele, Sitzreihenfolge und Spieltag bleiben unverändert.</p><form onSubmit={submit}><div className="form-grid"><label>Serie<input type="number" required min="1" max="999" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label><label>Tisch<input type="number" required min="1" max="999" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label></div><small className="field-hint">Spielt an diesem Spieltag noch eine andere Liste auf demselben Platz, lehnt der Server ab – erst diese Liste abgeben oder einen anderen Platz wählen.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy}>{busy ? 'Wird gespeichert …' : <>Speichern <Check size={16} /></>}</button></div></form></div></div>
 }
 
-function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpdated }) {
+function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLogout, onUpdated }) {
   const [showWizard, setShowWizard] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmGame, setConfirmGame] = useState(null)
@@ -923,7 +1051,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
 
   async function removeList() {
     setConfirmDelete(false)
-    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onBack() } catch (e) { setNotice(errorNotice(e)) }
+    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onDeleted() } catch (e) { setNotice(errorNotice(e)) }
   }
 
   // Ein Spiel entfernen: Die übrigen Runden behalten ihre Nummer und ihren Geber –
@@ -1201,6 +1329,7 @@ function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, s
 /** Ein Spiel im Detail – inklusive Spielstand vor und nach dieser Runde. */
 function GameDetail({ list, game, round, onClose, onEdit, onDelete }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   if (!game) return null
   const { delta = {}, before = {}, after = {} } = round ?? {}
@@ -1241,6 +1370,7 @@ function GameDetail({ list, game, round, onClose, onEdit, onDelete }) {
 
 function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   // Ein bestehendes Spiel beginnt beim Ergebnis – außer einem eingepassten: das
   // hat keine Spiel-Eigenschaften, hier geht es von vorne los (Alleinspieler
@@ -1407,6 +1537,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
  */
 function TournamentLog({ tournament, token, onClose }) {
   useEscape(onClose)
+  useBackToClose(onClose)
   useScrollLock()
   const [entries, setEntries] = useState(null)
   const [error, setError] = useState('')

@@ -14,6 +14,7 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente.
   * Ist für einen Spieltag eine Uhrzeit (von bis) gesetzt: vor der Von-Zeit können Mitglieder keine Liste anlegen; sobald die Bis-Zeit vorbei ist, gelten alle Listen des Tages als abgegeben (sie zählen für die Rangliste und sind für Mitglieder gesperrt, Admins können weiter korrigieren).
   * Listen können nur für Spieler geführt werden, die dem Turnier zugefügt wurden.
   * Spiele können nur für Spieler geführt werden, die Teil der Liste sind.
+  * Die Zurück-Taste des Browsers bleibt in der App: von einer Liste zur Übersicht, von der Spieler-Seite zur Rangliste, und offene Dialoge schließen sich damit. Nach einem Neuladen steht die zuletzt geöffnete Liste wieder da.
 
 ## Logik
 * Wenn man über das normale Passwort in einem Turnier ist, kann man eine Liste erstellen. Eine Liste besteht aus 3,4 oder 5 Personen. Diese Spieler stehen in einer festen Reihenfolge auf der Liste. Spieler 1 ist der Geber in Runde 1. Danach Spieler 2 usw. Wenn alle Spieler einmal gegeben haben gibt wieder Spieler 1 und es geht von vorne los.
