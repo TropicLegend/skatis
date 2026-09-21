@@ -1,0 +1,8 @@
+# Der Image-Build installiert (`npm install` inkl. `prisma generate`) und baut
+# alles selbst. Was lokal schon liegt, würde sonst mitkopiert – fremde
+# Plattform-Binaries in einem Alpine-Image und unnötig große Layer.
+node_modules
+dist
+coverage
+npm-debug.log*
+.git

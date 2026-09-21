@@ -1,0 +1,4 @@
+# Das Image kopiert nur `./dist` (das muss also mit rein) – alles andere würde
+# beim Build bloß den Build-Kontext aufblähen.
+node_modules
+.git
