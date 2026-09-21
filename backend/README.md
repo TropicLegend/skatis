@@ -383,8 +383,8 @@ games is worth more per game than Clara's three, which is exactly what
 A tournament has two passwords:
 
 - **normal password** → role `MEMBER`. May create the list of the _current_
-  matchday, enter games and submit that list. Nothing else, and only on matchdays
-  of the tournament.
+  matchday, enter games, correct or delete a game of that list and submit it.
+  Nothing else, and only on matchdays of the tournament.
 - **admin password** → role `ADMIN`. May change matchdays, rename the tournament,
   reset the player password, and modify or delete lists – at any time, including
   past matchdays.
