@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
   'list.submitted',
   'list.reopened',
   'list.lineup_changed',
+  'list.moved',
   'game.created',
   'game.updated',
   'game.deleted',

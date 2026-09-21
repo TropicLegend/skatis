@@ -12,8 +12,14 @@ import {
   reopenList,
   setListPlayers,
   submitList,
+  updateList,
 } from './list.service.js';
-import { createListSchema, listListsQuery, setListPlayersSchema } from './list.schemas.js';
+import {
+  createListSchema,
+  listListsQuery,
+  setListPlayersSchema,
+  updateListSchema,
+} from './list.schemas.js';
 import { listParams } from './params.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
 
@@ -86,6 +92,18 @@ listRouter.delete('/:listId', authenticate('ADMIN'), async (req, res) => {
   await deleteList(tournamentId, listId, currentAuth(req).role);
 
   res.status(204).end();
+});
+
+/**
+ * Admin only: corrects "Serie" and "Tisch" of a list – a member may have picked
+ * the wrong table. The lineup, the games and the matchday stay untouched.
+ */
+listRouter.patch('/:listId', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId, listId } = listParams.parse(req.params);
+  const body = updateListSchema.parse(req.body ?? {});
+  const list = await updateList(tournamentId, listId, body, currentAuth(req).role);
+
+  res.json({ data: list });
 });
 
 /** Freezes the list – afterwards members can no longer change it. */

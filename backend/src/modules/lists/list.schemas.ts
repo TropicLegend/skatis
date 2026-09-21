@@ -31,6 +31,23 @@ export const createListSchema = z.object({
 });
 
 /**
+ * Admin correction of the head of the sheet: a member may have written the
+ * wrong table or series. Both numbers keep their range, and at least one of
+ * them has to be sent – an empty change would only create a log entry.
+ *
+ * The matchday is deliberately not part of this: it decides whether the list
+ * counts for the standing, so it must not move under its games.
+ */
+export const updateListSchema = z
+  .strictObject({
+    series: seriesSchema.optional(),
+    table: tableSchema.optional(),
+  })
+  .refine((value) => value.series !== undefined || value.table !== undefined, {
+    message: 'Provide a serie and/or a table',
+  });
+
+/**
  * Replaces the players of a list. Only players of the same tournament are
  * accepted, and only while the list has no games yet – the lineup decides who
  * deals in which round.
@@ -64,4 +81,5 @@ export const listListsQuery = z
   });
 
 export type CreateListInput = z.infer<typeof createListSchema>;
+export type UpdateListInput = z.infer<typeof updateListSchema>;
 export type ListListsQuery = z.infer<typeof listListsQuery>;

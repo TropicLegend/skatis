@@ -1204,6 +1204,7 @@ Passwords never appear in the log – only the fact that one was changed.
 | `list.submitted`      | a list was handed in                     | `listId`, `matchday`, `series`, `table`                                      |
 | `list.reopened`       | an admin handed a list back              | `listId`, `matchday`, `series`, `table`                                      |
 | `list.lineup_changed` | the players of a list were replaced      | `listId`, `matchday`, `series`, `table`, `playerNames`                       |
+| `list.moved`          | an admin corrected "Serie"/"Tisch"      | `listId`, `matchday`, `fromSeries`, `fromTable`, `series`, `table`           |
 | `game.created`        | a game was entered                       | `listId`, `gameId`, `position`, `declarer`, `gameType`, `gameValue`, `won`   |
 | `game.updated`        | a game was replaced                      | like `game.created`                                                         |
 | `game.deleted`        | a game was removed                       | like `game.created`, without the game fields when the row was already gone    |
@@ -1379,6 +1380,7 @@ case.
 | GET    | `/tournaments/:tournamentId/lists/:listId/next-round` | any | The round a new game would create (Geber-Regel)        |
 | GET    | `/tournaments/:tournamentId/lists/:listId/progression` | any | The account of every player before and after every round (bonuses included) |
 | PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                                     |
+| PATCH  | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Correct "Serie" and "Tisch" of the list                |
 | DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                        |
 | POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it counts and is locked for members |
 | POST   | `/tournaments/:tournamentId/lists/:listId/reopen`  | ADMIN | Give a submitted list back to the members              |
@@ -1857,6 +1859,23 @@ itself when the day is over.
 **Errors:** `404` unknown list, `403` day not allowed / member token on
 `reopen`, `409` the day of the list is over (it counts by itself), `409` already
 submitted (`submit`) or not submitted (`reopen`).
+
+#### `PATCH /tournaments/:tournamentId/lists/:listId`
+
+Admin only: corrects the head of the sheet – a member may have written the wrong
+table or series. The matchday, the lineup and the games stay as they are, so the
+list keeps its result and only its place changes. Both numbers keep their range
+(1…999) and at least one of them has to be sent.
+
+```json
+{ "series": 2, "table": 5 }
+```
+
+**Response** `200` – the list including its games, with the new `series`/`table`.
+
+**Errors:** `403` member token, `404` unknown list, `422` an empty body or a
+number outside of 1…999 (the schema is strict, so `matchday` is rejected too),
+`409` another open list of that evening still plays that table of that series.
 
 #### `DELETE /tournaments/:tournamentId/lists/:listId`
 

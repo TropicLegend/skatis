@@ -296,6 +296,34 @@ describe('api', () => {
     expect(response.body.error.details.issues[0].path).toBe('name');
   });
 
+  it('lets only an admin correct the place of a list', async () => {
+    const { token: memberToken } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const denied = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/lists/11111111-1111-1111-1111-111111111111`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ table: 5 });
+
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe('FORBIDDEN');
+
+    const { token: adminToken } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
+    const empty = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/lists/11111111-1111-1111-1111-111111111111`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+
+    expect(empty.status).toBe(422);
+    expect(empty.body.error.code).toBe('VALIDATION_ERROR');
+
+    const reached = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/lists/11111111-1111-1111-1111-111111111111`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ series: 2, table: 5 });
+
+    // Passed the authorisation check and reached the database lookup.
+    expect([404, 503]).toContain(reached.status);
+  });
+
   it('validates the lineup of a list before touching the database', async () => {
     const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
     const response = await request(app)

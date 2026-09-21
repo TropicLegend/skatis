@@ -106,6 +106,17 @@ export function describeAuditEntry(entry) {
           .filter(Boolean)
           .join(' · '),
       }
+    case 'list.moved': {
+      const changes = []
+      if (details.fromSeries !== details.series) changes.push(`Serie ${details.fromSeries} → ${details.series}`)
+      if (details.fromTable !== details.table) changes.push(`Tisch ${details.fromTable} → ${details.table}`)
+      return {
+        title: 'Tisch/Serie der Liste geändert',
+        detail: [details.matchday ? shortDate(details.matchday) : null, changes.join(' · ')]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    }
     case 'game.created':
       return { title: 'Spiel eingetragen', detail: gameText(details) }
     case 'game.updated':

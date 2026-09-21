@@ -1,4 +1,4 @@
-import type { ListStatus, Prisma } from '@prisma/client';
+import type { ListStatus, Prisma, Tournament } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
 import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
@@ -18,7 +18,7 @@ import {
   type ListLockReason,
   type MatchdayWindows,
 } from './list-access.js';
-import type { CreateListInput, ListListsQuery } from './list.schemas.js';
+import type { CreateListInput, ListListsQuery, UpdateListInput } from './list.schemas.js';
 import { toGameCreateData, toGameDto, toGameProperties, type GameDto } from './game.mapper.js';
 import { assertDeclarerAllowed, assertLineupComplete } from './game-entry.js';
 import { nextDealer, playingPlayers } from './game-rules.js';
@@ -271,6 +271,44 @@ export async function getListProgression(
   return accountProgression(lineupNames(list), list.games, toIsoDate(list.matchday));
 }
 
+/**
+ * A table of a series is taken while its list is still open: a second sheet for
+ * "Serie 1, Tisch 3" can only be created once the first one was handed in (or
+ * its day is over – then it no longer needs to be handed in). The check is here
+ * instead of a unique index, because a constraint could not tell an open list of
+ * a past evening from an open list that is still being played.
+ *
+ * `exceptListId` is the list that is being moved onto that place itself – it
+ * does not block its own table.
+ */
+async function assertSlotFree(
+  tournament: Pick<Tournament, 'id' | 'matchdayWindows'>,
+  matchday: Date,
+  series: number,
+  table: number,
+  exceptListId?: string,
+): Promise<void> {
+  const blocking = await prisma.gameList.findFirst({
+    where: {
+      tournamentId: tournament.id,
+      matchday,
+      series,
+      table,
+      status: 'OPEN',
+      ...(exceptListId ? { id: { not: exceptListId } } : {}),
+    },
+    select: { matchday: true, id: true },
+  });
+
+  if (!takesSlot(blocking, matchdayWindowsOf(tournament.matchdayWindows))) return;
+
+  throw conflict(
+    `Serie ${series}, Tisch ${table} is still playing on ${toIsoDate(matchday)} – ` +
+      'hand that list in first, or use another table or series',
+    { listId: blocking?.id },
+  );
+}
+
 export async function createList(
   tournamentId: string,
   input: CreateListInput,
@@ -281,28 +319,7 @@ export async function createList(
 
   const matchday = parseIsoDate(input.matchday);
 
-  // A table of a series is taken while its list is still open: a second sheet
-  // for "Serie 1, Tisch 3" can only be created once the first one was handed in
-  // (or its day is over – then it no longer needs to be handed in). The check is
-  // here instead of a unique index, because a constraint could not tell an open
-  // list of a past evening from an open list that is still being played.
-  const blocking = await prisma.gameList.findFirst({
-    where: {
-      tournamentId: tournament.id,
-      matchday,
-      series: input.series,
-      table: input.table,
-      status: 'OPEN',
-    },
-    select: { matchday: true, id: true },
-  });
-  if (takesSlot(blocking, matchdayWindowsOf(tournament.matchdayWindows))) {
-    throw conflict(
-      `Serie ${input.series}, Tisch ${input.table} is still playing on ${input.matchday} – ` +
-        'hand that list in before starting another one, or use another table or series',
-      { listId: blocking?.id },
-    );
-  }
+  await assertSlotFree(tournament, matchday, input.series, input.table);
 
   const games = input.games ?? [];
   const players = await resolveTournamentPlayers(tournament.id, input.playerNames ?? []);
@@ -406,6 +423,52 @@ export async function setListPlayers(
     role,
     action: 'list.lineup_changed',
     details: { ...listDetails(list), playerNames: [...playerNames] },
+  });
+
+  return toListDto(updated, listViewContext(tournament, role), true);
+}
+
+/** Admin only (enforced by the route): corrects the head of the sheet – a member
+ * may have written the wrong table or series. The lineup, the games and the
+ * matchday stay as they are, so the list keeps its result; only the place
+ * changes. A move onto a place that another open list of the same evening still
+ * occupies is refused with the same 409 as the creation.
+ */
+export async function updateList(
+  tournamentId: string,
+  listId: string,
+  input: UpdateListInput,
+  role: TournamentRole,
+): Promise<ListDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const list = await findListOrThrow(tournament.id, listId);
+
+  const series = input.series ?? list.series;
+  const table = input.table ?? list.table;
+  if (series === list.series && table === list.table) {
+    return toListDto(list, listViewContext(tournament, role), true);
+  }
+
+  await assertSlotFree(tournament, list.matchday, series, table, list.id);
+
+  const updated = await prisma.gameList.update({
+    where: { id: list.id },
+    data: { series, table },
+    include: listWithGamesInclude,
+  });
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'list.moved',
+    details: {
+      listId: list.id,
+      matchday: toIsoDate(list.matchday),
+      fromSeries: list.series,
+      fromTable: list.table,
+      series,
+      table,
+    },
   });
 
   return toListDto(updated, listViewContext(tournament, role), true);

@@ -847,12 +847,34 @@ function CreateListModal({ token, tournament, role, players = [], lists = [], ca
   return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}{windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
 }
 
+/**
+ * Admin-Korrektur am Kopf des Blattes: Tisch und Serie lassen sich ändern, wenn
+ * sich ein Mitglied vertan hat. Sitzreihenfolge, Spiele und Spieltag bleiben –
+ * die Liste behält ihr Ergebnis, sie steht nur an einer anderen Stelle.
+ */
+function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
+  useEscape(onClose)
+  useScrollLock()
+  const [form, setForm] = useState({ series: list.series, table: list.table })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(event) {
+    event.preventDefault(); setBusy(true); setError('')
+    try {
+      const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'PATCH', token, body: { series: Number(form.series), table: Number(form.table) } })
+      onSaved(updated)
+    } catch (problem) { setError(problem.message) } finally { setBusy(false) }
+  }
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Tisch und Serie ändern" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Korrektur</span><h2>Tisch und Serie ändern</h2><p className="modal-copy">Falls sich ein Mitglied vertan hat: Hier lässt sich der Platz der Liste korrigieren. Spiele, Sitzreihenfolge und Spieltag bleiben unverändert.</p><form onSubmit={submit}><div className="form-grid"><label>Serie<input type="number" required min="1" max="999" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label><label>Tisch<input type="number" required min="1" max="999" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label></div><small className="field-hint">Spielt an diesem Spieltag noch eine andere Liste auf demselben Platz, lehnt der Server ab – erst diese Liste abgeben oder einen anderen Platz wählen.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy}>{busy ? 'Wird gespeichert …' : <>Speichern <Check size={16} /></>}</button></div></form></div></div>
+}
+
 function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpdated }) {
   const [showWizard, setShowWizard] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmGame, setConfirmGame] = useState(null)
   const [editingGame, setEditingGame] = useState(null)
   const [detailGame, setDetailGame] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
   const [notice, setNotice] = useState('')
   const [progression, setProgression] = useState(null)
   const [results, setResults] = useState(null)
@@ -933,6 +955,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
       <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
         {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => updateList('submit')}><LockKeyhole size={16} /> Schließen</button>}
+        {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
         {role === 'ADMIN' && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
         <button className="primary-button" disabled={list.locked} onClick={() => { setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
       </div>
@@ -949,6 +972,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
     {confirmGame && <ConfirmSheet title={`Runde ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
     {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
+    {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); setNotice('Tisch und Serie wurden gespeichert.') }} />}
   </Shell>
 }
 

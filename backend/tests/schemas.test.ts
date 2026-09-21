@@ -6,7 +6,11 @@ import {
   tournamentIdSchema,
   updateTournamentSchema,
 } from '../src/modules/tournaments/tournament.schemas.js';
-import { createListSchema, setListPlayersSchema } from '../src/modules/lists/list.schemas.js';
+import {
+  createListSchema,
+  setListPlayersSchema,
+  updateListSchema,
+} from '../src/modules/lists/list.schemas.js';
 import { gameSchema, playedGameSchema } from '../src/modules/lists/game.schemas.js';
 import { createPlayerSchema, lineupSchema } from '../src/modules/players/player.schemas.js';
 
@@ -378,6 +382,32 @@ describe('gameSchema – passed out games', () => {
 
   it('requires the decision between Alleinspieler and Eingepasst', () => {
     expect(() => gameSchema.parse({ declarer: 'Anna', gameType: 'NULL', won: true })).toThrow();
+  });
+});
+
+describe('updateListSchema', () => {
+  it('accepts a partial update', () => {
+    expect(updateListSchema.parse({ table: 5 })).toEqual({ table: 5 });
+    expect(updateListSchema.parse({ series: 2, table: 3 })).toEqual({ series: 2, table: 3 });
+  });
+
+  it('reads the numbers from strings as well', () => {
+    expect(updateListSchema.parse({ series: '2' })).toEqual({ series: 2 });
+  });
+
+  it('requires at least one of the two numbers', () => {
+    expect(() => updateListSchema.parse({})).toThrow();
+  });
+
+  it('rejects numbers outside of the sheet range', () => {
+    expect(() => updateListSchema.parse({ series: 0 })).toThrow();
+    expect(() => updateListSchema.parse({ table: 1000 })).toThrow();
+    expect(() => updateListSchema.parse({ table: 1.5 })).toThrow();
+  });
+
+  it('rejects everything else in the body – the matchday does not move', () => {
+    expect(() => updateListSchema.parse({ matchday: '2026-09-16' })).toThrow();
+    expect(() => updateListSchema.parse({ series: 2, unknown: true })).toThrow();
   });
 });
 
