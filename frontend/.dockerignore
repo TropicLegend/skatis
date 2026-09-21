@@ -1,4 +1,5 @@
-# Das Image kopiert nur `./dist` (das muss also mit rein) – alles andere würde
-# beim Build bloß den Build-Kontext aufblähen.
+# Das Image baut selbst (`npm ci` + `npm run build`) und kopiert nichts Fertiges –
+# der Build-Kontext darf deshalb schlank bleiben.
 node_modules
+dist
 .git
