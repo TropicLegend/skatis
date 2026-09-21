@@ -43,6 +43,16 @@ export function todayIso(now: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Time of day of the server's timezone as `HH:MM` (see the `TZ` environment
+ * variable). Zero-padded, so two of these can be compared as strings.
+ */
+export function localTime(now: Date = new Date()): string {
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export function weekdayName(weekday: number): string {
   return WEEKDAY_NAMES[weekday - 1] ?? `weekday ${weekday}`;
 }

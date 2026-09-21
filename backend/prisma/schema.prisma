@@ -32,6 +32,10 @@ model Tournament {
   name              String     @db.VarChar(64)
   /// ISO-8601 weekday numbers (1 = Monday … 7 = Sunday) on which lists may be created
   matchdays         Int[]
+  /// Optional playing time per weekday, e.g. `{ "3": { "from": "18:00", "to": "22:30" } }`.
+  /// A day without an entry is played "all day". Once the "to" of a day has passed,
+  /// its lists count as submitted; before the "from" members may not create any.
+  matchdayWindows   Json?
   adminPasswordHash String
   passwordHash      String
   /// Counts how often the player password was replaced. Tokens carry the version

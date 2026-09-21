@@ -441,6 +441,13 @@ browser: the token itself stops working.
 
 - `matchdays` are ISO weekdays (`1` = Monday … `7` = Sunday). A list only exists
   for a matchday of its tournament.
+- `matchdayWindows` optionally gives a weekday a **playing time**, e.g.
+  `{ "3": { "from": "18:00", "to": "22:30" } }` for a Wednesday. Before its
+  `from` a `MEMBER` may not create or change lists – the evening has not started
+  yet – and once its `to` has passed the day is over like a past one: the lists
+  count as submitted and the table is free for the next series. A weekday
+  without an entry is played "all day", i.e. until midnight. Times are read in
+  the server's timezone (`TZ`), like "today".
 - A list belongs to **exactly one day** – there are no lists that stay open over
   several days. Its head is the date, the Serie and the Tisch.
 - **One table plays one list at a time**: while a list is open and its day is not
@@ -452,14 +459,15 @@ browser: the token itself stops working.
   several tables with different players (90 players mean 30 tables of three).
   Each list has its own id and is addressed by it; the matchday is an attribute
   of the list, and the same player may sit at two tables of one evening.
-- A list **counts as submitted** once its day is over, whether or not somebody
-  handed it in. Then it is part of the
-  [standing](#tournament-standings) of the tournament, and its `status` stays as
-  it was – the `counted` flag tells what the list means now.
+- A list **counts as submitted** once its day is over (or the playing time of
+  its day has passed), whether or not somebody handed it in. Then it is part of
+  the [standing](#tournament-standings) of the tournament, and its `status` stays
+  as it was – the `counted` flag tells what the list means now.
 - Lists can only be created and submitted on a day the admin put into
-  `matchdays`. A `MEMBER` may only work on _today's_ matchday ("today" is decided
-  by the `TZ` environment variable); an `ADMIN` may also create and correct lists
-  of past or future matchdays.
+  `matchdays` – and, when that weekday has a playing time, only inside it. A
+  `MEMBER` may only work on _today's_ matchday ("today" is decided by the `TZ`
+  environment variable); an `ADMIN` may also create and correct lists of past or
+  future matchdays.
 - Reading lists, players and games is allowed for both roles on any day.
 - The **roster** – adding, renaming and removing a player – is managed by an
   `ADMIN` at any time: it is not tied to a matchday. Members read it and put its
@@ -476,7 +484,7 @@ browser: the token itself stops working.
 ### Locked lists
 
 A list is **locked** for the session that asks for it when it may not be changed
-any more. Two things lock a list:
+any more:
 
 - **submitted** – once a list has been handed in (by either role) it can only be
   changed by an admin, who may `reopen` it to give it back to the members:
@@ -484,6 +492,11 @@ any more. Two things lock a list:
 - **another day** – a member may only work on the list of the current matchday.
   Lists of other days are read-only for them; an admin may also create and
   correct lists of past or future matchdays.
+- **before the playing time** – today is in `matchdayWindows` and its `from` has
+  not been reached: `WINDOW_NOT_STARTED`. Members may not create or change lists
+  yet.
+- **after the playing time** – today's `to` has passed: `WINDOW_OVER`. The day is
+  over by time now, the lists count like submitted ones.
 
 An admin is never locked out – that is what the admin password is for. Every list
 tells the frontend where it stands, so it does not have to re-derive the rules:
@@ -507,10 +520,12 @@ tells the frontend where it stands, so it does not have to re-derive the rules:
 ```
 
 `lockReasons` is empty while `locked` is false and may otherwise contain
-`SUBMITTED`, `NOT_CURRENT_MATCHDAY` and `NOT_A_MATCHDAY` – the last one when the
-matchdays of the tournament were changed after the list was created. Reading is
-always allowed: only changing a locked list is refused, with `409` for a
-submitted list and `403` for another day.
+`SUBMITTED`, `NOT_CURRENT_MATCHDAY`, `NOT_A_MATCHDAY` (the last one when the
+matchdays of the tournament were changed after the list was created),
+`WINDOW_NOT_STARTED` and `WINDOW_OVER`. Reading is always allowed: only changing
+a locked list is refused, with `409` for a submitted list and `403` for another
+day or a playing time that has not started (or has ended – then it counts like a
+submitted one and `409`).
 
 `locked` says nothing about the standing. A list of a past day is `counted` for
 everybody – only an admin can still change it, and it stays in the standing while
@@ -1130,7 +1145,7 @@ Passwords never appear in the log – only the fact that one was changed.
 
 | Action                | Recorded when                            | `details`                                                                  |
 | --------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `tournament.updated`  | tournament settings were changed         | `changed` (`name` / `matchdays` / `password`), `name`, `matchdays`          |
+| `tournament.updated`  | tournament settings were changed         | `changed` (`name` / `matchdays` / `matchdayWindows` / `password`), `name`, `matchdays`, `matchdayWindows` (weekday → `"18:00-22:30"`) |
 | `list.created`        | a list was created                       | `listId`, `matchday`, `series`, `table`, `playerNames`                       |
 | `list.deleted`        | an admin deleted a list                  | `listId`, `matchday`, `series`, `table`, `gameCount`                         |
 | `list.submitted`      | a list was handed in                     | `listId`, `matchday`, `series`, `table`                                      |
@@ -1172,15 +1187,25 @@ Passwords never appear in the log – only the fact that one was changed.
 
 Every field is optional, at least one is required.
 
-| Field       | Type     | Rules                                   |
-| ----------- | -------- | --------------------------------------- |
-| `name`      | string   | same rules as on creation               |
-| `matchdays` | number[] | 1–7 unique weekdays                     |
-| `password`  | string   | 8–128 characters, sets a new player one |
+| Field             | Type     | Rules                                                            |
+| ----------------- | -------- | ---------------------------------------------------------------- |
+| `name`            | string   | same rules as on creation                                        |
+| `matchdays`       | number[] | 1–7 unique weekdays                                              |
+| `matchdayWindows` | object   | playing time per weekday – see below                             |
+| `password`        | string   | 8–128 characters, sets a new player one                          |
 
 An admin uses `matchdays` to steer **when** members may work on lists: a member
 can only create, change and submit the list of a day that is in `matchdays` _and_
 today. `password` resets the **player password**, the one members log in with.
+
+`matchdayWindows` **replaces the whole map**: a weekday that is missing from it
+has no playing time (the day then lasts until midnight). Keys are weekdays
+(`"1"` … `"7"`), values are `{ "from": "HH:MM", "to": "HH:MM" }` with
+`from` < `to`. Before the `from` of that weekday members may not create or change
+lists, after the `to` the days' lists count as submitted – see
+[domain rules](#domain-rules). An empty object clears all playing times; a
+weekday that is not in `matchdays` may carry an entry (it simply never applies).
+The times are understood in the server's timezone (`TZ`).
 
 The **admin password cannot be changed** through the API: it is the password that
 grants these changes, so it stays as it was set when the tournament was created.
@@ -1194,7 +1219,7 @@ PATCH /api/tournaments/K7M2P4QX
 Authorization: Bearer <admin token>
 Content-Type: application/json
 
-{ "matchdays": [3, 6], "password": "neues-geheimnis" }
+{ "matchdays": [3, 6], "matchdayWindows": { "3": { "from": "18:00", "to": "22:30" } }, "password": "neues-geheimnis" }
 ```
 
 **Response** `200` – the updated [tournament object](#tournament).
@@ -1926,6 +1951,7 @@ when you report a problem.
 | `id`                     | string   | 8 characters, the public identifier       |
 | `name`                   | string   | display name, not unique                  |
 | `matchdays`              | number[] | ISO weekdays, `1` = Monday … `7` = Sunday |
+| `matchdayWindows`        | object   | optional playing time per weekday, `{}`   |
 | `listCount`              | number   | how many lists exist                      |
 | `createdAt`, `updatedAt` | string   | ISO 8601                                  |
 
@@ -2142,9 +2168,11 @@ Known limitations:
 | `403 The session token does not grant access to this tournament`                  | the token belongs to another tournament id                                                                              |
 | `403 … is not a matchday of …`                                                    | the weekday of that date is not in `matchdays`                                                                          |
 | `403 Lists can only be created or changed on the current matchday`                | members may only touch today's list – use the admin password                                                            |
+| `403 The playing time of … starts at …`                                           | that weekday has a playing time and its "von" has not been reached – members may work from then on, an admin could work ahead |
 | `409 This list has already been submitted`                                        | reopen it as an admin before changing or submitting it again                                                            |
 | `409 The day of this list is over, so it already counts as submitted`             | handing a list in only works on the day of the list – a past list is final without it                                   |
 | `409 The day of this list is over, so it can no longer be reopened`               | a list of a past day always counts; an admin can still correct its games                                                |
+| `403 The playing time of … ended at …`                                            | the "bis" of that weekday has passed – its lists count as submitted, an admin can still correct them                    |
 | `409 The players of this list cannot be changed any more`                         | the list already contains games                                                                                         |
 | `409 … sits out this round because … deals`                                       | step 1: that player is one of the ones who sit out – check `dealer`                                                     |
 | `409 Serie … Tisch … is still playing on …`                                       | that table of the series already has an open list that evening – hand it in first, or use another table or series       |

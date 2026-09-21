@@ -36,7 +36,10 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** The numbers behind a change – plain JSON, no secrets. */
-export type AuditDetails = Record<string, string | number | boolean | string[] | number[] | null>;
+export type AuditDetails = Record<
+  string,
+  string | number | boolean | string[] | number[] | null | Record<string, string | number>
+>;
 
 export interface AuditLogInput {
   tournamentId: string;

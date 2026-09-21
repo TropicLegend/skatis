@@ -1,11 +1,12 @@
 import { Prisma, type Tournament } from '@prisma/client';
 import { notFound } from '../../lib/http-error.js';
-import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
+import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit } from '../audit/audit-log.js';
+import { matchdayWindowsOf, playingFromIso, type MatchdayWindows } from '../lists/list-access.js';
 import { scoreList, type ListResultsDto } from '../lists/scoring.js';
 import type {
   CreateTournamentInput,
@@ -30,6 +31,7 @@ export const tournamentPublicSelect = {
   id: true,
   name: true,
   matchdays: true,
+  matchdayWindows: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { lists: true } },
@@ -41,6 +43,8 @@ export interface TournamentDto {
   id: string;
   name: string;
   matchdays: number[];
+  /** Optional playing time per weekday – `{}` when the admin set none. */
+  matchdayWindows: MatchdayWindows;
   listCount: number;
   createdAt: string;
   updatedAt: string;
@@ -51,6 +55,7 @@ export function toTournamentDto(tournament: TournamentRow): TournamentDto {
     id: tournament.id,
     name: tournament.name,
     matchdays: sortedDays(tournament.matchdays),
+    matchdayWindows: matchdayWindowsOf(tournament.matchdayWindows),
     listCount: tournament._count.lists,
     createdAt: tournament.createdAt.toISOString(),
     updatedAt: tournament.updatedAt.toISOString(),
@@ -193,7 +198,16 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
     prisma.gameList.findMany({
       where: {
         tournamentId: tournament.id,
-        OR: [{ status: 'SUBMITTED' }, { matchday: { lt: parseIsoDate(todayIso()) } }],
+        // A list counts once it was handed in – or once its day is over, which
+        // with a playing time is the moment its "bis" has passed.
+        OR: [
+          { status: 'SUBMITTED' },
+          {
+            matchday: {
+              lt: parseIsoDate(playingFromIso(matchdayWindowsOf(tournament.matchdayWindows))),
+            },
+          },
+        ],
       },
       orderBy: { matchday: 'asc' },
       select: {
@@ -324,6 +338,10 @@ export async function updateTournament(
     data.matchdays = sortedDays(input.matchdays);
     changed.push('matchdays');
   }
+  if (input.matchdayWindows !== undefined) {
+    data.matchdayWindows = input.matchdayWindows;
+    changed.push('matchdayWindows');
+  }
   if (input.password !== undefined) {
     data.passwordHash = await hashPassword(input.password);
     // Ein neues Spielerpasswort beendet alle laufenden Sitzungen: jedes ausgestellte
@@ -342,11 +360,26 @@ export async function updateTournament(
     tournamentId,
     role,
     action: 'tournament.updated',
-    // Only *which* fields changed – never the password itself.
-    details: { changed, name: updated.name, matchdays: updated.matchdays },
+    // Only *which* fields changed – never the password itself. The playing
+    // times are logged as weekday -> "von-bis", the wording lives in the frontend.
+    details: {
+      changed,
+      name: updated.name,
+      matchdays: updated.matchdays,
+      ...(input.matchdayWindows === undefined
+        ? {}
+        : { matchdayWindows: auditWindows(input.matchdayWindows) }),
+    },
   });
 
   return toTournamentDto(updated);
+}
+
+/** The playing times as the log can store them: weekday -> `"18:00-22:30"`. */
+function auditWindows(windows: MatchdayWindows): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(windows).map(([weekday, window]) => [weekday, `${window.from}-${window.to}`]),
+  );
 }
 
 export async function deleteTournament(tournamentId: string): Promise<void> {

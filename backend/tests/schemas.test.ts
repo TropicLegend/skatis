@@ -78,6 +78,41 @@ describe('updateTournamentSchema', () => {
       updateTournamentSchema.parse({ matchdays: [3], adminPassword: 'neues-admin-secret' }),
     ).toThrow();
   });
+
+  it('accepts optional playing times per matchday', () => {
+    const windows = { '3': { from: '18:00', to: '22:30' }, '5': { from: '19:00', to: '23:59' } };
+    expect(updateTournamentSchema.parse({ matchdayWindows: windows })).toEqual({
+      matchdayWindows: windows,
+    });
+    // Ein leeres Objekt nimmt alle Spielzeiten zurück.
+    expect(updateTournamentSchema.parse({ matchdayWindows: {} })).toEqual({ matchdayWindows: {} });
+  });
+
+  it('rejects a playing time that does not end after it starts', () => {
+    expect(() =>
+      updateTournamentSchema.parse({ matchdayWindows: { '3': { from: '22:00', to: '18:00' } } }),
+    ).toThrow();
+    expect(() =>
+      updateTournamentSchema.parse({ matchdayWindows: { '3': { from: '18:00', to: '18:00' } } }),
+    ).toThrow();
+  });
+
+  it('rejects malformed playing times and weekdays', () => {
+    expect(() =>
+      updateTournamentSchema.parse({ matchdayWindows: { '3': { from: '8:00', to: '22:30' } } }),
+    ).toThrow();
+    expect(() =>
+      updateTournamentSchema.parse({ matchdayWindows: { '3': { from: '18:00', to: '24:00' } } }),
+    ).toThrow();
+    expect(() =>
+      updateTournamentSchema.parse({ matchdayWindows: { '8': { from: '18:00', to: '22:30' } } }),
+    ).toThrow();
+    expect(() =>
+      updateTournamentSchema.parse({
+        matchdayWindows: { '3': { from: '18:00', to: '22:30', extra: 1 } },
+      }),
+    ).toThrow();
+  });
 });
 
 describe('listTournamentsQuery', () => {

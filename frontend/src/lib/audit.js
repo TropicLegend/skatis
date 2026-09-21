@@ -73,6 +73,11 @@ export function describeAuditEntry(entry) {
         const days = Array.isArray(details.matchdays) ? details.matchdays : []
         parts.push(`Spieltage: ${days.map((day) => WEEKDAY_LABELS[day] ?? day).join(', ')}`)
       }
+      if (changed.includes('matchdayWindows')) {
+        const windows = details.matchdayWindows && typeof details.matchdayWindows === 'object' ? details.matchdayWindows : {}
+        const spans = Object.entries(windows).map(([day, span]) => `${WEEKDAY_LABELS[day] ?? day} ${String(span).replace('-', '–')}`)
+        parts.push(`Spielzeiten: ${spans.length ? spans.join(', ') : 'keine'}`)
+      }
       if (changed.includes('password')) parts.push('Neues Spieler-Passwort gesetzt')
       return { title: 'Turnier-Einstellungen geändert', detail: parts.join(' · ') }
     }

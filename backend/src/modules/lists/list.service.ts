@@ -1,6 +1,6 @@
 import type { ListStatus, Prisma } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
-import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
+import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
@@ -12,8 +12,11 @@ import {
   assertMatchdayAllowed,
   countsForStanding,
   listLockReasons,
+  matchdayWindowsOf,
+  playingFromIso,
   takesSlot,
   type ListLockReason,
+  type MatchdayWindows,
 } from './list-access.js';
 import type { CreateListInput, ListListsQuery } from './list.schemas.js';
 import { toGameCreateData, toGameDto, toGameProperties, type GameDto } from './game.mapper.js';
@@ -73,15 +76,22 @@ export interface ListDto {
 export interface ListViewContext {
   tournamentId: string;
   matchdays: readonly number[];
+  /** Playing times per weekday, normalised – see `matchdayWindowsOf`. */
+  windows: MatchdayWindows;
   role: TournamentRole;
 }
 
 /** Builds the view context for a tournament and the role that asked for it. */
 export function listViewContext(
-  tournament: { id: string; matchdays: number[] },
+  tournament: { id: string; matchdays: number[]; matchdayWindows?: unknown },
   role: TournamentRole,
 ): ListViewContext {
-  return { tournamentId: tournament.id, matchdays: tournament.matchdays, role };
+  return {
+    tournamentId: tournament.id,
+    matchdays: tournament.matchdays,
+    windows: matchdayWindowsOf(tournament.matchdayWindows),
+    role,
+  };
 }
 
 export const listWithGamesInclude = {
@@ -113,7 +123,7 @@ export function toListDto(
   context: ListViewContext,
   withGames = false,
 ): ListDto {
-  const lockReasons = listLockReasons(list, context.matchdays, context.role);
+  const lockReasons = listLockReasons(list, context.matchdays, context.windows, context.role);
 
   const dto: ListDto = {
     id: list.id,
@@ -122,7 +132,7 @@ export function toListDto(
     series: list.series,
     table: list.table,
     status: list.status,
-    counted: countsForStanding(list),
+    counted: countsForStanding(list, context.windows),
     submittedAt: list.submittedAt ? list.submittedAt.toISOString() : null,
     locked: lockReasons.length > 0,
     lockReasons,
@@ -179,13 +189,14 @@ export async function listLists(
     where.status = query.status;
   }
   // `counted` asks what the list means now – handed in, or of a day that is
-  // over – while `status` asks what is stored.
+  // over – while `status` asks what is stored. A day with a playing time is
+  // over at its "bis", so the boundary is today or already tomorrow.
   if (query.counted !== undefined) {
-    const today = parseIsoDate(todayIso());
+    const playingFrom = parseIsoDate(playingFromIso(matchdayWindowsOf(tournament.matchdayWindows)));
     where.AND = [
       query.counted
-        ? { OR: [{ status: 'SUBMITTED' }, { matchday: { lt: today } }] }
-        : { AND: [{ status: 'OPEN' }, { matchday: { gte: today } }] },
+        ? { OR: [{ status: 'SUBMITTED' }, { matchday: { lt: playingFrom } }] }
+        : { AND: [{ status: 'OPEN' }, { matchday: { gte: playingFrom } }] },
     ];
   }
   // `matchday` picks the evening (several tables may share it), `from`/`to`
@@ -285,7 +296,7 @@ export async function createList(
     },
     select: { matchday: true, id: true },
   });
-  if (takesSlot(blocking)) {
+  if (takesSlot(blocking, matchdayWindowsOf(tournament.matchdayWindows))) {
     throw conflict(
       `Serie ${input.series}, Tisch ${input.table} is still playing on ${input.matchday} – ` +
         'hand that list in before starting another one, or use another table or series',
@@ -425,8 +436,9 @@ export async function submitList(
   const list = await findListOrThrow(tournament.id, listId);
 
   // A list of a past day is final by itself, so there is nothing to hand in –
-  // and it counts for the standing either way.
-  assertDayNotOver(list.matchday, 'submitted');
+  // and it counts for the standing either way. With a playing time the same is
+  // true for a list whose "bis" has passed.
+  assertDayNotOver(list.matchday, 'submitted', matchdayWindowsOf(tournament.matchdayWindows));
   assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
 
   // Submitting twice is always a mistake – an admin who wants a new timestamp
@@ -465,7 +477,7 @@ export async function reopenList(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertDayNotOver(list.matchday, 'reopened');
+  assertDayNotOver(list.matchday, 'reopened', matchdayWindowsOf(tournament.matchdayWindows));
 
   if (list.status !== 'SUBMITTED') {
     throw conflict('This list is not submitted');

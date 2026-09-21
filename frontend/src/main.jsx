@@ -51,6 +51,38 @@ function weekdayLabel(day) {
   return weekdays.find(([value]) => Number(value) === Number(day))?.[1] ?? ''
 }
 
+/** Das Datum von `now` in der Zeitzone des Geräts – "2026-09-23". */
+function localToday(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+/** "17:30" – die Uhrzeit von `now`. */
+function clockTime(now = new Date()) {
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+/** Die optionale Spielzeit („von“–„bis“) dieses Tages – `null`, wenn keine gesetzt ist. */
+function matchdayWindow(tournament, isoDate) {
+  const weekday = new Date(`${isoDate}T00:00:00Z`).getUTCDay() || 7
+  const window = tournament?.matchdayWindows?.[weekday]
+  return window?.from && window?.to ? window : null
+}
+
+/**
+ * Wo steht ein Tag mit Spielzeit? `'before'` vor dem „von“, `'over'` nach dem
+ * „bis“, sonst `null`. Nur ein Hinweis fürs Formular – die Regeln entscheidet
+ * der Server.
+ */
+function windowState(tournament, isoDate, now = new Date()) {
+  const window = matchdayWindow(tournament, isoDate)
+  if (!window || isoDate !== localToday(now)) return null
+
+  const time = clockTime(now)
+  if (time < window.from) return 'before'
+  if (time >= window.to) return 'over'
+  return null
+}
+
 /** Punkte mit Vorzeichen – `+170`, `−98`, `0`. */
 function signedValue(value) {
   if (value > 0) return `+${value}`
@@ -432,7 +464,10 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const filtered = lists.filter((list) => filter === 'all' || list.matchday === filter)
   const days = [...new Set(lists.map((list) => list.matchday))]
   // An welchen Wochentagen gespielt werden kann – Namen statt einer Zahl.
-  const matchdayNames = [...(tournament?.matchdays || [])].sort((a, b) => a - b).map((day) => weekdayLabel(day)).filter(Boolean)
+  const matchdayNames = [...(tournament?.matchdays || [])].sort((a, b) => a - b).map((day) => {
+    const window = tournament?.matchdayWindows?.[day]
+    return window ? `${weekdayLabel(day)} ${window.from}–${window.to}` : weekdayLabel(day)
+  }).filter(Boolean)
   const showLists = !mobile || section === 'lists'
   const showRanking = !mobile || section === 'ranking'
   const showPlayers = !mobile || section === 'players'
@@ -466,7 +501,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     {showRanking && standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={setDetailPlayer} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
-    {showCreate && <CreateListModal token={token} tournament={tournament} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
+    {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
   </Shell>
 }
@@ -485,22 +520,45 @@ function SectionTabs({ value, onChange }) {
   </nav>
 }
 
-function MatchdayPicker({ value, onChange }) {
+function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
   function toggle(day) { onChange(value.includes(day) ? value.filter((item) => item !== day) : [...value, day].sort()) }
-  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für die Turnierrunde.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div></fieldset>
+  // Mit `onWindowsChange` zeigt der Picker je gewähltem Tag eine Spielzeit – das
+  // Anlege-Formular kommt ohne, die Turnier-Einstellungen nicht.
+  const withTimes = typeof onWindowsChange === 'function'
+  const setTime = (day, key, time) => onWindowsChange({ ...windows, [day]: { from: '', to: '', ...windows[day], [key]: time } })
+  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für die Turnierrunde.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><input type="time" value={windows[day]?.from ?? ''} onChange={(event) => setTime(day, 'from', event.target.value)} aria-label={`Beginn ${weekdayLabel(day)}`} /><em>bis</em><input type="time" value={windows[day]?.to ?? ''} onChange={(event) => setTime(day, 'to', event.target.value)} aria-label={`Ende ${weekdayLabel(day)}`} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
 }
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   useEscape(onClose)
   useScrollLock()
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
+  const [windows, setWindows] = useState(tournament.matchdayWindows || {})
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  async function submit(event) { event.preventDefault(); setError(''); try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) } }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
+  // Die Spielzeiten der gewählten Tage einsammeln: je Tag entweder beide Zeiten
+  // oder keine – und die Bis-Zeit muss nach der Von-Zeit liegen.
+  function collectedWindows() {
+    const collected = {}
+    for (const day of matchdays) {
+      const window = windows[day]
+      if (!window || (!window.from && !window.to)) continue
+      if (!window.from || !window.to) { setError(`Für ${weekdayLabel(day)} fehlt entweder die Von- oder die Bis-Zeit.`); return null }
+      if (window.from >= window.to) { setError(`Bei ${weekdayLabel(day)} muss die Bis-Zeit nach der Von-Zeit liegen.`); return null }
+      collected[day] = { from: window.from, to: window.to }
+    }
+    return collected
+  }
+  async function submit(event) {
+    event.preventDefault(); setError('')
+    const matchdayWindows = collectedWindows()
+    if (matchdayWindows === null) return
+    try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, matchdayWindows, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) }
+  }
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
-function ListCard({ list, ranking, index = 0, onClick }) { return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.status === 'SUBMITTED' ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
+function ListCard({ list, ranking, index = 0, onClick }) { return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
 
 function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
@@ -733,7 +791,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
   </>
 }
 
-function CreateListModal({ token, tournament, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
+function CreateListModal({ token, tournament, role, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
   useEscape(onClose)
   useScrollLock()
   const rules = useRules()
@@ -742,8 +800,13 @@ function CreateListModal({ token, tournament, players = [], lists = [], canManag
   // dieser Serie und diesem Tisch offen ist, darf keine zweite entstehen. Der
   // Server prüft dasselbe noch einmal – hier spart es nur den Fehlversuch.
   const blocking = lists.find((list) => list.status === 'OPEN' && !list.counted && list.matchday === form.matchday && Number(list.series) === Number(form.series) && Number(list.table) === Number(form.table))
+  // Mit Spielzeit legt der Server die Regeln fest („von“–„bis“); hier steht nur
+  // der Hinweis, damit der Fehlversuch gar nicht passiert. Der Admin darf immer
+  // vorarbeiten, für ihn gibt es deshalb keinen Hinweis.
+  const playingTime = matchdayWindow(tournament, form.matchday)
+  const windowPhase = role === 'ADMIN' ? null : windowState(tournament, form.matchday)
   async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), playerNames: lineup } }); await onCreated() } catch (err) { setError(err.message) } finally { setBusy(false) } }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}{windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
 }
 
 function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpdated }) {
@@ -829,9 +892,9 @@ function ListWorkspace({ list, tournament, role, token, onBack, onLogout, onUpda
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Tischliste">
     <div className="workspace-head">
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
-      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.status === 'SUBMITTED' ? 'submitted' : ''}`}>{list.status === 'SUBMITTED' ? 'Geschlossen' : 'Offen'}</span></div>
+      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
-        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked} onClick={() => updateList('submit')}><LockKeyhole size={16} /> Schließen</button>}
+        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => updateList('submit')}><LockKeyhole size={16} /> Schließen</button>}
         {role === 'ADMIN' && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
         <button className="primary-button" disabled={list.locked} onClick={() => { setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
       </div>
