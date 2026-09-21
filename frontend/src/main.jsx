@@ -349,6 +349,9 @@ function App() {
     setRole(session.role)
     setTournament(session.tournament)
     setView('dashboard')
+    // Die Sitzung beginnt auf einem eigenen Historie-Eintrag, damit „Zurück“ die
+    // Seite nicht verlässt.
+    ensureBaseEntry()
   }
 
   async function createTournament(payload) {
@@ -400,10 +403,17 @@ function App() {
   // übersprungen – sie sind nur ein Zwischenstand.
   useEffect(() => {
     function onPop(event) {
-      if (!token) return
-      const screen = event.state?.skatis
-      if (screen?.screen === 'overlay') return
-      if (screen?.screen === 'list' && screen.listId) {
+      let screen = event.state?.skatis
+      // Das ist der Eintrag der geladenen Seite selbst: Von ihm aus würde „Zurück“
+      // zur zuletzt besuchten Website führen. Mit laufender Sitzung wird er sofort
+      // wieder aufgefangen – die App bleibt auf ihrem eigenen Eintrag stehen.
+      if (!screen) {
+        if (!token) return
+        screen = { screen: 'dashboard' }
+        window.history.pushState({ skatis: screen }, '')
+      }
+      if (screen.screen === 'overlay') return
+      if (screen.screen === 'list' && screen.listId) {
         openListFromHistory(screen.listId).catch(() => {})
         return
       }
@@ -413,11 +423,22 @@ function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [token, tournament?.id])
 
+  /**
+   * Liegt unter der App der Eintrag der geladenen Seite, führt „Zurück“ aus der
+   * Website heraus. Deshalb gehört der App immer ein eigener Eintrag über ihm –
+   * beim Anmelden und nach jedem Neuladen wird er sichergestellt.
+   */
+  function ensureBaseEntry() {
+    if (!window.history.state?.skatis) window.history.pushState({ skatis: { screen: 'dashboard' } }, '')
+  }
+
   // Nach einem Neuladen steht die Ansicht des Eintrags wieder da, statt auf der
   // Übersicht zu landen.
   useEffect(() => {
+    if (!token) return
+    ensureBaseEntry()
     const screen = window.history.state?.skatis
-    if (!token || screen?.screen !== 'list' || !screen.listId) return
+    if (screen?.screen !== 'list' || !screen.listId) return
     openListFromHistory(screen.listId).catch(() => {})
   }, [])
 
