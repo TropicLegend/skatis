@@ -126,7 +126,7 @@ function signedValue(value) {
 let sessionExpiredHandler = null
 
 async function request(path, options = {}) {
-  const { token, body, skipSessionExpiry = false, ...init } = options
+  const { token, body, skipSessionExpiry = false, withMeta = false, ...init } = options
   const response = await fetch(`${API}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     ...init,
@@ -150,7 +150,7 @@ async function request(path, options = {}) {
     error.status = response.status
     throw error
   }
-  return payload?.data
+  return withMeta ? payload : payload?.data
 }
 
 /**
@@ -599,6 +599,9 @@ function Login({ onLogin, onCreate, notice = '' }) {
   </div>
 }
 
+/** Listen je Seite in der Übersicht – mehr lädt sie nie, dafür gibt es Seiten. */
+const LISTS_PAGE_SIZE = 50
+
 function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCreated, notice, onTournamentUpdated }) {
   const [showCreate, setShowCreate] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -615,14 +618,29 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     const screen = window.history.state?.skatis
     return screen?.screen === 'player' && screen.name ? { name: screen.name } : null
   })
+  // Die Listen der Übersicht holt der Server: gefiltert und seitenweise, damit die
+  // Suche auch Einträge findet, die nicht auf der geladenen Seite stehen.
   const [filter, setFilter] = useState('all')
+  // Zweite Achse derselben Übersicht: „innerhalb dieses Spieltags nur Serie X“.
+  const [seriesFilter, setSeriesFilter] = useState('all')
+  const [offset, setOffset] = useState(0)
+  // Zähler, der die Abfrage nach dem Anlegen einer Liste wiederholt.
+  const [reload, setReload] = useState(0)
+  const [page, setPage] = useState({ items: [], total: 0, days: [], series: [], loading: true, error: '' })
   // Auf dem Handy stehen die drei Bereiche nicht untereinander, sondern hinter
   // der Tab-Leiste: nur der gewählte Abschnitt wird gebaut – das spart auch die
   // Verlaufs-Abfragen der Rangliste, solange sie niemand sehen will.
   const mobile = useMobile()
   const [section, setSection] = useState('lists')
-  const filtered = lists.filter((list) => filter === 'all' || list.matchday === filter)
-  const days = [...new Set(lists.map((list) => list.matchday))]
+  const filtered = page.items
+  // Auswahlwerte und Gesamtzahl kommen aus derselben Antwort (`meta.facets`).
+  const days = page.days
+  const seriesOptions = page.series
+  const narrowed = filter !== 'all' || seriesFilter !== 'all'
+  const pageNumber = Math.floor(offset / LISTS_PAGE_SIZE) + 1
+  const pageCount = Math.max(1, Math.ceil(page.total / LISTS_PAGE_SIZE))
+  function chooseFilter(value) { setFilter(value); setOffset(0) }
+  function chooseSeries(value) { setSeriesFilter(value); setOffset(0) }
   // An welchen Wochentagen gespielt werden kann – Namen statt einer Zahl.
   const matchdayNames = [...(tournament?.matchdays || [])].sort((a, b) => a - b).map((day) => {
     const window = tournament?.matchdayWindows?.[day]
@@ -636,12 +654,47 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   function startEditing(player) { setEditingPlayer(player.name); setEditedPlayerName(player.name); setPlayerError('') }
   async function renamePlayer(event, oldName) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players/${encodeURIComponent(oldName)}`, { method: 'PATCH', token, body: { name: editedPlayerName } }); setEditingPlayer(null); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
   useEffect(() => { loadPlayers().catch((error) => setPlayerError(errorNotice(error))) }, [tournament?.id])
+
+  // Die Übersicht fragt den Server nach Spieltag und Serie und bekommt eine Seite
+  // von höchstens `LISTS_PAGE_SIZE` Listen samt Gesamtzahl und Auswahlwerten zurück.
   useEffect(() => {
-    Promise.all(lists.map(async (list) => [list.id, await request(`/tournaments/${tournament.id}/lists/${list.id}/results`, { token })]))
-      .then((entries) => setListRankings(Object.fromEntries(entries)))
-      .catch(() => setListRankings({}))
+    if (!tournament?.id) return undefined
+    let active = true
+    const query = new URLSearchParams({ limit: String(LISTS_PAGE_SIZE), offset: String(offset) })
+    if (filter !== 'all') query.set('matchday', filter)
+    if (seriesFilter !== 'all') query.set('series', seriesFilter)
+    setPage((current) => ({ ...current, loading: true }))
+    request(`/tournaments/${tournament.id}/lists?${query}`, { token, withMeta: true })
+      .then((result) => {
+        if (!active) return
+        setPage({
+          items: result?.data ?? [],
+          total: result?.meta?.total ?? 0,
+          days: result?.meta?.facets?.days ?? [],
+          series: result?.meta?.facets?.series ?? [],
+          loading: false,
+          error: '',
+        })
+      })
+      .catch((problem) => {
+        if (!active) return
+        setPage((current) => ({ ...current, loading: false, error: errorNotice(problem) }))
+      })
+    return () => { active = false }
+  }, [tournament?.id, token, filter, seriesFilter, offset, reload])
+  useEffect(() => {
     request(`/tournaments/${tournament.id}/standings`, { token }).then(setStanding).catch(() => setStanding(null))
   }, [lists, tournament?.id, token])
+
+  // Mini-Ranglisten der Karten: Geladen wird, was noch fehlt – die Listen der
+  // Spieler-Seite und die der aktuellen Seite der Übersicht.
+  useEffect(() => {
+    const missing = [...new Set([...lists, ...page.items].map((list) => list.id))].filter((id) => !listRankings[id])
+    if (!missing.length) return
+    Promise.all(missing.map(async (id) => [id, await request(`/tournaments/${tournament.id}/lists/${id}/results`, { token })]))
+      .then((entries) => setListRankings((current) => ({ ...current, ...Object.fromEntries(entries) })))
+      .catch(() => {})
+  }, [lists, page.items, tournament?.id, token, listRankings])
 
   /** Die Spieler-Seite als Schritt in der Historie öffnen. */
   function openPlayer(player) {
@@ -671,15 +724,21 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   }
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token}><div className="dashboard-header"><div><div className="dashboard-id-row">{role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}</div><h1>Übersicht</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p><p className="id-hint">Zum Mitspielen braucht jeder die Turnier-ID aus der Kopfzeile und das Passwort – antippen kopiert sie.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
     {notice && <div className="error-message inline">{notice}</div>}
-    {showLists && <div className="stats-row"><div className="stat"><span>Listen gesamt</span><strong><CountUp value={lists.length} /></strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong><CountUp value={days.length} /></strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
+    {showLists && <div className="stats-row"><div className="stat"><span>{narrowed ? 'Listen in der Auswahl' : 'Listen gesamt'}</span><strong><CountUp value={page.total} /></strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong><CountUp value={days.length} /></strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
     {showLists && <>
-      <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select></div>
-      <div className="list-grid">{filtered.length ? filtered.map((list, index) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} index={index} onClick={() => onOpenList(list)} />) : <div className="empty-state"><ClipboardList size={28} /><h3>Noch keine Liste angelegt</h3><p>Lege die erste Tischliste für den nächsten Spieltag an.</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
+      <div className="section-heading"><div><span className="eyebrow">Archiv & heute</span><h2>Listen</h2></div><div className="list-filters"><select value={filter} onChange={(e) => chooseFilter(e.target.value)} aria-label="Spieltag"><option value="all">Alle Spieltage</option>{days.map((day) => <option key={day}>{day}</option>)}</select><select value={seriesFilter} onChange={(e) => chooseSeries(e.target.value)} aria-label="Serie"><option value="all">Alle Serien</option>{seriesOptions.map((series) => <option key={series} value={series}>Serie {series}</option>)}</select></div></div>
+      <div className={`list-grid${page.loading ? ' loading' : ''}`}>{filtered.length ? filtered.map((list, index) => <ListCard key={list.id} list={list} ranking={listRankings[list.id]} index={index} onClick={() => onOpenList(list)} />) : page.loading ? <Skeleton lines={4} /> : <div className="empty-state"><ClipboardList size={28} /><h3>{narrowed ? 'Keine Liste in dieser Auswahl' : 'Noch keine Liste angelegt'}</h3><p>{narrowed ? 'Wähle einen anderen Spieltag oder eine andere Serie.' : 'Lege die erste Tischliste für den nächsten Spieltag an.'}</p><button className="secondary-button" onClick={() => setShowCreate(true)}>Liste anlegen</button></div>}</div>
+      {page.error && <div className="error-message">{page.error}</div>}
+      {page.total > LISTS_PAGE_SIZE && <div className="pagination">
+        <button className="secondary-button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - LISTS_PAGE_SIZE))}><ArrowLeft size={15} /> Zurück</button>
+        <span>Seite {pageNumber} von {pageCount} · {page.total} Listen</span>
+        <button className="secondary-button" disabled={offset + LISTS_PAGE_SIZE >= page.total} onClick={() => setOffset(offset + LISTS_PAGE_SIZE)}>Weiter <ArrowRight size={15} /></button>
+      </div>}
     </>}
     {showRanking && standing && <TournamentRanking standing={standing} tournament={tournament} token={token} onOpenPlayer={openPlayer} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className="player-tag" key={player.name}>{player.name}{role === 'ADMIN' && <button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
-    {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated() }} />}
+    {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async () => { setShowCreate(false); await onCreated(); setReload((count) => count + 1) }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
   </Shell>
 }

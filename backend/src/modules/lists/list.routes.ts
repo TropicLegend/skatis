@@ -32,7 +32,13 @@ listRouter.get('/', authenticate(), async (req, res) => {
 
   res.json({
     data: result.items,
-    meta: { total: result.total, limit: result.limit, offset: result.offset },
+    meta: {
+      total: result.total,
+      limit: result.limit,
+      offset: result.offset,
+      // Auswahlwerte für die Oberfläche: welche Spieltage und Serien es gibt.
+      facets: result.facets,
+    },
   });
 });
 

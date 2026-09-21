@@ -65,6 +65,8 @@ export const listListsQuery = z
     matchday: isoDateSchema.optional(),
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional(),
+    /** Only this "Serie" – to find the sheets of one series of an evening. */
+    series: seriesSchema.optional(),
     status: z.enum(['OPEN', 'SUBMITTED']).optional(),
     /**
      * Whether the list counts for the standing: handed in, or of a day that is

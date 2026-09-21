@@ -599,3 +599,13 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
 
 
 
+
+/* Serie neben dem Spieltag filtern: beide Auswahlfelder sitzen rechts in der
+   Überschrift; die Größe kommt weiter aus den bestehenden `select`-Regeln. */
+.list-filters{display:flex;gap:8px;align-items:center}
+
+/* Blättern in der Übersicht (50 Listen je Seite); während des Nachladens bleibt
+   die vorige Seite sichtbar, nur etwas blasser. */
+.pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:20px 0 0;flex-wrap:wrap}
+.pagination span{font-size:12px;color:var(--muted)}
+.list-grid.loading{opacity:.55;pointer-events:none}

@@ -1388,7 +1388,8 @@ case.
 #### `GET /tournaments/:tournamentId/lists`
 
 Query: `?matchday=` (exactly one date – the evening with all its tables),
-`?from=` and `?to=` (a range of dates), `?status=OPEN|SUBMITTED` (what is
+`?from=` and `?to=` (a range of dates), `?series=` (one "Serie" of the sheet, 1–999),
+`?status=OPEN|SUBMITTED` (what is
 stored), `?counted=true|false` (whether the list already counts for the standing:
 handed in or of a past day), `?limit=` (1–100, default 20), `?offset=` (default
 0). Newest matchday first, then by series and table – so the sheets of an evening
@@ -1396,9 +1397,17 @@ come in the order of the room.
 
 `?matchday=` is the one to use for "the lists of tonight": it answers every table
 of that date in a single request and is what a scoreboard of the evening needs.
+With `?matchday=` **and** `?series=` it answers only the tables of that series of
+that evening – the second round of a long night, for example.
 `?counted=false` answers the sheets that are still being played, `?counted=true`
 the ones that are already final. `?from=`/`?to=` are ignored while `?matchday=` is
 given.
+
+The answer is a **page**: `meta.total` counts every list that matches the filters
+(so a pager can walk through all of them), `meta.facets.days` and
+`meta.facets.series` list the days and series that exist in the tournament at all
+– independent of the filters, so the two selection fields of an overview keep
+their options while searching. `?limit=` is capped at 100.
 
 **Response** `200` – no `games` in the collection, see the detail endpoint.
 
@@ -1428,7 +1437,12 @@ given.
       "updatedAt": "2026-09-18T19:42:11.000Z"
     }
   ],
-  "meta": { "total": 1, "limit": 20, "offset": 0 }
+  "meta": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0,
+    "facets": { "days": ["2026-09-18"], "series": [1, 2] }
+  }
 }
 ```
 

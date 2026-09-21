@@ -175,6 +175,18 @@ export interface PaginatedLists {
   total: number;
   limit: number;
   offset: number;
+  /**
+   * Which days and series exist in this tournament – exactly what the overview
+   * needs for its two selection fields. Independent of the filters, so the
+   * choices do not shrink while searching.
+   */
+  facets: ListFacets;
+}
+
+/** The days and series that occur in the lists of a tournament. */
+export interface ListFacets {
+  days: string[];
+  series: number[];
 }
 
 export async function listLists(
@@ -187,6 +199,11 @@ export async function listLists(
   const where: Prisma.GameListWhereInput = { tournamentId: tournament.id };
   if (query.status) {
     where.status = query.status;
+  }
+  // Eine Serie des Abends: Die Listen sind nach Serie und Tisch sortiert, die
+  // Auswahl liefert also die Blätter in der Reihenfolge, in der sie gespielt werden.
+  if (query.series !== undefined) {
+    where.series = query.series;
   }
   // `counted` asks what the list means now – handed in, or of a day that is
   // over – while `status` asks what is stored. A day with a playing time is
@@ -210,7 +227,7 @@ export async function listLists(
     };
   }
 
-  const [rows, total] = await Promise.all([
+  const [rows, total, dayRows, seriesRows] = await Promise.all([
     prisma.gameList.findMany({
       where,
       include: listWithGamesInclude,
@@ -219,6 +236,18 @@ export async function listLists(
       skip: query.offset,
     }),
     prisma.gameList.count({ where }),
+    // Nur die Werte, die es wirklich gibt: So kann die Übersicht Spieltage und
+    // Serien anbieten, die jenseits der geladenen Seite liegen.
+    prisma.gameList.groupBy({
+      by: ['matchday'],
+      where: { tournamentId: tournament.id },
+      orderBy: { matchday: 'desc' },
+    }),
+    prisma.gameList.groupBy({
+      by: ['series'],
+      where: { tournamentId: tournament.id },
+      orderBy: { series: 'asc' },
+    }),
   ]);
 
   return {
@@ -226,6 +255,10 @@ export async function listLists(
     total,
     limit: query.limit,
     offset: query.offset,
+    facets: {
+      days: dayRows.map((row) => toIsoDate(row.matchday)),
+      series: seriesRows.map((row) => row.series),
+    },
   };
 }
 

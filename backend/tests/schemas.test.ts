@@ -8,6 +8,7 @@ import {
 } from '../src/modules/tournaments/tournament.schemas.js';
 import {
   createListSchema,
+  listListsQuery,
   setListPlayersSchema,
   updateListSchema,
 } from '../src/modules/lists/list.schemas.js';
@@ -382,6 +383,23 @@ describe('gameSchema – passed out games', () => {
 
   it('requires the decision between Alleinspieler and Eingepasst', () => {
     expect(() => gameSchema.parse({ declarer: 'Anna', gameType: 'NULL', won: true })).toThrow();
+  });
+});
+
+describe('listListsQuery', () => {
+  it('accepts a serie of a matchday', () => {
+    expect(listListsQuery.parse({ series: '2' })).toEqual({ series: 2, limit: 20, offset: 0 });
+    expect(listListsQuery.parse({ matchday: '2026-09-16', series: 2 })).toEqual({
+      matchday: '2026-09-16',
+      series: 2,
+      limit: 20,
+      offset: 0,
+    });
+  });
+
+  it('rejects a serie outside of the sheet range', () => {
+    expect(() => listListsQuery.parse({ series: 0 })).toThrow();
+    expect(() => listListsQuery.parse({ series: 'alle' })).toThrow();
   });
 });
 
