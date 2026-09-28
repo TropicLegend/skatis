@@ -1187,6 +1187,61 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
 /** Die gewählte Darstellung des Spielprotokolls merkt sich der Browser. */
 const TABLE_STYLE_KEY = 'skatis-table-style'
 
+/**
+ * Handy: das klassische Protokoll als Blöcke. Je Spiel steht erst die Zeile des
+ * Spiels (Runde, Spielart mit Stufen, Spitzen, +/−), darunter die Werte der
+ * Spieler wie in der Tabelle am Bildschirm: Spielpunkte, gewonnene und verlorene
+ * Alleinspiele – gefüllt wird immer die Spalte des Alleinspielers.
+ */
+function ClassicGames({ games, lineup, roundValue, passedOutCounts, canEdit, onEdit, onSelect }) {
+  if (!games.length) return <p className="chart-note">Noch keine Spiele eingetragen. Der erste Eintrag beginnt mit dem Geber aus Platz 1.</p>
+  return <div className="classic-games">
+    {games.map((game, index) => {
+      const declarer = game.passedOut ? null : game.declarer
+      const cell = (name, field, show) => <span key={name} className={`classic-cell ${field}${name === declarer ? ' declarer' : ''}`}>{show && name === declarer ? roundValue(game, name, field) ?? '' : ''}</span>
+      return <div key={game.id} className="classic-game card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
+        <div className="classic-game-head">
+          <span className="classic-round">Runde {game.position}</span>
+          <span className="classic-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
+          {!game.passedOut && <span className="classic-matadors">{matadorsLabel(game)}</span>}
+          <span className="classic-points">{game.passedOut ? '—' : <>{game.positiveGameValue ? `+${game.positiveGameValue}` : null}{game.negativeGameValue ? `−${game.negativeGameValue}` : null}</>}</span>
+          {canEdit && <button className="icon-button game-card-edit" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button>}
+        </div>
+        <div className="classic-grid" style={{ gridTemplateColumns: `auto repeat(${lineup.length}, minmax(50px, 1fr))` }}>
+          <span className="classic-label" />
+          {lineup.map((name) => <span key={name} className={`classic-player${name === declarer ? ' declarer' : ''}`}>{name}</span>)}
+          <span className="classic-label">Spielpunkte</span>
+          {lineup.map((name) => cell(name, 'points', true))}
+          <span className="classic-label">Gew.</span>
+          {lineup.map((name) => cell(name, 'won', game.won === true))}
+          <span className="classic-label">Verl.</span>
+          {lineup.map((name) => cell(name, 'lost', game.won === false))}
+        </div>
+        {game.passedOut && <span className="classic-passed">{passedOutCounts.get(game.id)}. eingepasstes Spiel</span>}
+      </div>
+    })}
+  </div>
+}
+
+/**
+ * Handy: die Ergebnistabelle unter dem klassischen Protokoll – dieselben vier
+ * Zahlen wie die Abschlusszeilen der Tabelle (Spielpunkte, ±50 für gewonnene und
+ * verlorene Spiele, Gegenspiele, Endergebnis) und dazu die Zähler.
+ */
+function ClassicSummary({ players = [], passedOutCount = 0 }) {
+  return <div className="classic-summary">
+    <span className="eyebrow">Ergebnistabelle</span>
+    {players.map((player) => <div key={player.name} className="classic-summary-row">
+      <span className="classic-summary-name">{player.name}<small>{player.won} / {player.lost} / {player.opponentWon} – gewonnene / verlorene Alleinspiele / Gegenspiele</small></span>
+      <span className="classic-summary-value"><small>Spielpunkte</small><strong>{player.points}</strong></span>
+      <span className="classic-summary-value"><small>±50 für Spiele</small><strong>{signedValue(player.wonBonus + player.lossPenalty)}</strong></span>
+      <span className="classic-summary-value"><small>Gegenspiele</small><strong>{signedValue(player.opponentBonus)}</strong></span>
+      <span className="classic-summary-value"><small>Endergebnis</small><strong className={player.total > 0 ? 'up' : player.total < 0 ? 'down' : ''}>{signedValue(player.total)}</strong></span>
+    </div>)}
+    <small className="game-summary-note">Eingepasste Spiele: {passedOutCount}</small>
+  </div>
+}
+
 function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit, onSelect, children }) {
   const games = list.games || []
   const lineup = (list.players || []).map((player) => player.name)
@@ -1200,6 +1255,8 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
   // Auf dem Handy ist das Protokoll eine Kartenliste – die breite Tabelle mit ihren
   // Spieler-Blöcken bleibt dem größeren Bildschirm.
   const mobile = useMobile()
+  // Die zuletzt gespielte Runde steht oben – am Tisch will man sie ohne Scrollen sehen.
+  const orderedGames = mobile ? [...games].reverse() : games
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
   const columns = (classic ? 6 + lineup.length * 3 : 7) + (canEdit ? 1 : 0)
@@ -1234,10 +1291,13 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
   if (mobile) return <section className="games-panel">
     <div className="panel-heading">
       <div><span className="eyebrow">Spielprotokoll</span><h2>{list.gameCount || games.length} Spiele</h2></div>
-      <span className="dealer-note">Zeile antippen für Details</span>
+      <div className="panel-tools">
+        <TableStyleSwitch value={style} onChange={chooseStyle} />
+        <span className="dealer-note">{classic ? 'Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus' : 'Zeile antippen für Details'}</span>
+      </div>
     </div>
-    <div className="game-cards">
-      {games.length ? games.map((game, index) => {
+    {classic ? <ClassicGames games={orderedGames} lineup={lineup} roundValue={roundValue} passedOutCounts={passedOutCounts} canEdit={canEdit} onEdit={onEdit} onSelect={onSelect} /> : <div className="game-cards">
+      {orderedGames.length ? orderedGames.map((game, index) => {
         const delta = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
         return <div key={game.id} className="game-card card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
           <div className="game-card-head">
@@ -1253,12 +1313,12 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
           <div className="game-card-meta">{game.passedOut ? `Geber ${game.dealer} · kein Alleinspieler` : `Geber ${game.dealer} · Alleinspieler ${game.declarer}`}{game.passedOut ? '' : ` · ${matadorsLabel(game)}`}</div>
         </div>
       }) : <p className="chart-note">Noch keine Spiele eingetragen. Der erste Eintrag beginnt mit dem Geber aus Platz 1.</p>}
-    </div>
-    {summary && <div className="game-summary">
+    </div>}
+    {summary && (classic ? <ClassicSummary players={results.players} passedOutCount={results.passedOutCount} /> : <div className="game-summary">
       <span className="eyebrow">Endergebnis</span>
       {results.players.map((player) => <div key={player.name} className="game-summary-row"><span>{player.name}</span><span className="muted">{player.won} / {player.lost} / {player.opponentWon}</span><strong className={player.total > 0 ? 'up' : player.total < 0 ? 'down' : ''}>{signedValue(player.total)}</strong></div>)}
       <small className="game-summary-note">Gewonnene / verlorene Alleinspiele / Gegenspiele</small>
-    </div>}
+    </div>)}
     {children}
   </section>
 
@@ -1489,20 +1549,22 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   const roundNumber = round?.position ?? (list.gameCount || list.games?.length || 0) + 1
   const update = (key, value) => setGame({ ...game, [key]: value })
 
-  // Eine Nullspiel-Ansage kennt kein Schneider/Schwarz – die Stufen werden
-  // deshalb beim Wechsel auf Null zurückgesetzt, alles andere bleibt stehen.
+  // Eine Nullspiel-Ansage kennt kein Schneider/Schwarz und umgekehrt: Beim Wechsel
+  // zwischen Null und Farbspiel/Grand werden die Stufen zurückgesetzt – sonst nähme
+  // ein Pik-Spiel das „Offen“ (und „Hand“) eines Null Ouvert mit.
   function selectGameType(id) {
     const isNull = id === 'NULL'
+    const crossed = (game.gameType === 'NULL') !== isNull
     setGame({
       ...game,
       gameType: id,
-      nullVariant: isNull ? 'normal' : game.nullVariant,
-      hand: isNull ? false : game.hand,
-      offen: isNull ? false : game.offen,
-      schneiderAnnounced: isNull ? false : game.schneiderAnnounced,
-      schwarzAnnounced: isNull ? false : game.schwarzAnnounced,
-      schneider: isNull ? false : game.schneider,
-      schwarz: isNull ? false : game.schwarz,
+      nullVariant: 'normal',
+      hand: crossed ? false : game.hand,
+      offen: crossed ? false : game.offen,
+      schneiderAnnounced: crossed ? false : game.schneiderAnnounced,
+      schwarzAnnounced: crossed ? false : game.schwarzAnnounced,
+      schneider: crossed ? false : game.schneider,
+      schwarz: crossed ? false : game.schwarz,
     })
   }
 

@@ -609,3 +609,27 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
 .pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:20px 0 0;flex-wrap:wrap}
 .pagination span{font-size:12px;color:var(--muted)}
 .list-grid.loading{opacity:.55;pointer-events:none}
+
+/* Handy: das klassische Protokoll als Blöcke – je Spiel erst die Zeile des Spiels
+   (Runde, Spielart, Spitzen, +/−), darunter die drei Werte je Spieler. Die zuletzt
+   gespielte Runde steht oben, darunter folgt die Ergebnistabelle. */
+.classic-games{display:grid;gap:10px;margin-top:12px}
+.classic-game{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
+.classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+.classic-round{font-weight:800}
+.classic-kind{display:inline-flex;align-items:center;gap:4px}
+.classic-matadors{color:var(--muted)}
+.classic-points{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.classic-grid{display:grid;gap:3px 8px;margin-top:8px;font-size:11px;overflow-x:auto}
+.classic-label{color:var(--muted);white-space:nowrap;padding-right:2px}
+.classic-player{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.classic-player.declarer{color:var(--orange-dark)}
+.classic-cell{text-align:right;font-variant-numeric:tabular-nums}
+.classic-cell.declarer{font-weight:700}
+.classic-passed{display:block;margin-top:6px;font-size:11px;color:var(--muted)}
+.classic-summary{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
+.classic-summary-row{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px;padding:9px 0;border-top:1px solid var(--line)}
+.classic-summary-name{grid-column:1/-1;font-weight:700}
+.classic-summary-name small{display:block;color:var(--muted);font-weight:400;font-size:10px}
+.classic-summary-value small{display:block;color:var(--muted);font-size:10px}
+.classic-summary-value strong{font-variant-numeric:tabular-nums}
