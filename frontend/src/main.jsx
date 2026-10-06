@@ -116,6 +116,12 @@ function signedValue(value) {
   return '0'
 }
 
+function gameAverage(player) {
+  return player.gamesPlayed > 0
+    ? (player.total / player.gamesPlayed).toLocaleString('de-DE', { maximumFractionDigits: 1 })
+    : '–'
+}
+
 /**
  * Wird aufgerufen, wenn der Server ein Token ablehnt: abgelaufen oder durch einen
  * Passwortwechsel ungültig. `App` hängt dort das Abmelden ein – so landet jede
@@ -1079,6 +1085,7 @@ function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
 function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLogout, onUpdated }) {
   const [showWizard, setShowWizard] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmSubmit, setConfirmSubmit] = useState(false)
   const [confirmGame, setConfirmGame] = useState(null)
   const [editingGame, setEditingGame] = useState(null)
   const [detailGame, setDetailGame] = useState(null)
@@ -1093,6 +1100,8 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   // das „offen und heute“, für den Admin immer – auch nach dem Schließen. Der
   // Server prüft dasselbe noch einmal, das Flag kommt von dort (`list.locked`).
   const canEdit = role === 'ADMIN' || !list.locked
+  const listGameCount = list.gameCount ?? list.games?.length ?? 0
+  const canDeleteList = role === 'ADMIN' || (!list.locked && list.status === 'OPEN' && listGameCount === 0)
 
   // Beide Zahlenreihen kommen aus der API: der Kontoverlauf ("verloren zählt
   // doppelt" samt Boni) und die Ergebnistabelle, aus der die vier Abschlusszeilen
@@ -1151,6 +1160,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   useEffect(() => { loadDetails().catch((error) => setNotice(errorNotice(error))) }, [list.id])
 
   const lineup = (list.players || []).map((player) => player.name)
+  const lastGamePosition = Math.max(0, ...(list.games || []).map((game) => game.position))
   const rounds = roundAccounts(progression)
   const scaleOptions = listScaleOptions(lineup.length)
   const roundsPerPoint = scaleStep(scale, lineup.length, customScale)
@@ -1162,9 +1172,9 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
       <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
-        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => updateList('submit')}><LockKeyhole size={16} /> Schließen</button>}
+        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Schließen</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
-        {role === 'ADMIN' && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
+        {canDeleteList && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
         <button className="primary-button" disabled={list.locked} onClick={() => { setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
       </div>
     </div>
@@ -1178,8 +1188,9 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
     </div>
     {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} onClose={() => { setShowWizard(false); setEditingGame(null) }} onSave={saveGame} />}
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
+    {confirmSubmit && <ConfirmSheet title="Liste abgeben?" text="Willst du die Liste wirklich abgeben?" confirmLabel="Liste abgeben" onCancel={() => setConfirmSubmit(false)} onConfirm={() => { setConfirmSubmit(false); updateList('submit') }} />}
     {confirmGame && <ConfirmSheet title={`Runde ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
-    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
+    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} canDelete={canEdit && detailGame.position === lastGamePosition} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit && detailGame.position === lastGamePosition ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
     {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); setNotice('Tisch und Serie wurden gespeichert.') }} />}
   </Shell>
 }
@@ -1237,6 +1248,7 @@ function ClassicSummary({ players = [], passedOutCount = 0 }) {
       <span className="classic-summary-value"><small>±50 für Spiele</small><strong>{signedValue(player.wonBonus + player.lossPenalty)}</strong></span>
       <span className="classic-summary-value"><small>Gegenspiele</small><strong>{signedValue(player.opponentBonus)}</strong></span>
       <span className="classic-summary-value"><small>Endergebnis</small><strong className={player.total > 0 ? 'up' : player.total < 0 ? 'down' : ''}>{signedValue(player.total)}</strong></span>
+      <span className="classic-summary-value"><small>Spieleschnitt</small><strong>{gameAverage(player)}</strong></span>
     </div>)}
     <small className="game-summary-note">Eingepasste Spiele: {passedOutCount}</small>
   </div>
@@ -1401,6 +1413,12 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
             <td className="passed-col" />
             {canEdit && <td className="sep" />}
           </tr>
+          <tr className="summary">
+            <td className="summary-label" colSpan={5}>Spieleschnitt</td>
+            {lineup.map((name) => <td key={name} className="value-cell spielpunkte" colSpan={3}>{gameAverage(playersByName.get(name) ?? { total: 0, gamesPlayed: 0 })}</td>)}
+            <td className="passed-col" />
+            {canEdit && <td className="sep" />}
+          </tr>
         </>}
       </tbody>
     </table></div>
@@ -1467,7 +1485,7 @@ function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, s
 }
 
 /** Ein Spiel im Detail – inklusive Spielstand vor und nach dieser Runde. */
-function GameDetail({ list, game, round, onClose, onEdit, onDelete }) {
+function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete }) {
   useEscape(onClose)
   useBackToClose(onClose)
   useScrollLock()
@@ -1503,6 +1521,7 @@ function GameDetail({ list, game, round, onClose, onEdit, onDelete }) {
       <p className="detail-note">{game.passedOut ? 'Ein eingepasstes Spiel verändert kein Konto.' : 'Ein gewonnenes Alleinspiel bringt den Spielwert plus 50, ein verlorenes kostet den doppelten Spielwert plus 50. Der Gegnerbonus für ein verlorenes Alleinspiel eines Mitspielers ist schon eingerechnet.'}</p>
       {game.note && <p className="detail-note"><strong>Notiz:</strong> {game.note}</p>}
       <p className="detail-note">Eingetragen am {new Date(game.createdAt).toLocaleString('de-DE')}.</p>
+      {onEdit && !canDelete && <p className="detail-note">Nur das letzte Spiel der Liste kann gelöscht werden.</p>}
       <div className="modal-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>
     </div>
   </div>

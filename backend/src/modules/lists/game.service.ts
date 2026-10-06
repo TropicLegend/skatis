@@ -1,5 +1,5 @@
 import type { Game } from '@prisma/client';
-import { notFound } from '../../lib/http-error.js';
+import { conflict, notFound } from '../../lib/http-error.js';
 import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
@@ -22,6 +22,24 @@ import { buildRoundPreview, type RoundPreviewDto } from './round-preview.js';
 /** Rounds are appended, so a new game gets the next free position. */
 function nextFreePosition(positions: readonly number[]): number {
   return positions.reduce((max, position) => Math.max(max, position), 0) + 1;
+}
+
+export function assertLastGame<T extends Pick<Game, 'id' | 'position'>>(
+  listId: string,
+  gameId: string,
+  games: readonly T[],
+): T {
+  const game = games.find((candidate) => candidate.id === gameId);
+  if (!game) {
+    throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
+  }
+
+  const lastPosition = Math.max(...games.map((candidate) => candidate.position));
+  if (game.position !== lastPosition) {
+    throw conflict('Only the last game of a list can be deleted', { lastPosition });
+  }
+
+  return game;
 }
 
 /** The dealer of the last round, or `null` when no game has been entered yet. */
@@ -202,17 +220,18 @@ export async function deleteGame(
   assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
+  const game = assertLastGame(list.id, gameId, list.games);
+
   const result = await prisma.game.deleteMany({ where: { id: gameId, listId: list.id } });
   if (result.count === 0) {
     throw notFound(`Game ${gameId} does not exist in the list ${listId}`);
   }
 
   // The row is gone now, so the details come from the copy the list carried.
-  const deleted = list.games.find((candidate) => candidate.id === gameId);
   await recordAudit({
     tournamentId: tournament.id,
     role,
     action: 'game.deleted',
-    details: deleted ? gameDetails(list, deleted) : { listId: list.id, gameId },
+    details: gameDetails(list, game),
   });
 }

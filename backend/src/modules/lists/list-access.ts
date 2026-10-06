@@ -268,3 +268,17 @@ export function assertListEditable(status: 'OPEN' | 'SUBMITTED', role: Tournamen
     );
   }
 }
+
+/** Members may delete only empty, open lists; admins may delete any list. */
+export function assertListDeletable(
+  status: 'OPEN' | 'SUBMITTED',
+  gameCount: number,
+  role: TournamentRole,
+): void {
+  if (role === 'ADMIN') return;
+
+  assertListEditable(status, role);
+  if (gameCount > 0) {
+    throw forbidden('Only an admin can delete a list that contains games.');
+  }
+}

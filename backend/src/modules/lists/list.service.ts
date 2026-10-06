@@ -8,6 +8,7 @@ import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { resolveTournamentPlayers } from '../players/player.service.js';
 import {
   assertDayNotOver,
+  assertListDeletable,
   assertListEditable,
   assertMatchdayAllowed,
   countsForStanding,
@@ -511,7 +512,7 @@ export async function updateList(
   return toListDto(updated, listViewContext(tournament, role), true);
 }
 
-/** Admin only (enforced by the route). */
+/** Members may delete an empty open list; admins may also remove populated lists. */
 export async function deleteList(
   tournamentId: string,
   listId: string,
@@ -519,6 +520,9 @@ export async function deleteList(
 ): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
+
+  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  assertListDeletable(list.status, list.games.length, role);
 
   const details = { ...listDetails(list), gameCount: list.games.length };
 

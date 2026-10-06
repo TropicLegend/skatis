@@ -3,6 +3,7 @@ import { HttpError } from '../src/lib/http-error.js';
 import { isoWeekday, parseIsoDate, todayIso, toIsoDate } from '../src/lib/dates.js';
 import {
   assertDayNotOver,
+  assertListDeletable,
   assertListEditable,
   assertMatchdayAllowed,
   countsForStanding,
@@ -181,6 +182,37 @@ describe('the lock and the rejection of the API agree', () => {
     expect(() => assertMatchdayAllowed({ ...tournament, matchdays }, TODAY, 'MEMBER')).toThrow(
       HttpError,
     );
+  });
+});
+
+describe('assertListDeletable', () => {
+  it('allows a member to delete an empty open list', () => {
+    expect(() => assertListDeletable('OPEN', 0, 'MEMBER')).not.toThrow();
+  });
+
+  it('keeps deletion of a populated list admin-only', () => {
+    let error: unknown;
+    try {
+      assertListDeletable('OPEN', 1, 'MEMBER');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(HttpError);
+    expect((error as HttpError).status).toBe(403);
+    expect(() => assertListDeletable('OPEN', 1, 'ADMIN')).not.toThrow();
+  });
+
+  it('does not let a member delete a submitted list', () => {
+    let error: unknown;
+    try {
+      assertListDeletable('SUBMITTED', 0, 'MEMBER');
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(HttpError);
+    expect((error as HttpError).status).toBe(409);
   });
 });
 

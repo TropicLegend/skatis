@@ -92,8 +92,8 @@ listRouter.get('/:listId/progression', authenticate(), async (req, res) => {
   res.json({ data: progression });
 });
 
-/** Admin only: deletes the list including all its games. */
-listRouter.delete('/:listId', authenticate('ADMIN'), async (req, res) => {
+/** Members may delete an empty open list; deleting games with a list is admin-only. */
+listRouter.delete('/:listId', authenticate(), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
   await deleteList(tournamentId, listId, currentAuth(req).role);
 

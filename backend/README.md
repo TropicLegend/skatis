@@ -1381,7 +1381,7 @@ case.
 | GET    | `/tournaments/:tournamentId/lists/:listId/progression` | any | The account of every player before and after every round (bonuses included) |
 | PUT    | `/tournaments/:tournamentId/lists/:listId/players` | any   | Replace the lineup                                     |
 | PATCH  | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Correct "Serie" and "Tisch" of the list                |
-| DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN | Delete the list incl. its games                        |
+| DELETE | `/tournaments/:tournamentId/lists/:listId`         | ADMIN / empty MEMBER | Delete the list incl. its games             |
 | POST   | `/tournaments/:tournamentId/lists/:listId/submit`  | any   | Hand the list in – it counts and is locked for members |
 | POST   | `/tournaments/:tournamentId/lists/:listId/reopen`  | ADMIN | Give a submitted list back to the members              |
 
@@ -1894,9 +1894,13 @@ number outside of 1…999 (the schema is strict, so `matchday` is rejected too),
 
 #### `DELETE /tournaments/:tournamentId/lists/:listId`
 
-**Response** `204` – no body, removes the list and all its games.
+**Response** `204` – no body, removes the list and all its games. Admins may
+delete any list. Members may delete only an empty list that is still open and
+editable on the current matchday.
 
-**Errors:** `403` member token, `404` unknown list.
+**Errors:** `403` member tries to delete a list with games or of another day,
+`404` unknown list, `409` member tries to delete a submitted list on the current
+matchday.
 
 ### Games
 
@@ -1985,11 +1989,13 @@ players who sit out this round (`details.dealer`, `details.sittingOutPlayers`,
 `GET …/games` answers `{ "data": [ …game… ] }` ordered by `position`;
 `GET …/games/:gameId` answers a single game. `PUT …/games/:gameId` replaces the
 game completely (the round and the dealer stay), which is why there is no `PATCH`
-– a partial update would have to satisfy all the rules in combination with the
+`– a partial update would have to satisfy all the rules in combination with the
 stored values. The answer of a `GET` can be sent back as it is: fields the API
-derives itself are ignored. `DELETE …/games/:gameId` → `204`.
+derives itself are ignored. `DELETE …/games/:gameId` → `204`, but only the game
+with the highest round position may be deleted; earlier rounds return `409`.
 
-**Errors (single game):** `404` unknown game in that list, `422` invalid payload.
+**Errors (single game):** `404` unknown game in that list, `409` a later game
+still exists, `422` invalid payload.
 
 ## Response format
 
