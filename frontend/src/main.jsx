@@ -376,6 +376,7 @@ function App() {
     const detail = await request(`/tournaments/${tournament.id}/lists/${list.id}`, { token })
     setSelectedList(detail)
     setView('list')
+    window.scrollTo(0, 0)
     // Der Schritt in die Liste gehört der Historie: „Zurück“ kommt hierher zurück.
     window.history.pushState({ skatis: { screen: 'list', listId: list.id } }, '')
   }
@@ -397,6 +398,7 @@ function App() {
       const detail = await request(`/tournaments/${tournament.id}/lists/${listId}`, { token })
       setSelectedList(detail)
       setView('list')
+      window.scrollTo(0, 0)
     } catch (error) {
       if (error?.status !== 404) setNotice(errorNotice(error))
       window.history.replaceState({ skatis: { screen: 'dashboard' } }, '')
@@ -527,7 +529,7 @@ async function copyText(value) {
 /**
  * Die Turnier-ID als Knopf: antippen kopiert sie und bestätigt es kurz mit
  * "Kopiert!". Die ID ist der Schlüssel zum Login – ohne sie kommt niemand in die
- * Runde –, deshalb trägt sie eine Beschriftung und das übliche Kopier-Symbol.
+ * Platzierung –, deshalb trägt sie eine Beschriftung und das übliche Kopier-Symbol.
  */
 function IdChip({ id, name, compact = false, label = 'Turnier-ID' }) {
   const [copied, setCopied] = useState(false)
@@ -590,13 +592,13 @@ function Login({ onLogin, onCreate, notice = '' }) {
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return <div className="login-page">
-    <div className="login-art"><div className="art-kicker">DIE RUNDE BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Skatis ist die beste Platform, um Turniere und Skatlisten zu verwalten! Dein digitales Skatblatt für faire Runden, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
+    <div className="login-art"><div className="art-kicker">DER SPIELABEND BEGINNT HIER</div><h1>Gute Spiele.<br /><em>Gute Gesellschaft.</em></h1><p>Skatis ist die beste Platform, um Turniere und Skatlisten zu verwalten! Dein digitales Skatblatt für faire Spiele, klare Ergebnisse und Turniere, die bleiben.</p><div className="art-stamp"><Trophy size={16} /> Ergebnistabelle inklusive</div></div>
     <div className="login-panel">
-      <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deine nächste Skatrunde. Die Turnier-ID bekommst du danach zum Weitergeben.'}</p>{mode === 'login' && <p className="id-hint">Die ID bekommst du von der Person, die das Turnier angelegt hat. Sie steht später immer oben in der App und lässt sich dort antippen und kopieren.</p>}</div>
+      <div className="panel-intro"><span className="eyebrow">Willkommen zurück</span><h2>{mode === 'login' ? 'Turnier öffnen' : 'Neues Turnier anlegen'}</h2><p>{mode === 'login' ? 'Mit deiner Turnier-ID und dem Passwort gelangst du direkt an den Tisch.' : 'Erstelle den gemeinsamen Raum für deinen nächsten Skatabend. Die Turnier-ID bekommst du danach zum Weitergeben.'}</p>{mode === 'login' && <p className="id-hint">Die ID bekommst du von der Person, die das Turnier angelegt hat. Sie steht später immer oben in der App und lässt sich dort antippen und kopieren.</p>}</div>
       <div className="mode-tabs"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Einloggen</button><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Turnier erstellen</button></div>
       {notice && <div className="info-message">{notice}</div>}
       <form onSubmit={submit}>
-        {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsrunde" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} windows={form.windows} onWindowsChange={showTimes ? (windows) => update('windows', windows) : undefined} />{showTimes ? <button type="button" className="times-toggle" onClick={() => { setShowTimes(false); update('windows', {}) }}><X size={14} /> Uhrzeiten entfernen</button> : <button type="button" className="times-toggle" onClick={() => setShowTimes(true)}><Clock size={14} /> Uhrzeiten festlegen (optional)</button>}</>}
+        {mode === 'login' ? <><label>Turnier-ID<input required value={form.id} onChange={(e) => update('id', e.target.value.toUpperCase())} placeholder="z. B. K7M2P4QX" /></label><PasswordField label="Passwort" value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Dein Turnierpasswort" /></> : <><label>Turniername<input required minLength="3" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mittwochsturnier" /></label><PasswordField label="Spieler-Passwort" required minLength={8} value={form.password} onChange={(e) => update('password', e.target.value)} placeholder="Mindestens 8 Zeichen" /><PasswordField label="Admin-Passwort" required minLength={8} value={form.adminPassword} onChange={(e) => update('adminPassword', e.target.value)} placeholder="Für spätere Korrekturen" /><MatchdayPicker value={form.matchdays} onChange={(matchdays) => update('matchdays', matchdays)} windows={form.windows} onWindowsChange={showTimes ? (windows) => update('windows', windows) : undefined} />{showTimes ? <button type="button" className="times-toggle" onClick={() => { setShowTimes(false); update('windows', {}) }}><X size={14} /> Uhrzeiten entfernen</button> : <button type="button" className="times-toggle" onClick={() => setShowTimes(true)}><Clock size={14} /> Uhrzeiten festlegen (optional)</button>}</>}
         {error && <div className="error-message">{error}</div>}
         <button className="primary-button full" disabled={busy}>{busy ? 'Einen Moment …' : mode === 'login' ? <>Turnier öffnen <ArrowRight size={17} /></> : <>Turnier erstellen <Plus size={17} /></>}</button>
       </form>
@@ -629,6 +631,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [filter, setFilter] = useState('all')
   // Zweite Achse derselben Übersicht: „innerhalb dieses Spieltags nur Serie X“.
   const [seriesFilter, setSeriesFilter] = useState('all')
+  const [defaultFiltersReady, setDefaultFiltersReady] = useState(false)
   const [offset, setOffset] = useState(0)
   // Zähler, der die Abfrage nach dem Anlegen einer Liste wiederholt.
   const [reload, setReload] = useState(0)
@@ -673,6 +676,18 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     request(`/tournaments/${tournament.id}/lists?${query}`, { token, withMeta: true })
       .then((result) => {
         if (!active) return
+        const availableDays = result?.meta?.facets?.days ?? []
+        const availableSeries = result?.meta?.facets?.series ?? []
+        if (!defaultFiltersReady && filter === 'all' && availableDays.length > 0) {
+          setFilter(availableDays[0])
+          setOffset(0)
+          return
+        }
+        if (!defaultFiltersReady && filter !== 'all' && seriesFilter === 'all' && availableSeries.length > 0) {
+          setSeriesFilter(String(Math.max(...availableSeries)))
+          return
+        }
+        if (!defaultFiltersReady) setDefaultFiltersReady(true)
         setPage({
           items: result?.data ?? [],
           total: result?.meta?.total ?? 0,
@@ -687,7 +702,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
         setPage((current) => ({ ...current, loading: false, error: errorNotice(problem) }))
       })
     return () => { active = false }
-  }, [tournament?.id, token, filter, seriesFilter, offset, reload])
+  }, [tournament?.id, token, filter, seriesFilter, offset, reload, defaultFiltersReady])
   useEffect(() => {
     request(`/tournaments/${tournament.id}/standings`, { token }).then(setStanding).catch(() => setStanding(null))
   }, [lists, tournament?.id, token])
@@ -786,7 +801,7 @@ function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
   // Anlege-Formular kommt ohne, die Turnier-Einstellungen nicht.
   const withTimes = typeof onWindowsChange === 'function'
   const setTime = (day, key, time) => onWindowsChange({ ...windows, [day]: { from: '', to: '', ...windows[day], [key]: time } })
-  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für die Turnierrunde.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><TimeField label={`Beginn ${weekdayLabel(day)}`} value={windows[day]?.from ?? ''} onChange={(time) => setTime(day, 'from', time)} /><em>bis</em><TimeField label={`Ende ${weekdayLabel(day)}`} value={windows[day]?.to ?? ''} onChange={(time) => setTime(day, 'to', time)} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis im 24-Stunden-Format. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
+  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für den Turnierabend.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><TimeField label={`Beginn ${weekdayLabel(day)}`} value={windows[day]?.from ?? ''} onChange={(time) => setTime(day, 'from', time)} /><em>bis</em><TimeField label={`Ende ${weekdayLabel(day)}`} value={windows[day]?.to ?? ''} onChange={(time) => setTime(day, 'to', time)} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis im 24-Stunden-Format. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
 }
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
@@ -808,7 +823,10 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
-function ListCard({ list, ranking, index = 0, onClick }) { return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{list.totalGameValue || 0} Punkte</span></div></button> }
+function ListCard({ list, ranking, index = 0, onClick }) {
+  const totalPoints = ranking?.players?.reduce((sum, player) => sum + player.total, 0)
+  return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
+}
 
 function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
@@ -1041,7 +1059,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
   </>
 }
 
-function CreateListModal({ token, tournament, role, players = [], lists = [], canManagePlayers = true, onClose, onCreated }) {
+function CreateListModal({ token, tournament, role, players, lists, canManagePlayers, onClose, onCreated }) {
   useEscape(onClose)
   useBackToClose(onClose)
   useScrollLock()
@@ -1057,7 +1075,7 @@ function CreateListModal({ token, tournament, role, players = [], lists = [], ca
   const playingTime = matchdayWindow(tournament, form.matchday)
   const windowPhase = role === 'ADMIN' ? null : windowState(tournament, form.matchday)
   async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), playerNames: lineup } }); await onCreated() } catch (err) { setError(err.message) } finally { setBusy(false) } }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Runde eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}{windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Spiel eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}{windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
 }
 
 /**
@@ -1143,8 +1161,8 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
     try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onDeleted() } catch (e) { setNotice(errorNotice(e)) }
   }
 
-  // Ein Spiel entfernen: Die übrigen Runden behalten ihre Nummer und ihren Geber –
-  // das nächste neue Spiel knüpft an der letzten Runde an.
+  // Ein Spiel entfernen: Die übrigen Spiele behalten ihre Nummer und ihren Geber –
+  // das nächste neue Spiel knüpft an das letzte Spiel an.
   async function removeGame() {
     const game = confirmGame
     setConfirmGame(null); setDetailGame(null)
@@ -1182,14 +1200,14 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
     <div className="workspace-grid">
       <GameTable list={list} rounds={rounds} results={results} canEdit={canEdit} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
-          {scale === 'custom' && <label className="chart-custom">Runden je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
+          {scale === 'custom' && <label className="chart-custom">Spiele je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
       </GameTable>
     </div>
     {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} onClose={() => { setShowWizard(false); setEditingGame(null) }} onSave={saveGame} />}
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
     {confirmSubmit && <ConfirmSheet title="Liste abgeben?" text="Willst du die Liste wirklich abgeben?" confirmLabel="Liste abgeben" onCancel={() => setConfirmSubmit(false)} onConfirm={() => { setConfirmSubmit(false); updateList('submit') }} />}
-    {confirmGame && <ConfirmSheet title={`Runde ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Runden behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
+    {confirmGame && <ConfirmSheet title={`Spiel ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
     {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} canDelete={canEdit && detailGame.position === lastGamePosition} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit && detailGame.position === lastGamePosition ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
     {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); setNotice('Tisch und Serie wurden gespeichert.') }} />}
   </Shell>
@@ -1200,7 +1218,7 @@ const TABLE_STYLE_KEY = 'skatis-table-style'
 
 /**
  * Handy: das klassische Protokoll als Blöcke. Je Spiel steht erst die Zeile des
- * Spiels (Runde, Spielart mit Stufen, Spitzen, +/−), darunter die Werte der
+ * Spiels (Spielnummer, Spielart mit Stufen, Spitzen, +/−), darunter die Werte der
  * Spieler wie in der Tabelle am Bildschirm: Spielpunkte, gewonnene und verlorene
  * Alleinspiele – gefüllt wird immer die Spalte des Alleinspielers.
  */
@@ -1212,7 +1230,7 @@ function ClassicGames({ games, lineup, roundValue, passedOutCounts, canEdit, onE
       const cell = (name, field, show) => <span key={name} className={`classic-cell ${field}${name === declarer ? ' declarer' : ''}`}>{show && name === declarer ? roundValue(game, name, field) ?? '' : ''}</span>
       return <div key={game.id} className="classic-game card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
         <div className="classic-game-head">
-          <span className="classic-round">Runde {game.position}</span>
+          <span className="classic-round">Spiel {game.position}</span>
           <span className="classic-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
           {!game.passedOut && <span className="classic-matadors">{matadorsLabel(game)}</span>}
           <span className="classic-points">{game.passedOut ? '—' : <>{game.positiveGameValue ? `+${game.positiveGameValue}` : null}{game.negativeGameValue ? `−${game.negativeGameValue}` : null}</>}</span>
@@ -1267,12 +1285,12 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
   // Auf dem Handy ist das Protokoll eine Kartenliste – die breite Tabelle mit ihren
   // Spieler-Blöcken bleibt dem größeren Bildschirm.
   const mobile = useMobile()
-  // Die zuletzt gespielte Runde steht oben – am Tisch will man sie ohne Scrollen sehen.
+  // Das zuletzt gespielte Spiel steht oben – am Tisch will man es ohne Scrollen sehen.
   const orderedGames = mobile ? [...games].reverse() : games
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
   const columns = (classic ? 6 + lineup.length * 3 : 7) + (canEdit ? 1 : 0)
-  // Das wievielte eingepasste Spiel ist eine Zeile? Nur die eingepassten Zeilen
+  // Das wievielte eingepasstes Spiel ist eine Zeile? Nur die eingepassten Zeilen
   // bekommen eine Zahl – gezählt wird in der Reihenfolge der Liste.
   const passedOutCounts = new Map()
   let passedOut = 0
@@ -1297,7 +1315,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
     const value = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
     return <td className={`value-cell num signed ${value === null ? '' : value > 0 ? 'up' : 'down'}`}>{value === null ? '' : signedValue(value)}</td>
   }
-  // Handy: eine Karte je Runde. Ganz vorne die Runde und die Spielart, dann die
+  // Handy: eine Karte je Spiel. Ganz vorne Spielnummer und Spielart, dann die
   // beiden Zahlen, die zählen (Spielwert und was das Spiel dem Alleinspieler
   // bringt), darunter wer gab und wer spielte.
   if (mobile) return <section className="games-panel">
@@ -1313,7 +1331,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
         const delta = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
         return <div key={game.id} className="game-card card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
           <div className="game-card-head">
-            <span className="game-card-round">Runde {game.position}</span>
+            <span className="game-card-round">Spiel {game.position}</span>
             <span className="game-card-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
             <span className={`game-card-result ${game.passedOut ? 'muted' : game.won ? 'won' : 'lost'}`}>{game.passedOut ? '—' : outcomeLabel(game)}</span>
             {canEdit && <button className="icon-button game-card-edit" title="Spiel bearbeiten" onClick={(event) => { event.stopPropagation(); onEdit(game) }}><Pencil size={15} /></button>}
@@ -1351,7 +1369,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
             <th>#</th><th>Geber</th><th>Alleinspieler</th><th>Spielart</th><th>Spitzen</th><th className="num">+/−</th><th>Ausgang</th>
           </>}
           {classic && lineup.map((name) => <th key={name} className="player-column" colSpan={3}>{name}</th>)}
-          {classic && <th rowSpan={2} className="passed-col" title="Das wievielte eingepasste Spiel dieser Liste">Eingepasst</th>}
+          {classic && <th rowSpan={2} className="passed-col" title="Das wievielte eingepasstes Spiel dieser Liste">Eingepasst</th>}
           {canEdit && <th className={classic ? 'sep' : undefined} rowSpan={classic ? 2 : undefined} />}
         </tr>
         {classic && <tr>{lineup.map((name) => <React.Fragment key={name}><th className="sub" title={`Spielpunkte von ${name} nach diesem Spiel – ohne die +50 / −50 und ohne Gegnerbonus`}>Spielpunkte</th><th className="sub" title={`Gewonnene Alleinspiele von ${name} bis hierher`}>Gew</th><th className="sub" title={`Verlorene Alleinspiele von ${name} bis hierher`}>Verl</th></React.Fragment>)}</tr>}
@@ -1451,7 +1469,7 @@ function PasswordField({ label, value, onChange, placeholder, required, minLengt
 /**
  * Die Spieler einer Liste werden aus dem Roster des Turniers gewählt statt
  * geschrieben. Die Reihenfolge der Auswahl ist die Sitzreihenfolge – Platz 1
- * gibt in Runde 1.
+ * gibt in Spiel 1.
  */
 function LineupPicker({ players = [], value = [], onChange, canManagePlayers = true, min, max }) {
   const toggle = (name) => {
@@ -1484,7 +1502,7 @@ function ProgressChart({ eyebrow, title, note, labels, series, scale, onScale, s
   </div>
 }
 
-/** Ein Spiel im Detail – inklusive Spielstand vor und nach dieser Runde. */
+/** Ein Spiel im Detail – inklusive Spielstand davor und danach. */
 function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete }) {
   useEscape(onClose)
   useBackToClose(onClose)
@@ -1493,7 +1511,7 @@ function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete })
   const { delta = {}, before = {}, after = {} } = round ?? {}
   const lineup = (list.players || []).map((player) => player.name)
   const levels = levelsOf(game)
-  // Die "+/-"-Zahl des Spielprotokolls ist der Betrag, den die Runde dem
+  // Die "+/-"-Zahl des Spielprotokolls ist der Betrag, den das Spiel dem
   // Alleinspieler bringt; der Bonus darin ist die Differenz zum Spielwert, damit
   // hier keine Regel doppelt steht.
   const ownValue = game.positiveGameValue || game.negativeGameValue || 0
@@ -1503,26 +1521,26 @@ function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete })
     <div className="modal detail-modal" role="dialog" aria-modal="true" aria-label="Spieldetails" onClick={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose}><X size={18} /></button>
       <span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span>
-      <h2>Runde {game.position}: {outcomeLabel(game)}</h2>
-      <p className="modal-copy">{game.passedOut ? `Eingepasst – ${game.dealer} gab. In dieser Runde wurde kein Spiel gespielt.` : `${game.declarer} spielte allein, ${game.dealer} war Geber.`}</p>
+      <h2>Spiel {game.position}: {outcomeLabel(game)}</h2>
+      <p className="modal-copy">{game.passedOut ? `Eingepasst – ${game.dealer} gab. In diesem Spiel gab es keinen Alleinspieler.` : `${game.declarer} spielte allein, ${game.dealer} war Geber.`}</p>
+      <div className="modal-actions detail-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>
       <div className="detail-grid">
         <div className="detail-item"><span>Spielart</span><strong>{gameTypeLabel(game.gameType)}</strong>{levels.length > 0 && <div className="level-badges">{levels.map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</div>}</div>
         <div className="detail-item"><span>Spitzen</span><strong>{matadorsLabel(game)}</strong></div>
         <div className="detail-item"><span>Spielwert</span><strong>{game.passedOut ? '—' : game.gameValue}</strong></div>
         <div className="detail-item"><span>Positiver Wert</span><strong>{game.positiveGameValue ? `+${game.positiveGameValue}` : '—'}</strong></div>
         <div className="detail-item"><span>Negativer Wert</span><strong>{game.negativeGameValue ? `−${game.negativeGameValue}` : '—'}</strong></div>
-        <div className="detail-item"><span>Ergebnis dieser Runde</span><strong>{ownResult === null ? '—' : signedValue(ownResult)}</strong></div>
+        <div className="detail-item"><span>Ergebnis dieses Spiels</span><strong>{ownResult === null ? '—' : signedValue(ownResult)}</strong></div>
         <div className="detail-item"><span>Am Tisch</span><strong>{game.players?.join(', ') || '—'}</strong></div>
         <div className="detail-item"><span>Setzt aus</span><strong>{game.sittingOutPlayers?.length ? game.sittingOutPlayers.join(', ') : '—'}</strong></div>
       </div>
-      {!game.passedOut && round && <table className="detail-table"><thead><tr><th>Spieler</th><th>Konto vorher</th><th>Diese Runde</th><th>Konto nachher</th></tr></thead><tbody>{lineup.map((name) => <tr key={name} className={name === game.declarer ? 'declarer' : ''}><td>{name}{name === game.declarer && <span className="declarer-flag">Alleinspieler</span>}</td><td>{before[name] ?? 0}</td><td className={delta[name] > 0 ? 'delta-up' : delta[name] < 0 ? 'delta-down' : 'muted'}>{delta[name] === 0 ? '0' : signedValue(delta[name])}</td><td><strong>{after[name] ?? 0}</strong></td></tr>)}</tbody></table>}
-      {!game.passedOut && !round && <p className="detail-note">Der Spielstand dieser Runde wird gerade vom Server geladen …</p>}
+      {!game.passedOut && round && <table className="detail-table"><thead><tr><th>Spieler</th><th>Konto vorher</th><th>Dieses Spiel</th><th>Konto nachher</th></tr></thead><tbody>{lineup.map((name) => <tr key={name} className={name === game.declarer ? 'declarer' : ''}><td>{name}{name === game.declarer && <span className="declarer-flag">Alleinspieler</span>}</td><td>{before[name] ?? 0}</td><td className={delta[name] > 0 ? 'delta-up' : delta[name] < 0 ? 'delta-down' : 'muted'}>{delta[name] === 0 ? '0' : signedValue(delta[name])}</td><td><strong>{after[name] ?? 0}</strong></td></tr>)}</tbody></table>}
+      {!game.passedOut && !round && <p className="detail-note">Der Spielstand wird gerade vom Server geladen …</p>}
       {ownResult !== null && <p className="detail-note">{`${game.won ? `Spielwert ${ownValue}` : `Doppelter Spielwert ${ownValue}`} plus ${ownBonus} = ${signedValue(ownResult)} für ${game.declarer} – das ist die Zahl aus der "+/−"-Spalte des Spielprotokolls.`}</p>}
       <p className="detail-note">{game.passedOut ? 'Ein eingepasstes Spiel verändert kein Konto.' : 'Ein gewonnenes Alleinspiel bringt den Spielwert plus 50, ein verlorenes kostet den doppelten Spielwert plus 50. Der Gegnerbonus für ein verlorenes Alleinspiel eines Mitspielers ist schon eingerechnet.'}</p>
       {game.note && <p className="detail-note"><strong>Notiz:</strong> {game.note}</p>}
       <p className="detail-note">Eingetragen am {new Date(game.createdAt).toLocaleString('de-DE')}.</p>
       {onEdit && !canDelete && <p className="detail-note">Nur das letzte Spiel der Liste kann gelöscht werden.</p>}
-      <div className="modal-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>
     </div>
   </div>
 }
@@ -1550,8 +1568,8 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   const rule = gameTypeRules(rules, game.gameType)
 
   // Wer gibt und wer Alleinspieler sein darf, entscheidet das Backend: für eine
-  // neue Runde wird die nächste Runde abgefragt, beim Bearbeiten stehen Geber und
-  // die drei Spieler der Runde schon am Spiel selbst.
+  // Für ein neues Spiel wird der nächste Spielablauf abgefragt; beim Bearbeiten
+  // stehen Geber und die drei Spieler bereits am Spiel selbst.
   useEffect(() => {
     if (existingGame) return
     request(`/tournaments/${tournamentId}/lists/${list.id}/next-round`, { token })
@@ -1565,7 +1583,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   const dealer = round?.dealer ?? ''
   const playing = round?.playingPlayers ?? []
   const sittingOut = round?.sittingOutPlayers ?? []
-  const roundNumber = round?.position ?? (list.gameCount || list.games?.length || 0) + 1
+  const gameNumber = round?.position ?? (list.gameCount || list.games?.length || 0) + 1
   const update = (key, value) => setGame({ ...game, [key]: value })
 
   // Eine Nullspiel-Ansage kennt kein Schneider/Schwarz und umgekehrt: Beim Wechsel
@@ -1614,8 +1632,8 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
     <div className="wizard" role="dialog" aria-modal="true" aria-label="Spiel eintragen" onClick={(event) => event.stopPropagation()}>
       <div className="wizard-top">
         <div>
-          <span className="eyebrow">Spiel {roundNumber}</span>
-          <div className="breadcrumb"><span>→ Spiel {roundNumber}</span>{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>
+          <span className="eyebrow">Spiel {gameNumber}</span>
+          <div className="breadcrumb"><span>→ Spiel {gameNumber}</span>{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>
         </div>
         <button className="modal-close" onClick={onClose}><X size={18} /></button>
       </div>
@@ -1627,18 +1645,18 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
         <div className="wizard-heading">
           <span className="eyebrow">Schritt {step} von 4</span>
           <h2>{step === 1 ? 'Wer ist Alleinspieler?' : step === 2 ? 'Welche Spielart?' : step === 3 ? 'Wie viele Spitzen?' : 'Wie ist das Ergebnis?'}</h2>
-          <p>{step === 1 ? 'Der Geber für diese Runde wird automatisch bestimmt.' : step === 2 ? 'Wähle Grundwert und Ansagen für dieses Spiel.' : step === 3 ? 'Mit oder ohne Spitzen, bis ins Detail.' : 'Trage den tatsächlichen Spielausgang ein.'}</p>
+          <p>{step === 1 ? 'Der Geber für dieses Spiel wird automatisch bestimmt.' : step === 2 ? 'Wähle Grundwert und Ansagen für dieses Spiel.' : step === 3 ? 'Mit oder ohne Spitzen, bis ins Detail.' : 'Trage den tatsächlichen Spielausgang ein.'}</p>
         </div>
 
         {step === 1 && <div className="wizard-section">
           {roundError && <div className="error-message">{roundError}</div>}
-          {!round && !roundError && <p className="wizard-hint">Die Runde wird beim Server abgefragt …</p>}
-          {round && <p className="wizard-hint">Geber dieser Runde: <strong>{dealer}</strong> · es spielen <strong>{playing.join(', ')}</strong>{sittingOut.length > 0 && <> · {sittingOut.join(' und ')} {sittingOut.length > 1 ? 'setzen' : 'setzt'} aus</>}</p>}
+          {!round && !roundError && <p className="wizard-hint">Die Spieldaten werden beim Server abgefragt …</p>}
+          {round && <p className="wizard-hint">Geber dieses Spiels: <strong>{dealer}</strong> · es spielen <strong>{playing.join(', ')}</strong>{sittingOut.length > 0 && <> · {sittingOut.join(' und ')} {sittingOut.length > 1 ? 'setzen' : 'setzt'} aus</>}</p>}
           {round && <div className="choice-grid players-choice">{players.map((player) => {
             const sitsOut = !playing.includes(player)
-            return <button key={player} className={`choice-card player-card ${game.declarer === player ? 'selected' : ''} ${sitsOut ? 'sitting-out' : ''}`} disabled={sitsOut} title={sitsOut ? `${player} sitzt diese Runde aus – Geber ist ${dealer}` : 'Als Alleinspieler wählen'} onClick={() => setGame({ ...game, declarer: player, passedOut: false })}><span className="avatar">{player[0]}</span><span>{player}</span>{game.declarer === player && <Check size={17} />}{sitsOut && <small className="sits-out-flag">setzt aus</small>}</button>
+            return <button key={player} className={`choice-card player-card ${game.declarer === player ? 'selected' : ''} ${sitsOut ? 'sitting-out' : ''}`} disabled={sitsOut} title={sitsOut ? `${player} setzt dieses Spiel aus – Geber ist ${dealer}` : 'Als Alleinspieler wählen'} onClick={() => setGame({ ...game, declarer: player, passedOut: false })}><span className="avatar">{player[0]}</span><span>{player}</span>{game.declarer === player && <Check size={17} />}{sitsOut && <small className="sits-out-flag">setzt aus</small>}</button>
           })}</div>}
-          <button className={`passed-button ${game.passedOut ? 'selected' : ''}`} onClick={() => setGame({ ...game, passedOut: true, declarer: '' })}><RotateCcw size={17} /><span><strong>Eingepasst</strong><small>Kein Alleinspieler in dieser Runde</small></span>{game.passedOut && <Check size={17} />}</button>
+          <button className={`passed-button ${game.passedOut ? 'selected' : ''}`} onClick={() => setGame({ ...game, passedOut: true, declarer: '' })}><RotateCcw size={17} /><span><strong>Eingepasst</strong><small>Kein Alleinspieler in diesem Spiel</small></span>{game.passedOut && <Check size={17} />}</button>
         </div>}
 
         {step === 2 && <div className="wizard-section">

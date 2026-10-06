@@ -232,11 +232,15 @@ export async function listLists(
     prisma.gameList.findMany({
       where,
       include: listWithGamesInclude,
-      // Neueste Listen zuerst: der jüngste Spieltag oben, darin Serie und Tisch wie
-      // im Raum. `createdAt` bricht Gleichstand – ein Platz kann nach dem Abgeben
-      // erneut belegt werden, und dann gehört das jüngere Blatt nach oben (und die
-      // Seiten bleiben eindeutig sortiert).
-      orderBy: [{ matchday: 'desc' }, { series: 'asc' }, { table: 'asc' }, { createdAt: 'desc' }],
+      // Offene Listen zuerst, auch wenn eine abgegebene Liste von einem neueren
+      // Spieltag stammt. Danach folgen neueste Spieltage und die Tischreihenfolge.
+      orderBy: [
+        { status: 'asc' },
+        { matchday: 'desc' },
+        { series: 'asc' },
+        { table: 'asc' },
+        { createdAt: 'desc' },
+      ],
       take: query.limit,
       skip: query.offset,
     }),
@@ -250,7 +254,10 @@ export async function listLists(
     }),
     prisma.gameList.groupBy({
       by: ['series'],
-      where: { tournamentId: tournament.id },
+      where: {
+        tournamentId: tournament.id,
+        ...(query.matchday ? { matchday: parseIsoDate(query.matchday) } : {}),
+      },
       orderBy: { series: 'asc' },
     }),
   ]);

@@ -62,6 +62,8 @@
 .choice-card.sitting-out{background:#f0ece3;border-style:dashed;color:#8f938a}
 .sits-out-flag{position:absolute;bottom:8px;font:9px 'DM Mono';letter-spacing:.3px;color:#9a988f}
 .detail-modal{max-width:680px}
+.detail-modal{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+.detail-actions{position:sticky;top:0;z-index:2;margin:0 0 12px;padding:8px 0;background:#fbfaf6;border-bottom:1px solid var(--line)}
 .detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 22px}
 .detail-item{border-top:2px solid var(--ink);padding:10px 2px;display:flex;flex-direction:column;gap:6px}
 .detail-item>span{font:9px 'DM Mono';text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
@@ -119,7 +121,7 @@ th.passed-col{writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 5px
 td.passed-col{padding:14px 6px}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
-/* Klassisches Protokoll: dickere Linie nach jeder vollen Geberrunde */
+/* Klassisches Protokoll: dickere Linie nach jedem vollständigen Geberzyklus */
 .game-row.round-end td{border-bottom:2px solid var(--line)}
 /* Klassisches Protokoll: die vier Abschlusszeilen unter den Spielen */
 tr.summary>td{background:rgba(37,48,43,.03)}
@@ -443,7 +445,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
    sich, Punkte und Ring kommen nach. Nur `transform`/`opacity`, damit es auf
    kleinen Geräten günstig bleibt; `prefers-reduced-motion` schaltet alles ab.
    --------------------------------------------------------------------------- */
-/* `pathLength="1"` an der Linie: die Länge ist damit 1, egal wie viele Runden die
+/* `pathLength="1"` an der Linie: die Länge ist damit 1, egal wie viele Spiele die
    Kurve hat – sonst müsste die Strichlänge geraten werden und lange Kurven würden
    nach der Animation stricheln. */
 .chart-line{stroke-dasharray:1;stroke-dashoffset:1;animation:draw-line 1s ease forwards}
@@ -494,7 +496,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
      egal wie lang die Spieldetails sind. */
   .modal{overflow:auto;overscroll-behavior:contain}
 
-  /* Karte im Protokoll: erst Runde und Ergebnis, darunter die Spielart mit ihren
+   /* Karte im Protokoll: erst Spielnummer und Ergebnis, darunter die Spielart mit ihren
      Stufen in einer eigenen Zeile. Vorher schoben zwei Stufen das Ergebnis-Badge
      über den Text. */
   .game-card-head{flex-wrap:wrap;gap:8px 10px}
@@ -611,8 +613,8 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
 .list-grid.loading{opacity:.55;pointer-events:none}
 
 /* Handy: das klassische Protokoll als Blöcke – je Spiel erst die Zeile des Spiels
-   (Runde, Spielart, Spitzen, +/−), darunter die drei Werte je Spieler. Die zuletzt
-   gespielte Runde steht oben, darunter folgt die Ergebnistabelle. */
+   (Spielnummer, Spielart, Spitzen, +/−), darunter die drei Werte je Spieler. Das
+   zuletzt gespielte steht oben, darunter folgt die Ergebnistabelle. */
 .classic-games{display:grid;gap:10px;margin-top:12px}
 .classic-game{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
 .classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}

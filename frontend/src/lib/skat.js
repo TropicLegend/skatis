@@ -24,14 +24,14 @@ export const GAME_TYPES = [
 
 /** Line colours of the charts – muted, so they fit the paper-like surface. */
 export const SERIES_COLORS = [
-  '#db6f40',
-  '#527b78',
-  '#647867',
-  '#b7522d',
-  '#7d6a9c',
-  '#bf5142',
-  '#3f7a55',
-  '#a1863f',
+  '#D55E00',
+  '#0072B2',
+  '#009E73',
+  '#CC79A7',
+  '#E69F00',
+  '#332288',
+  '#AA4499',
+  '#555555',
 ]
 
 /**
@@ -127,10 +127,10 @@ export function outcomeLabel(game) {
 // annimmt – siehe `backend/src/modules/lists/round-preview.ts`.
 
 /**
- * Der Kontostand vor und nach jeder Runde, wie ihn
+ * Der Kontostand vor und nach jedem Spiel, wie ihn
  * `GET /lists/:listId/progression` liefert: `before` ist der Stand davor, `delta`
- * die Veränderung dieser Runde und `after` der Stand danach – der Spielstand
- * „vor und nach dem Spiel" einer Runde.
+ * die Veränderung dieses Spiels und `after` der Stand danach – der Spielstand
+ * davor und danach.
  */
 export function roundAccounts(progression) {
   const names = progression?.lineup ?? []
@@ -141,8 +141,8 @@ export function roundAccounts(progression) {
     position: round.position,
     dealer: round.dealer,
     declarer: round.declarer,
-    // Der Server liefert den Stand nach jeder Runde; der Stand davor ist der der
-    // vorigen Runde – vor der ersten Runde steht jedes Konto auf 0.
+    // Der Server liefert den Stand nach jedem Spiel; der Stand davor ist der des
+    // vorigen Spiels – vor dem ersten Spiel steht jedes Konto auf 0.
     before: { ...zero, ...(index === 0 ? {} : rounds[index - 1].accounts) },
     delta: { ...zero, ...round.deltas },
     after: { ...zero, ...round.accounts },
@@ -154,7 +154,7 @@ export function roundAccounts(progression) {
 }
 
 /**
- * Der Kontoverlauf einer Liste als Chartdaten – ein Punkt je Runde. Labels und
+ * Der Kontoverlauf einer Liste als Chartdaten – ein Punkt je Spiel. Labels und
  * Werte kommen aus der Progression des Servers, damit Diagramm und
  * Ergebnistabelle dieselben Zahlen zeigen.
  */
@@ -163,7 +163,7 @@ export function listProgressionChart(progression) {
   const rounds = progression?.rounds ?? []
 
   return {
-    labels: ['Start', ...rounds.map((round) => `R${round.position}`)],
+    labels: ['Start', ...rounds.map((round) => `Spiel ${round.position}`)],
     series: names.map((name, index) => ({
       name,
       color: SERIES_COLORS[index % SERIES_COLORS.length],
@@ -194,11 +194,11 @@ export function withStep(chart, step = 1) {
  * full round at the table) or any number of rounds the user picks.
  */
 export function listScaleOptions(playerCount) {
-  const options = [{ id: 'round', label: 'Jede Runde' }]
+  const options = [{ id: 'round', label: 'Jedes Spiel' }]
   if (playerCount > 1) {
-    options.push({ id: 'lineup', label: `Alle ${playerCount} Runden` })
+    options.push({ id: 'lineup', label: `${playerCount} Spiele je Spieler` })
   }
-  options.push({ id: 'custom', label: 'Eigene Anzahl Runden' })
+  options.push({ id: 'custom', label: 'Eigene Anzahl Spiele' })
   return options
 }
 

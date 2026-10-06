@@ -44,10 +44,10 @@ function listSummary(name, items) {
   return Array.isArray(items) && items.length > 0 ? `${name}: ${items.join(', ')}` : null
 }
 
-/** "Runde 3 · Bert · Kreuz · 48 gewonnen" – what a game did. */
+/** "Spiel 3 · Bert · Kreuz · 48 gewonnen" – what a game did. */
 function gameText(details) {
   const parts = []
-  if (details?.position !== undefined) parts.push(`Runde ${details.position}`)
+  if (details?.position !== undefined) parts.push(`Spiel ${details.position}`)
   if (details?.declarer) parts.push(details.declarer)
   if (details?.gameType) parts.push(gameTypeLabel(details.gameType))
   if (typeof details?.gameValue === 'number') {
