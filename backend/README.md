@@ -1895,12 +1895,11 @@ number outside of 1…999 (the schema is strict, so `matchday` is rejected too),
 #### `DELETE /tournaments/:tournamentId/lists/:listId`
 
 **Response** `204` – no body, removes the list and all its games. Admins may
-delete any list. Members may delete only an empty list that is still open and
-editable on the current matchday.
+delete any list. Members may delete an empty list while its stored status is
+`OPEN`, regardless of its matchday. A list containing any games is admin-only.
 
-**Errors:** `403` member tries to delete a list with games or of another day,
-`404` unknown list, `409` member tries to delete a submitted list on the current
-matchday.
+**Errors:** `403` member tries to delete a list with games, `404` unknown list,
+`409` member tries to delete a list whose status is `SUBMITTED`.
 
 ### Games
 

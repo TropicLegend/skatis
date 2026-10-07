@@ -64,6 +64,8 @@
 .detail-modal{max-width:680px}
 .detail-modal{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
 .detail-actions{position:sticky;top:0;z-index:2;margin:0 0 12px;padding:8px 0;background:#fbfaf6;border-bottom:1px solid var(--line)}
+.suit-icon.suit-pik{color:#2f7d32}
+.suit-icon.suit-karo{color:#a87800}
 .detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 22px}
 .detail-item{border-top:2px solid var(--ink);padding:10px 2px;display:flex;flex-direction:column;gap:6px}
 .detail-item>span{font:9px 'DM Mono';text-transform:uppercase;letter-spacing:1px;color:var(--muted)}

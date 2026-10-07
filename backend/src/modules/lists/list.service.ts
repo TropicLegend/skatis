@@ -528,7 +528,6 @@ export async function deleteList(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
   assertListDeletable(list.status, list.games.length, role);
 
   const details = { ...listDetails(list), gameCount: list.games.length };
