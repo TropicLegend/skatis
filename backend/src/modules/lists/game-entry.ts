@@ -1,6 +1,12 @@
 import { conflict } from '../../lib/http-error.js';
 import type { GameInput } from './game.schemas.js';
-import { MAX_LINEUP, MIN_LINEUP, playingPlayers, sittingOutPlayers } from './game-rules.js';
+import {
+  MAX_GAMES_PER_LIST,
+  MAX_LINEUP,
+  MIN_LINEUP,
+  playingPlayers,
+  sittingOutPlayers,
+} from './game-rules.js';
 
 /**
  * Steps of the game entry flow that need the data of a list. Kept apart from
@@ -15,6 +21,16 @@ export function assertLineupComplete(playerCount: number): void {
   if (playerCount < MIN_LINEUP || playerCount > MAX_LINEUP) {
     throw conflict(`A list consists of ${MIN_LINEUP}, ${MIN_LINEUP + 1} or ${MAX_LINEUP} players`, {
       players: playerCount,
+    });
+  }
+}
+
+/** A list is full at some point – see `MAX_GAMES_PER_LIST`. */
+export function assertRoomForGame(gameCount: number): void {
+  if (gameCount >= MAX_GAMES_PER_LIST) {
+    throw conflict(`A list holds at most ${MAX_GAMES_PER_LIST} games – start a new list`, {
+      gameCount,
+      maxGames: MAX_GAMES_PER_LIST,
     });
   }
 }

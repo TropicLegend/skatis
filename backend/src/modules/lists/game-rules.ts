@@ -9,6 +9,13 @@ import type { GameType, Matadors } from '@prisma/client';
 export const MIN_LINEUP = 3;
 export const MAX_LINEUP = 5;
 
+/**
+ * How many games a list holds at most. A sheet has 36 to 60 rows, so this is far
+ * more than an evening needs – it only keeps a list from growing without end,
+ * because every read of a list loads all its games.
+ */
+export const MAX_GAMES_PER_LIST = 200;
+
 /** Grundwerte of the suit and grand games. */
 export const BASE_VALUES: Record<Exclude<GameType, 'NULL'>, number> = {
   KARO: 9,

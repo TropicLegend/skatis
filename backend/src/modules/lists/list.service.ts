@@ -1,5 +1,5 @@
 import type { ListStatus, Prisma, Tournament } from '@prisma/client';
-import { conflict, notFound } from '../../lib/http-error.js';
+import { conflict, forbidden, notFound } from '../../lib/http-error.js';
 import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
@@ -532,7 +532,20 @@ export async function deleteList(
 
   const details = { ...listDetails(list), gameCount: list.games.length };
 
-  await prisma.gameList.deleteMany({ where: { id: list.id } });
+  // What a member may delete is repeated as the condition of the delete itself:
+  // a game that was entered – or a submit that happened – since the list was
+  // read above must not disappear with it.
+  const result = await prisma.gameList.deleteMany({
+    where: {
+      id: list.id,
+      ...(role === 'ADMIN' ? {} : { status: 'OPEN', games: { none: {} } }),
+    },
+  });
+  if (result.count === 0) {
+    throw role === 'ADMIN'
+      ? notFound(`List ${listId} does not exist in this tournament`)
+      : forbidden('Only an admin can delete a list that was submitted or contains games.');
+  }
 
   await recordAudit({ tournamentId: tournament.id, role, action: 'list.deleted', details });
 }
@@ -550,6 +563,9 @@ export async function submitList(
   // true for a list whose "bis" has passed.
   assertDayNotOver(list.matchday, 'submitted', matchdayWindowsOf(tournament.matchdayWindows));
   assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  // A sheet without its players cannot be handed in – there is nothing on it,
+  // and nothing could be entered for it either.
+  assertLineupComplete(list.lineup.length);
 
   // Submitting twice is always a mistake – an admin who wants a new timestamp
   // reopens the list first.

@@ -124,7 +124,9 @@ export async function listAuditLog(
     prisma.auditLog.count({ where: { tournamentId: tournament.id } }),
     prisma.auditLog.findMany({
       where: { tournamentId: tournament.id },
-      orderBy: { createdAt: 'desc' },
+      // The id breaks a tie of two entries of the same millisecond, so the pages
+      // of the log never overlap.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
       skip: query.offset,
     }),

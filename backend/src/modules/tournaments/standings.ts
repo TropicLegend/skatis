@@ -316,7 +316,7 @@ export function standingsHistory(
     for (const player of list.players) {
       // A player outside the roster cannot happen through the API; skipping keeps
       // the history consistent with the standing.
-      if (!(player.name in score)) continue;
+      if (!Object.hasOwn(score, player.name)) continue;
 
       score[player.name] = (score[player.name] ?? 0) + player.total;
       gamesPlayed[player.name] = (gamesPlayed[player.name] ?? 0) + player.gamesPlayed;

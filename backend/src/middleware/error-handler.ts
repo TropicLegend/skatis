@@ -103,6 +103,14 @@ function mapError(error: unknown): MappedError {
   return { status: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
 }
 
+/** The wait a `429` announces in its details (see `tooManyRequests`). */
+function retryAfterSeconds(status: number, details: unknown): number | null {
+  if (status !== 429 || typeof details !== 'object' || details === null) return null;
+
+  const { retryAfterSeconds: seconds } = details as { retryAfterSeconds?: unknown };
+  return typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : null;
+}
+
 /** Central error handler – converts every thrown value into the error envelope. */
 export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
   if (res.headersSent) {
@@ -123,6 +131,11 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, next) => {
       { requestId, method: req.method, path: req.originalUrl, status, code },
       'request rejected',
     );
+  }
+
+  const retryAfter = retryAfterSeconds(status, details);
+  if (retryAfter !== null && !res.hasHeader('Retry-After')) {
+    res.setHeader('Retry-After', String(retryAfter));
   }
 
   const body: ErrorResponseBody = { error: { code, message, requestId } };

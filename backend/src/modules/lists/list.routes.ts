@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { withTournamentLock } from '../../lib/keyed-lock.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { gameRouter } from './game.routes.js';
 import { previewNextRound } from './game.service.js';
@@ -23,6 +24,9 @@ import {
 import { listParams } from './params.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
 
+// Every change below runs under the lock of its tournament: the services check
+// a rule and then write, and two changes that arrive together must not both
+// pass the check (see `lib/keyed-lock.ts`).
 export const listRouter = Router({ mergeParams: true });
 
 listRouter.get('/', authenticate(), async (req, res) => {
@@ -45,7 +49,9 @@ listRouter.get('/', authenticate(), async (req, res) => {
 listRouter.post('/', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = createListSchema.parse(req.body ?? {});
-  const list = await createList(tournamentId, body, currentAuth(req).role);
+  const list = await withTournamentLock(tournamentId, () =>
+    createList(tournamentId, body, currentAuth(req).role),
+  );
 
   res.status(201).json({ data: list });
 });
@@ -95,7 +101,9 @@ listRouter.get('/:listId/progression', authenticate(), async (req, res) => {
 /** Members may delete an empty open list; deleting games with a list is admin-only. */
 listRouter.delete('/:listId', authenticate(), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
-  await deleteList(tournamentId, listId, currentAuth(req).role);
+  await withTournamentLock(tournamentId, () =>
+    deleteList(tournamentId, listId, currentAuth(req).role),
+  );
 
   res.status(204).end();
 });
@@ -107,7 +115,9 @@ listRouter.delete('/:listId', authenticate(), async (req, res) => {
 listRouter.patch('/:listId', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
   const body = updateListSchema.parse(req.body ?? {});
-  const list = await updateList(tournamentId, listId, body, currentAuth(req).role);
+  const list = await withTournamentLock(tournamentId, () =>
+    updateList(tournamentId, listId, body, currentAuth(req).role),
+  );
 
   res.json({ data: list });
 });
@@ -115,7 +125,9 @@ listRouter.patch('/:listId', authenticate('ADMIN'), async (req, res) => {
 /** Freezes the list – afterwards members can no longer change it. */
 listRouter.post('/:listId/submit', authenticate(), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
-  const list = await submitList(tournamentId, listId, currentAuth(req).role);
+  const list = await withTournamentLock(tournamentId, () =>
+    submitList(tournamentId, listId, currentAuth(req).role),
+  );
 
   res.json({ data: list });
 });
@@ -123,7 +135,9 @@ listRouter.post('/:listId/submit', authenticate(), async (req, res) => {
 /** Admin only: reopens a submitted list so members can edit it again. */
 listRouter.post('/:listId/reopen', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
-  const list = await reopenList(tournamentId, listId, currentAuth(req).role);
+  const list = await withTournamentLock(tournamentId, () =>
+    reopenList(tournamentId, listId, currentAuth(req).role),
+  );
 
   res.json({ data: list });
 });
@@ -135,7 +149,9 @@ listRouter.post('/:listId/reopen', authenticate('ADMIN'), async (req, res) => {
 listRouter.put('/:listId/players', authenticate(), async (req, res) => {
   const { tournamentId, listId } = listParams.parse(req.params);
   const { playerNames } = setListPlayersSchema.parse(req.body ?? {});
-  const list = await setListPlayers(tournamentId, listId, playerNames, currentAuth(req).role);
+  const list = await withTournamentLock(tournamentId, () =>
+    setListPlayers(tournamentId, listId, playerNames, currentAuth(req).role),
+  );
 
   res.json({ data: list });
 });

@@ -1,17 +1,19 @@
 import { Prisma, type Tournament } from '@prisma/client';
-import { notFound } from '../../lib/http-error.js';
+import { notFound, validationError } from '../../lib/http-error.js';
 import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { prisma } from '../../lib/prisma.js';
 import { generateTournamentId } from '../../lib/tournament-id.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit } from '../audit/audit-log.js';
+import { MAX_LINEUP, MIN_LINEUP } from '../lists/game-rules.js';
 import { matchdayWindowsOf, playingFromIso, type MatchdayWindows } from '../lists/list-access.js';
 import { scoreList, type ListResultsDto } from '../lists/scoring.js';
-import type {
-  CreateTournamentInput,
-  ListTournamentsQuery,
-  UpdateTournamentInput,
+import {
+  SAME_PASSWORD_MESSAGE,
+  type CreateTournamentInput,
+  type ListTournamentsQuery,
+  type UpdateTournamentInput,
 } from './tournament.schemas.js';
 import {
   standingsHistory,
@@ -232,7 +234,14 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
     }),
   ]);
 
-  const matchdays = lists.map((list) =>
+  // A sheet without its players has nothing to score: no game can be entered
+  // before the lineup is complete. Such a list is left out instead of being
+  // counted as an evening – and it can never take the standing down with it.
+  const scorable = lists.filter(
+    (list) => list.lineup.length >= MIN_LINEUP && list.lineup.length <= MAX_LINEUP,
+  );
+
+  const matchdays = scorable.map((list) =>
     scoreList(
       list.lineup.map((entry) => entry.player.name),
       list.games,
@@ -244,7 +253,7 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
     tournamentId: tournament.id,
     roster: roster.map((player) => player.name),
     results: matchdays,
-    games: lists.flatMap((list) => list.games),
+    games: scorable.flatMap((list) => list.games),
   };
 }
 
@@ -327,7 +336,18 @@ export async function updateTournament(
   input: UpdateTournamentInput,
   role: TournamentRole,
 ): Promise<TournamentDto> {
-  await getTournamentRow(tournamentId);
+  const current = await getTournamentRow(tournamentId);
+
+  // The login tries the admin password first, so a player password that equals
+  // it would make every member an admin. Refused before anything is written.
+  if (
+    input.password !== undefined &&
+    (await verifyPassword(input.password, current.adminPasswordHash))
+  ) {
+    throw validationError('Request validation failed', {
+      issues: [{ path: 'password', code: 'custom', message: SAME_PASSWORD_MESSAGE }],
+    });
+  }
 
   const data: Prisma.TournamentUpdateInput = {};
   const changed: string[] = [];
@@ -413,8 +433,9 @@ export async function authenticateTournament(
   });
 
   if (!tournament) {
-    // Hash anyway so that unknown ids take a similar amount of time.
-    await hashPassword(password);
+    // Hash anyway – as often as for an existing tournament, so that an unknown
+    // id costs the same amount of work.
+    await Promise.all([hashPassword(password), hashPassword(password)]);
     return null;
   }
 

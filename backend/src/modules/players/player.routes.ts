@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { withTournamentLock } from '../../lib/keyed-lock.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
 import { createPlayerSchema, playerParams, renamePlayerSchema } from './player.schemas.js';
@@ -23,7 +24,9 @@ playerRouter.get('/', authenticate(), async (req, res) => {
 playerRouter.post('/', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = createPlayerSchema.parse(req.body ?? {});
-  const player = await createPlayer(tournamentId, body, currentAuth(req).role);
+  const player = await withTournamentLock(tournamentId, () =>
+    createPlayer(tournamentId, body, currentAuth(req).role),
+  );
 
   res.status(201).json({ data: player });
 });
@@ -35,7 +38,9 @@ playerRouter.post('/', authenticate('ADMIN'), async (req, res) => {
 playerRouter.patch('/:playerName', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, playerName } = playerParams.parse(req.params);
   const { name } = renamePlayerSchema.parse(req.body ?? {});
-  const player = await renamePlayer(tournamentId, playerName, name, currentAuth(req).role);
+  const player = await withTournamentLock(tournamentId, () =>
+    renamePlayer(tournamentId, playerName, name, currentAuth(req).role),
+  );
 
   res.json({ data: player });
 });
@@ -43,7 +48,9 @@ playerRouter.patch('/:playerName', authenticate('ADMIN'), async (req, res) => {
 /** Admin only: removes a player – only while they are not part of any list. */
 playerRouter.delete('/:playerName', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId, playerName } = playerParams.parse(req.params);
-  await deletePlayer(tournamentId, playerName, currentAuth(req).role);
+  await withTournamentLock(tournamentId, () =>
+    deletePlayer(tournamentId, playerName, currentAuth(req).role),
+  );
 
   res.status(204).end();
 });
