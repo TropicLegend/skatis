@@ -1,4 +1,4 @@
-# Der Image-Build installiert (`npm install` inkl. `prisma generate`) und baut
+# Der Image-Build installiert (`npm ci` inkl. `prisma generate`) und baut
 # alles selbst. Was lokal schon liegt, würde sonst mitkopiert – fremde
 # Plattform-Binaries in einem Alpine-Image und unnötig große Layer.
 node_modules
@@ -6,3 +6,9 @@ dist
 coverage
 npm-debug.log*
 .git
+
+# Geheimnisse gehören nie in ein Image: `.env` enthält `JWT_SECRET` und die
+# Zugangsdaten der Datenbank, und das Image wird veröffentlicht.
+.env
+.env.*
+!.env.example
