@@ -1,5 +1,7 @@
 import 'dotenv/config';
+import { isIP } from 'node:net';
 import { z } from 'zod';
+import { CLOUDFLARE_PROXY_RANGES } from './cloudflare-ips.js';
 
 /**
  * Reads a boolean from the environment. `z.coerce.boolean()` cannot be used for
@@ -24,12 +26,52 @@ const PLACEHOLDER_SECRET = /^replace-me/i;
  * * `false` – nobody; `req.ip` is the address of the socket
  * * a number – that many hops in front of the API (`1` = one reverse proxy,
  *   `2` = a CDN in front of a reverse proxy)
- * * a list of addresses, subnets or the names `loopback`, `linklocal` and
- *   `uniquelocal` – only those proxies are trusted
+ * * a list of addresses and subnets (`192.168.0.0/16`, `2001:db8::/32`) and of
+ *   the names `loopback`, `linklocal`, `uniquelocal` and `cloudflare` – only
+ *   those proxies are trusted. `cloudflare` stands for the published ranges of
+ *   Cloudflare's proxies (`cloudflare-ips.ts`).
  *
  * `true` (trust everything) is refused: every caller could then pick its own
  * address and walk around the rate limit.
  */
+const PROXY_NAMES = new Set(['loopback', 'linklocal', 'uniquelocal']);
+const CLOUDFLARE_NAME = 'cloudflare';
+
+/**
+ * The default covers the usual chain without any setting: Cloudflare in front,
+ * a reverse proxy on the same host or in the private `192.168.*` network behind
+ * it. Express walks `X-Forwarded-For` from the API outwards and stops at the
+ * first address that is none of these – that one is the caller.
+ */
+export const DEFAULT_TRUST_PROXY = 'loopback, 192.168.0.0/16, cloudflare';
+
+/** An address or a subnet in CIDR notation, IPv4 or IPv6. */
+function isAddressOrSubnet(entry: string): boolean {
+  const [address = '', prefix, ...rest] = entry.split('/');
+  if (rest.length > 0) return false;
+
+  const family = isIP(address);
+  if (family === 0) return false;
+  if (prefix === undefined) return true;
+
+  return /^\d{1,3}$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128);
+}
+
+/** The entries of a proxy list, `cloudflare` replaced by its ranges. */
+function proxyList(value: string): string[] {
+  const entries = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .flatMap((entry) => {
+      const name = entry.toLowerCase();
+      if (name === CLOUDFLARE_NAME) return [...CLOUDFLARE_PROXY_RANGES];
+      return PROXY_NAMES.has(name) ? [name] : [entry];
+    });
+
+  return [...new Set(entries)];
+}
+
 const trustProxySchema = z
   .string()
   .trim()
@@ -38,10 +80,23 @@ const trustProxySchema = z
     message:
       'TRUST_PROXY=true would let every caller choose its own address – use a hop count or a list of proxies',
   })
-  .transform((value): false | number | string => {
+  .transform((value, context): false | number | string[] => {
     if (value.toLowerCase() === 'false') return false;
     if (/^\d+$/.test(value)) return Number(value);
-    return value;
+
+    const entries = proxyList(value);
+    for (const entry of entries) {
+      if (PROXY_NAMES.has(entry) || isAddressOrSubnet(entry)) continue;
+
+      context.addIssue({
+        code: 'custom',
+        message:
+          `"${entry}" is no address, subnet or known name ` +
+          '(loopback, linklocal, uniquelocal, cloudflare)',
+      });
+      return z.NEVER;
+    }
+    return entries;
   });
 
 const envSchema = z.object({
@@ -67,7 +122,7 @@ const envSchema = z.object({
    */
   LOGIN_FAILURE_MAX: z.coerce.number().int().min(0).default(100),
   /** Who may report the address of a caller – see `trustProxySchema`. */
-  TRUST_PROXY: trustProxySchema.default('loopback'),
+  TRUST_PROXY: trustProxySchema.prefault(DEFAULT_TRUST_PROXY),
   /** Apply pending database migrations before the server starts serving. */
   AUTO_MIGRATE: booleanSchema.default(true),
 });

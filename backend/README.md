@@ -2242,10 +2242,12 @@ effective limits are multiplied by their number.
   the limit up. While it is used up, nobody can log in to that tournament until
   the window is over – sessions that are already open keep working.
 
-**Behind a proxy the API has to be told who the proxy is** (`TRUST_PROXY`).
-Without that every caller looks like the proxy: all of them share _one_ limit, and
-a single client that keeps logging in wrongly locks everybody else out of the
-login. See [Configuration](#configuration).
+**Behind a proxy the API has to know who the proxy is** (`TRUST_PROXY`). A proxy
+it does not know makes every caller look like that proxy: all of them share _one_
+limit, and a single client that keeps logging in wrongly locks everybody else out
+of the login. The default knows the usual chain – Cloudflare in front, a reverse
+proxy on the same host or in the `192.168.*` network – see
+[Configuration](#configuration) for anything else.
 
 Authenticated endpoints are not rate limited – they require a token, and the only
 way to get one is the login endpoint, which is limited. What a session can create
@@ -2284,11 +2286,17 @@ What you have to do:
 
 - Serve the API over **HTTPS** – tokens and passwords travel inside the request.
   Terminating TLS at a reverse proxy is fine; set HSTS there.
-- Set **`TRUST_PROXY`** to match what is in front of the API (default: a proxy on
-  `loopback`). The rate limits count per caller address – with a wrong value all
-  callers share one limit, or a caller can pick its own address. Check it once:
-  the address in the `429` log lines must be the one of the client, not of the
-  proxy.
+- Make sure **`TRUST_PROXY`** matches what is in front of the API. The default
+  trusts `loopback`, `192.168.0.0/16` and the proxies of Cloudflare; a reverse
+  proxy on another address (the `172.*` gateway of a Docker network, the `10.*`
+  pod network of a cluster) has to be added. The rate limits count per caller
+  address – with a proxy that is not trusted all callers share one limit, with
+  one that is trusted wrongly a caller can pick its own address. Check it once:
+  two connections must not share a `429`.
+- Do not let anything but your proxy reach the API. Whoever connects from a
+  trusted range decides which address the API counts: a machine in the
+  `192.168.*` network that talks to the API directly, or – when the origin is
+  open to the internet – another Cloudflare customer who points a Worker at it.
 - Set **`CORS_ORIGIN`** to the origin of your frontend instead of `*`.
 - Keep `JWT_SECRET` secret and random (at least 32 characters): whoever knows it
   can mint tokens for any tournament. Never bake a `.env` into an image – the
@@ -2346,7 +2354,8 @@ Known limitations:
 | `422 The player password must differ from the admin password`                     | one password for both roles would make every member an admin – choose another player password                          |
 | `422 This name is reserved`                                                       | `.`, `..` and `__proto__` cannot be player names                                                                         |
 | `429 Too many failed attempts`                                                    | too many wrong passwords for this tournament (`LOGIN_FAILURE_MAX`) – wait for `Retry-After` seconds                      |
-| everybody gets `429` on the login although only one client misbehaves             | the API counts the proxy instead of the callers – set `TRUST_PROXY` (see [Configuration](#configuration))               |
+| everybody gets `429` on the login although only one client misbehaves             | the API counts a proxy instead of the callers – add the address of that proxy to `TRUST_PROXY` (see [Configuration](#configuration)) |
+| startup aborts with `… is no address, subnet or known name`                       | an entry of `TRUST_PROXY` has a typo – write subnets as `192.168.0.0/16`, not `192.168.*`                               |
 | startup aborts with `JWT_SECRET still is the placeholder of .env.example`         | generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`                     |
 | `404 List … does not exist in this tournament`                                    | the `:listId` is wrong or the list was deleted – fetch the lists of the evening with `GET /lists?matchday=…`            |
 | `422` with `details.issues[].path`                                                | the field named in `path` is wrong                                                                                      |
@@ -2371,7 +2380,7 @@ All settings come from the environment – see `.env.example`:
 | `RATE_LIMIT_MAX`       | `20`               | Requests per window for the endpoints without a token, `0` disables it |
 | `RATE_LIMIT_WINDOW_MS` | `60000`            | Length of that window in milliseconds                                  |
 | `LOGIN_FAILURE_MAX`    | `100`              | Wrong passwords per window for one tournament, `0` disables it         |
-| `TRUST_PROXY`          | `loopback`         | Which proxies may report the address of a caller – see below           |
+| `TRUST_PROXY`          | `loopback, 192.168.0.0/16, cloudflare` | Which proxies may report the address of a caller – see below |
 | `TZ`                   | system             | Timezone that decides the current matchday (the Docker image defaults to `Europe/Berlin`) |
 | `AUTO_MIGRATE`         | `true`             | Apply pending migrations on startup (`false` skips it)                 |
 
@@ -2381,17 +2390,30 @@ Invalid configuration aborts startup with a list of the offending variables.
 [`trust proxy`](https://expressjs.com/en/guide/behind-proxies.html) setting and
 decides whose `X-Forwarded-For` is believed:
 
-| Value                     | Use it when                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `false`                   | callers connect to the API directly, there is no proxy                       |
-| `loopback` (default)      | a reverse proxy runs on the same host / in the same network namespace        |
-| `1`, `2`, …               | that many proxies are in front of the API – `2` for a CDN such as Cloudflare in front of a reverse proxy |
-| `loopback, 172.16.0.0/12` | only these addresses or subnets are proxies (also: `linklocal`, `uniquelocal`) |
+| Value                                            | Use it when                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `loopback, 192.168.0.0/16, cloudflare` (default) | Cloudflare in front, a reverse proxy on the same host or in the `192.168.*` network – or any part of that chain |
+| `false`                                          | callers connect to the API directly, there is no proxy                       |
+| `1`, `2`, …                                      | that many proxies are in front of the API, whatever their addresses          |
+| `loopback, 172.16.0.0/12, cloudflare`            | a list of your own: addresses, subnets (IPv4 or IPv6) and the names below    |
+
+The names a list may contain: `loopback` (`127.0.0.0/8`, `::1`), `linklocal`,
+`uniquelocal` (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and
+`cloudflare` – the 15 IPv4 and 7 IPv6 ranges Cloudflare publishes at
+<https://www.cloudflare.com/ips/>, kept in `src/config/cloudflare-ips.ts` (read on
+2026-10-08; compare them with that page when Cloudflare announces a change). A
+value of your own **replaces** the default, so repeat what you still need. An
+entry that is no address, subnet or known name aborts startup.
+
+Express reads `X-Forwarded-For` from the API outwards and takes the first address
+that is _not_ in the list for the caller. A caller therefore cannot choose its
+address by sending the header itself: Cloudflare appends the address the request
+really came from, and that is where the walk stops.
 
 `true` (believe everybody) is refused: every caller could then choose its own
-address and walk around the rate limit. With the API in a container the proxy is
-usually **not** on `loopback` – it connects from the gateway of the Docker
-network, so use a hop count or name that subnet.
+address and walk around the rate limit. With the API in a container the reverse
+proxy often connects from the gateway of the Docker network (`172.*`) or from the
+pod network of a cluster (`10.*`) – neither is part of the default, add it.
 
 ## Project structure
 
@@ -2467,6 +2489,7 @@ queries of the services – has to be exercised against a real instance.
   migrations; without them start with `AUTO_MIGRATE=false`.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown (stop accepting requests, close
   the Prisma pool, force exit after 10 s).
-- Run behind a TLS terminating proxy; tokens are sent as bearer headers. Tell the
-  API about that proxy with `TRUST_PROXY`, or the rate limits count the proxy
-  instead of the callers.
+- Run behind a TLS terminating proxy; tokens are sent as bearer headers. The API
+  has to trust that proxy (`TRUST_PROXY`), or the rate limits count the proxy
+  instead of the callers – the default covers Cloudflare, `loopback` and
+  `192.168.*`.

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CLOUDFLARE_PROXY_RANGES } from '../src/config/cloudflare-ips.js';
 
 /**
  * The configuration is read once, when the module is loaded – so every case
@@ -36,8 +37,20 @@ describe('JWT_SECRET', () => {
 });
 
 describe('TRUST_PROXY', () => {
-  it('trusts the loopback interface by default', async () => {
-    expect((await loadEnv({ TRUST_PROXY: undefined })).TRUST_PROXY).toBe('loopback');
+  it('trusts loopback, the private 192.168 network and Cloudflare by default', async () => {
+    const trusted = (await loadEnv({ TRUST_PROXY: undefined })).TRUST_PROXY;
+
+    expect(trusted).toEqual(['loopback', '192.168.0.0/16', ...CLOUDFLARE_PROXY_RANGES]);
+  });
+
+  it('knows the ranges of Cloudflare by name', async () => {
+    const trusted = (await loadEnv({ TRUST_PROXY: 'Cloudflare' })).TRUST_PROXY;
+
+    expect(trusted).toEqual([...CLOUDFLARE_PROXY_RANGES]);
+    // 15 IPv4 and 7 IPv6 ranges, as published at https://www.cloudflare.com/ips/.
+    expect(trusted).toHaveLength(22);
+    expect(trusted).toContain('173.245.48.0/20');
+    expect(trusted).toContain('2606:4700::/32');
   });
 
   it('reads a number as the count of proxies in front of the API', async () => {
@@ -48,14 +61,28 @@ describe('TRUST_PROXY', () => {
     expect((await loadEnv({ TRUST_PROXY: 'false' })).TRUST_PROXY).toBe(false);
   });
 
-  it('keeps a list of proxies as it is', async () => {
-    expect((await loadEnv({ TRUST_PROXY: 'loopback, 172.16.0.0/12' })).TRUST_PROXY).toBe(
-      'loopback, 172.16.0.0/12',
-    );
+  it('reads a list of names, addresses and subnets', async () => {
+    const trusted = (await loadEnv({ TRUST_PROXY: 'Loopback, 172.16.0.0/12 ,10.1.2.3, fd00::/8' }))
+      .TRUST_PROXY;
+
+    expect(trusted).toEqual(['loopback', '172.16.0.0/12', '10.1.2.3', 'fd00::/8']);
+  });
+
+  it('lists an entry once', async () => {
+    const trusted = (await loadEnv({ TRUST_PROXY: 'cloudflare, 173.245.48.0/20, cloudflare' }))
+      .TRUST_PROXY;
+
+    expect(trusted).toHaveLength(CLOUDFLARE_PROXY_RANGES.length);
   });
 
   it('refuses to trust every caller', async () => {
     await expect(loadEnv({ TRUST_PROXY: 'true' })).rejects.toThrow(/TRUST_PROXY/);
+  });
+
+  it('refuses an entry that is no address, subnet or known name', async () => {
+    await expect(loadEnv({ TRUST_PROXY: 'loopback, cloudfare' })).rejects.toThrow(/cloudfare/);
+    await expect(loadEnv({ TRUST_PROXY: '192.168.0.0/33' })).rejects.toThrow(/192\.168\.0\.0\/33/);
+    await expect(loadEnv({ TRUST_PROXY: '192.168.*' })).rejects.toThrow(/TRUST_PROXY/);
   });
 });
 
