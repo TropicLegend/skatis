@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { env } from '../../config/env.js';
 import { unauthorized } from '../../lib/http-error.js';
+import { withTournamentLock } from '../../lib/keyed-lock.js';
 import { issueSessionToken } from '../../lib/tokens.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
-import { rateLimit } from '../../middleware/rate-limit.js';
+import { attemptLimiter, rateLimit } from '../../middleware/rate-limit.js';
 import { revokeSession } from '../../lib/revoked-sessions.js';
 import { auditRouter } from '../audit/audit.routes.js';
 import { listRouter } from '../lists/list.routes.js';
@@ -34,6 +35,11 @@ export const tournamentRouter = Router();
 /** The two endpoints a session starts with need no token, so they are limited. */
 const createLimiter = rateLimit('create', env.RATE_LIMIT_MAX, env.RATE_LIMIT_WINDOW_MS);
 const loginLimiter = rateLimit('login', env.RATE_LIMIT_MAX, env.RATE_LIMIT_WINDOW_MS);
+/**
+ * Wrong passwords are also counted per tournament: guesses that come from many
+ * addresses stay below the limit per address, but they all aim at one id.
+ */
+const loginAttempts = attemptLimiter(env.LOGIN_FAILURE_MAX, env.RATE_LIMIT_WINDOW_MS);
 
 /**
  * Creates a tournament from the name, both passwords and the matchdays.
@@ -73,10 +79,15 @@ tournamentRouter.post('/:tournamentId/session', loginLimiter, async (req, res) =
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const { password } = openSessionSchema.parse(req.body ?? {});
 
+  // Counted before the password is checked and given back when it was right –
+  // see `attemptLimiter`.
+  const attempt = loginAttempts.begin(tournamentId);
+
   const authentication = await authenticateTournament(tournamentId, password);
   if (!authentication) {
     throw unauthorized('Invalid tournament id or password');
   }
+  attempt.release();
 
   const { token, expiresAt } = issueSessionToken(
     tournamentId,
@@ -176,7 +187,9 @@ tournamentRouter.get(
 tournamentRouter.patch('/:tournamentId', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
   const body = updateTournamentSchema.parse(req.body ?? {});
-  const tournament = await updateTournament(tournamentId, body, currentAuth(req).role);
+  const tournament = await withTournamentLock(tournamentId, () =>
+    updateTournament(tournamentId, body, currentAuth(req).role),
+  );
 
   res.json({ data: tournament });
 });

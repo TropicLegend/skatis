@@ -13,7 +13,12 @@ import {
   updateListSchema,
 } from '../src/modules/lists/list.schemas.js';
 import { gameSchema, playedGameSchema } from '../src/modules/lists/game.schemas.js';
-import { createPlayerSchema, lineupSchema } from '../src/modules/players/player.schemas.js';
+import {
+  createPlayerSchema,
+  lineupSchema,
+  playerParams,
+  renamePlayerSchema,
+} from '../src/modules/players/player.schemas.js';
 
 const validTournament = {
   name: 'Mittwochsrunde',
@@ -65,6 +70,30 @@ describe('createTournamentSchema', () => {
       matchdayWindows: windows,
     });
     expect(createTournamentSchema.parse(validTournament).matchdayWindows).toBeUndefined();
+  });
+
+  it('refuses one password for both roles', () => {
+    // The login tries the admin password first – a shared password would make
+    // every member an admin.
+    const result = createTournamentSchema.safeParse({
+      ...validTournament,
+      adminPassword: 'das-gleiche-passwort',
+      password: 'das-gleiche-passwort',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['password']);
+  });
+
+  it('compares the passwords the way they are hashed', () => {
+    // "ﬁ" (U+FB01) and "fi" are the same password after NFKC.
+    expect(() =>
+      createTournamentSchema.parse({
+        ...validTournament,
+        adminPassword: 'ﬁnale-2026',
+        password: 'finale-2026',
+      }),
+    ).toThrow();
   });
 
   it('rejects invalid playing times', () => {
@@ -194,6 +223,40 @@ describe('players', () => {
 
   it('rejects names longer than 64 characters', () => {
     expect(() => createPlayerSchema.parse({ name: 'a'.repeat(65) })).toThrow();
+  });
+
+  it('refuses names a browser would resolve as a path', () => {
+    // `…/players/..` is `…/` once a browser has normalised it: the rename of
+    // such a player would reach the tournament instead.
+    expect(() => createPlayerSchema.parse({ name: '.' })).toThrow();
+    expect(() => createPlayerSchema.parse({ name: '..' })).toThrow();
+    expect(() => renamePlayerSchema.parse({ name: ' .. ' })).toThrow();
+    expect(createPlayerSchema.parse({ name: 'J. R.' })).toEqual({ name: 'J. R.' });
+    expect(createPlayerSchema.parse({ name: '...' })).toEqual({ name: '...' });
+  });
+
+  it('refuses a name that is no usable key of a result table', () => {
+    expect(() => createPlayerSchema.parse({ name: '__proto__' })).toThrow();
+    expect(() => renamePlayerSchema.parse({ name: '__proto__' })).toThrow();
+    // Only that one name is special – these are ordinary keys.
+    expect(createPlayerSchema.parse({ name: 'constructor' })).toEqual({ name: 'constructor' });
+    expect(createPlayerSchema.parse({ name: 'toString' })).toEqual({ name: 'toString' });
+  });
+
+  it('refuses control characters in a name', () => {
+    expect(() => createPlayerSchema.parse({ name: 'Anna\nBert' })).toThrow();
+    expect(() => createPlayerSchema.parse({ name: 'Anna\u0000' })).toThrow();
+    expect(() => createPlayerSchema.parse({ name: 'An\u001bna' })).toThrow();
+    expect(createPlayerSchema.parse({ name: 'Jörg-Peter Müller' })).toEqual({
+      name: 'Jörg-Peter Müller',
+    });
+  });
+
+  it('still addresses a player whose name predates these rules', () => {
+    expect(playerParams.parse({ tournamentId: 'k7m2p4qx', playerName: '..' })).toEqual({
+      tournamentId: 'K7M2P4QX',
+      playerName: '..',
+    });
   });
 
   it('rejects a lineup that contains a player twice', () => {

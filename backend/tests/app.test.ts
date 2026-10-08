@@ -1,6 +1,9 @@
+import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { tooManyRequests } from '../src/lib/http-error.js';
+import { errorHandler } from '../src/middleware/error-handler.js';
 import { isSessionRevoked, revokeSession } from '../src/lib/revoked-sessions.js';
 import { currentSessionVersion } from '../src/lib/session-version.js';
 import { issueSessionToken } from '../src/lib/tokens.js';
@@ -411,6 +414,88 @@ describe('api', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('sends the hardening headers with every answer', async () => {
+    const paths = ['/api/health', '/api/does-not-exist', `/api/tournaments/${TOURNAMENT_ID}/lists`];
+
+    for (const path of paths) {
+      const response = await request(app).get(path);
+
+      expect(response.headers['x-content-type-options'], path).toBe('nosniff');
+      expect(response.headers['x-frame-options'], path).toBe('DENY');
+      expect(response.headers['referrer-policy'], path).toBe('no-referrer');
+      // Answers carry tokens and tournament data – nothing may keep a copy.
+      expect(response.headers['cache-control'], path).toBe('no-store');
+      expect(response.headers['content-security-policy'], path).toContain("default-src 'none'");
+      expect(response.headers['x-powered-by'], path).toBeUndefined();
+    }
+  });
+
+  it('does not read a form body – only JSON', async () => {
+    // A form is what another website can post from a visitor's browser without a
+    // preflight. The payload below would be a valid tournament as JSON.
+    const response = await request(app)
+      .post('/api/tournaments')
+      .type('form')
+      .send({ name: 'Mittwochsrunde', adminPassword: 'admin-secret', password: 'member-secret' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses one password for both roles before touching the database', async () => {
+    const response = await request(app)
+      .post('/api/tournaments')
+      .send({
+        name: 'Mittwochsrunde',
+        adminPassword: 'das-gleiche-passwort',
+        password: 'das-gleiche-passwort',
+        matchdays: [3],
+      });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.details.issues[0].path).toBe('password');
+  });
+
+  it('refuses a reserved player name before touching the database', async () => {
+    const { token } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
+
+    for (const name of ['..', '.', '__proto__']) {
+      const created = await request(app)
+        .post(`/api/tournaments/${TOURNAMENT_ID}/players`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name });
+      expect(created.status, name).toBe(422);
+
+      const renamed = await request(app)
+        .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Anna`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name });
+      expect(renamed.status, name).toBe(422);
+    }
+  });
+
+  it('announces the wait of a 429 as Retry-After', async () => {
+    const limited = express();
+    limited.get('/limited', () => {
+      throw tooManyRequests('Too many failed attempts – try again in 42 seconds', 42);
+    });
+    limited.use(errorHandler);
+
+    const response = await request(limited).get('/limited');
+
+    expect(response.status).toBe(429);
+    expect(response.headers['retry-after']).toBe('42');
+    expect(response.body.error.details).toEqual({ retryAfterSeconds: 42 });
+  });
+
+  it('tells a cache that the answer depends on the origin only when it does', async () => {
+    // `CORS_ORIGIN=*` (the default of the suite): every origin gets the same answer.
+    const response = await request(app).get('/api/health').set('Origin', 'http://localhost:5173');
+
+    expect(response.headers['access-control-allow-origin']).toBe('*');
+    expect(response.headers.vary ?? '').not.toContain('Origin');
   });
 
   it('handles cors preflight requests', async () => {

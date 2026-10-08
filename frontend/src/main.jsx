@@ -6,6 +6,21 @@ import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit
 import PieChart from './components/PieChart.jsx'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withLevelChain, withStep } from './lib/skat.js'
 import { setDesktopOverride, useMobile } from './lib/useMedia.js'
+// Die Schriften liegen im Paket und kommen vom eigenen Server: kein Aufruf bei
+// einem Dritten, bevor die Seite steht – und die Content-Security-Policy braucht
+// keine fremde Adresse. Geladen werden genau die Schnitte, die das CSS benutzt
+// (`font-synthesis:none` – was fehlt, wird nicht nachgebildet).
+import '@fontsource/manrope/400.css'
+import '@fontsource/manrope/500.css'
+import '@fontsource/manrope/600.css'
+import '@fontsource/manrope/700.css'
+import '@fontsource/manrope/800.css'
+import '@fontsource/dm-mono/400.css'
+import '@fontsource/dm-mono/500.css'
+import '@fontsource/playfair-display/600.css'
+import '@fontsource/playfair-display/700.css'
+import '@fontsource/playfair-display/600-italic.css'
+import '@fontsource/playfair-display/700-italic.css'
 import './styles.css'
 
 // Die Basis-URL der API lässt sich beim Bauen überschreiben (`VITE_API_BASE`), damit
@@ -43,7 +58,6 @@ function setDesktopMode(on) {
 // Vor dem ersten Rendern anwenden, damit die Ansicht nicht kurz umspringt.
 applyDesktopMode(desktopModeStored())
 
-const today = new Date().toISOString().slice(0, 10)
 const weekdays = [['1', 'Montag'], ['2', 'Dienstag'], ['3', 'Mittwoch'], ['4', 'Donnerstag'], ['5', 'Freitag'], ['6', 'Samstag'], ['7', 'Sonntag']]
 
 /** "1" → "Montag" – die Tage, an denen ein Turnier gespielt wird. */
@@ -138,9 +152,15 @@ async function request(path, options = {}) {
     ...init,
     body: body ? JSON.stringify(body) : undefined,
   })
-  const payload = response.status === 204 ? null : await response.json()
+  // Nicht jede Antwort ist JSON: Ein Proxy vor der API meldet einen Ausfall mit
+  // einer HTML-Seite. Die soll als verständlicher Fehler ankommen, nicht als
+  // „Unexpected token <“.
+  const payload = response.status === 204 ? null : await response.json().catch(() => null)
   if (!response.ok) {
-    const error = new Error(payload?.error?.message || 'Die Anfrage konnte nicht verarbeitet werden.')
+    // Bei einer abgelehnten Eingabe (422) sagt erst der einzelne Hinweis, was nicht
+    // stimmt – die Meldung selbst lautet immer nur „Request validation failed“.
+    const issue = response.status === 422 ? payload?.error?.details?.issues?.[0]?.message : null
+    const error = new Error(issue || payload?.error?.message || (response.status >= 500 ? 'Der Server ist gerade nicht erreichbar. Bitte versuche es gleich noch einmal.' : 'Die Anfrage konnte nicht verarbeitet werden.'))
     // Beim Anmelden selbst bedeutet 401 nur „falsches Passwort“ – dort darf die
     // Sitzungs-Meldung nicht dazwischenfunken. Sonst ist ein 401 der Beweis,
     // dass dieses Token nicht mehr gilt: Der Fehler wird als Sitzungs-Ablehnung
@@ -156,6 +176,7 @@ async function request(path, options = {}) {
     error.status = response.status
     throw error
   }
+  if (payload === null && response.status !== 204) throw new Error('Der Server hat unerwartet geantwortet. Bitte versuche es gleich noch einmal.')
   return withMeta ? payload : payload?.data
 }
 
@@ -332,18 +353,22 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('skatis-token'))
   const [role, setRole] = useState(localStorage.getItem('skatis-role'))
   const [tournament, setTournament] = useState(() => {
-    const stored = localStorage.getItem('skatis-tournament')
-    return stored ? JSON.parse(stored) : null
+    // Ein beschädigter Eintrag darf die Seite nicht leer lassen – dann eben ohne.
+    try {
+      const stored = localStorage.getItem('skatis-tournament')
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
   })
   const [lists, setLists] = useState([])
   const [selectedList, setSelectedList] = useState(null)
-  const [view, setView] = useState(token ? 'dashboard' : 'login')
+  // Ohne das Turnier zum Token gibt es kein Board – dann beginnt es bei der Anmeldung.
+  const [view, setView] = useState(token && tournament?.id ? 'dashboard' : 'login')
   const [notice, setNotice] = useState('')
   // Grund, warum jemand wieder auf der Anmeldeseite steht (z. B. Passwortwechsel).
   const [loginNotice, setLoginNotice] = useState('')
 
   async function login(id, password) {
-    const session = await request(`/tournaments/${id.trim()}/session`, { method: 'POST', body: { password }, skipSessionExpiry: true })
+    const session = await request(`/tournaments/${encodeURIComponent(id.trim())}/session`, { method: 'POST', body: { password }, skipSessionExpiry: true })
     localStorage.setItem('skatis-token', session.token)
     localStorage.setItem('skatis-tournament', JSON.stringify(session.tournament))
     localStorage.setItem('skatis-role', session.role)
@@ -588,6 +613,9 @@ function Login({ onLogin, onCreate, notice = '' }) {
       if (mode === 'login') { await onLogin(form.id, form.password); return }
       const { windows: matchdayWindows, error: windowError } = showTimes ? windowsFrom(form.matchdays, form.windows) : {}
       if (windowError) { setError(windowError); return }
+      // Mit einem gemeinsamen Passwort wäre jedes Mitglied Admin – der Server lehnt
+      // das ab, hier steht der Grund auf Deutsch.
+      if (form.password.normalize('NFKC') === form.adminPassword.normalize('NFKC')) { setError('Spieler- und Admin-Passwort müssen sich unterscheiden – sonst wäre jedes Mitglied Admin.'); return }
       await onCreate({ name: form.name, password: form.password, adminPassword: form.adminPassword, matchdays: form.matchdays, matchdayWindows })
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
@@ -710,11 +738,12 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   // Mini-Ranglisten der Karten: Geladen wird, was noch fehlt – die Listen der
   // Spieler-Seite und die der aktuellen Seite der Übersicht.
   useEffect(() => {
-    const missing = [...new Set([...lists, ...page.items].map((list) => list.id))].filter((id) => !listRankings[id])
+    const missing = [...new Set([...lists, ...page.items].map((list) => list.id))].filter((id) => !(id in listRankings))
     if (!missing.length) return
-    Promise.all(missing.map(async (id) => [id, await request(`/tournaments/${tournament.id}/lists/${id}/results`, { token })]))
-      .then((entries) => setListRankings((current) => ({ ...current, ...Object.fromEntries(entries) })))
-      .catch(() => {})
+    // Jede Tabelle für sich: Scheitert eine, stehen die anderen trotzdem da. Die
+    // gescheiterte merkt sich `null`, damit sie nicht in einer Schleife neu gefragt wird.
+    Promise.allSettled(missing.map((id) => request(`/tournaments/${tournament.id}/lists/${id}/results`, { token })))
+      .then((outcomes) => setListRankings((current) => ({ ...current, ...Object.fromEntries(outcomes.map((outcome, index) => [missing[index], outcome.status === 'fulfilled' ? outcome.value : null])) })))
   }, [lists, page.items, tournament?.id, token, listRankings])
 
   /** Die Spieler-Seite als Schritt in der Historie öffnen. */
@@ -1064,7 +1093,10 @@ function CreateListModal({ token, tournament, role, players, lists, canManagePla
   useBackToClose(onClose)
   useScrollLock()
   const rules = useRules()
-  const [form, setForm] = useState({ matchday: today, series: 1, table: 1 }); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  // Der Vorschlag ist der heutige Tag des Geräts – beim Öffnen des Dialogs bestimmt,
+  // nicht beim Laden der Seite: eine App, die über Nacht offen blieb, schlüge sonst
+  // gestern vor, und Mitglieder dürfen nur für heute anlegen.
+  const [form, setForm] = useState(() => ({ matchday: localToday(), series: 1, table: 1 })); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   // Ein Tisch spielt immer nur eine Liste: solange die Liste zu diesem Spieltag,
   // dieser Serie und diesem Tisch offen ist, darf keine zweite entstehen. Der
   // Server prüft dasselbe noch einmal – hier spart es nur den Fehlversuch.
@@ -1108,7 +1140,12 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   const [editingGame, setEditingGame] = useState(null)
   const [detailGame, setDetailGame] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  // Was geklappt hat und was nicht, sind zwei verschiedene Meldungen: ein Fehler
+  // darf nicht im grünen Kasten einer Erfolgsmeldung stehen.
   const [notice, setNotice] = useState('')
+  const [problem, setProblem] = useState('')
+  const succeed = (text) => { setProblem(''); setNotice(text) }
+  const fail = (error) => { setNotice(''); setProblem(errorNotice(error)) }
   const [progression, setProgression] = useState(null)
   const [results, setResults] = useState(null)
   const [scale, setScale] = useState('round')
@@ -1140,25 +1177,27 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
       const saved = await request(path, { method: isEditing ? 'PUT' : 'POST', token, body: game })
       const games = isEditing ? list.games.map((item) => item.id === saved.id ? saved : item) : [...(list.games || []), saved]
       onUpdated({ ...list, games, gameCount: games.length, totalGameValue: games.reduce((sum, item) => sum + (item.gameValue || 0), 0) })
-      await loadDetails()
       setShowWizard(false); setEditingGame(null)
-      setNotice(isEditing ? 'Spiel wurde aktualisiert.' : 'Spiel wurde eingetragen.')
-    } catch (e) { setNotice(errorNotice(e)) }
+      succeed(isEditing ? 'Spiel wurde aktualisiert.' : 'Spiel wurde eingetragen.')
+      // Das Spiel ist gespeichert – scheitert nur das Nachladen der Tabellen, ist
+      // das ein eigener Hinweis und kein gescheitertes Speichern.
+      await loadDetails().catch(fail)
+    } catch (e) { fail(e) }
   }
 
   async function updateList(action) {
     try {
       const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}/${action}`, { method: 'POST', token })
       onUpdated(updated)
-      setNotice(action === 'submit' ? 'Liste wurde geschlossen.' : 'Liste wurde wieder geöffnet.')
-    } catch (e) { setNotice(errorNotice(e)) }
+      succeed(action === 'submit' ? 'Liste wurde geschlossen.' : 'Liste wurde wieder geöffnet.')
+    } catch (e) { fail(e) }
   }
 
   function deleteList() { setConfirmDelete(true) }
 
   async function removeList() {
     setConfirmDelete(false)
-    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onDeleted() } catch (e) { setNotice(errorNotice(e)) }
+    try { await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'DELETE', token }); onDeleted() } catch (e) { fail(e) }
   }
 
   // Ein Spiel entfernen: Die übrigen Spiele behalten ihre Nummer und ihren Geber –
@@ -1170,12 +1209,12 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
       await request(`/tournaments/${tournament.id}/lists/${list.id}/games/${game.id}`, { method: 'DELETE', token })
       const games = (list.games || []).filter((item) => item.id !== game.id)
       onUpdated({ ...list, games, gameCount: games.length, totalGameValue: games.reduce((sum, item) => sum + (item.gameValue || 0), 0) })
-      await loadDetails()
-      setNotice('Spiel wurde gelöscht.')
-    } catch (e) { setNotice(errorNotice(e)) }
+      succeed('Spiel wurde gelöscht.')
+      await loadDetails().catch(fail)
+    } catch (e) { fail(e) }
   }
 
-  useEffect(() => { loadDetails().catch((error) => setNotice(errorNotice(error))) }, [list.id])
+  useEffect(() => { loadDetails().catch(fail) }, [list.id])
 
   const lineup = (list.players || []).map((player) => player.name)
   const lastGamePosition = Math.max(0, ...(list.games || []).map((game) => game.position))
@@ -1193,23 +1232,24 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
         {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Schließen</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
         {canDeleteList && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
-        <button className="primary-button" disabled={list.locked} onClick={() => { setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
+        <button className="primary-button" disabled={list.locked} onClick={() => { setProblem(''); setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
       </div>
     </div>
     {notice && <div className="success-message">{notice}</div>}
+    {problem && <div className="error-message workspace-problem" role="alert">{problem}</div>}
     <div className="workspace-grid">
-      <GameTable list={list} rounds={rounds} results={results} canEdit={canEdit} onSelect={setDetailGame} onEdit={(game) => { setEditingGame(game); setShowWizard(true) }}>
+      <GameTable list={list} rounds={rounds} results={results} canEdit={canEdit} onSelect={setDetailGame} onEdit={(game) => { setProblem(''); setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Spiele je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
         </ProgressChart>
       </GameTable>
     </div>
-    {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} onClose={() => { setShowWizard(false); setEditingGame(null) }} onSave={saveGame} />}
+    {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} error={problem} onClose={() => { setShowWizard(false); setEditingGame(null); setProblem('') }} onSave={saveGame} />}
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
     {confirmSubmit && <ConfirmSheet title="Liste abgeben?" text="Willst du die Liste wirklich abgeben?" confirmLabel="Liste abgeben" onCancel={() => setConfirmSubmit(false)} onConfirm={() => { setConfirmSubmit(false); updateList('submit') }} />}
     {confirmGame && <ConfirmSheet title={`Spiel ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
-    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} canDelete={canEdit && detailGame.position === lastGamePosition} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit && detailGame.position === lastGamePosition ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
-    {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); setNotice('Tisch und Serie wurden gespeichert.') }} />}
+    {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} canDelete={canEdit && detailGame.position === lastGamePosition} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setProblem(''); setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit && detailGame.position === lastGamePosition ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
+    {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); succeed('Tisch und Serie wurden gespeichert.') }} />}
   </Shell>
 }
 
@@ -1545,7 +1585,28 @@ function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete })
   </div>
 }
 
-function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }) {
+/**
+ * Ein gespeichertes Spiel als Ausgangspunkt des Wizards. Ein eingepasstes Spiel hat
+ * keine Eigenschaften – der Server liefert dafür `null` (Spielart, Ausgang,
+ * Spitzen). Im Wizard sind das die Vorgaben eines neuen Spiels: Sonst stünde beim
+ * Umtragen auf „gespielt“ kein Ausgang fest, angezeigt würde „Verloren“, und der
+ * Server lehnte das Spiel ab.
+ */
+function wizardGame(existingGame) {
+  if (!existingGame) return { ...initialGame, nullVariant: 'normal' }
+  return {
+    ...initialGame,
+    ...existingGame,
+    declarer: existingGame.declarer ?? '',
+    gameType: existingGame.gameType ?? '',
+    won: existingGame.won ?? initialGame.won,
+    note: existingGame.note ?? '',
+    matadors: existingGame.matadors ?? initialGame.matadors,
+    nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal',
+  }
+}
+
+function GameWizard({ list, existingGame, token, tournamentId, error = '', onClose, onSave }) {
   useEscape(onClose)
   useBackToClose(onClose)
   useScrollLock()
@@ -1558,7 +1619,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   // Der Server liefert für ein Nullspiel `matadors: null` – im Wizard bleiben die
   // Spitzen aber immer ein Objekt, sonst bricht Schritt 3 zusammen (Zurückgehen
   // vom Ergebnis).
-  const [game, setGame] = useState(existingGame ? { ...initialGame, ...existingGame, matadors: existingGame.matadors ?? initialGame.matadors, nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal' } : { ...initialGame, nullVariant: 'normal' })
+  const [game, setGame] = useState(() => wizardGame(existingGame))
   const [custom, setCustom] = useState(false)
   const players = list.players?.map((p) => p.name) || []
   const matadorChoices = [1, 2, 3, 4]
@@ -1592,9 +1653,13 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
   function selectGameType(id) {
     const isNull = id === 'NULL'
     const crossed = (game.gameType === 'NULL') !== isNull
+    // Ein Grand kennt höchstens 4 Spitzen: Wer von einem Farbspiel „mit 7“ kommt,
+    // nähme die 7 sonst mit – der Server lehnt sie ab.
+    const maximum = gameTypeRules(rules, id)?.maxMatadors
     setGame({
       ...game,
       gameType: id,
+      matadors: maximum && game.matadors.count > maximum ? { ...game.matadors, count: maximum } : game.matadors,
       nullVariant: 'normal',
       hand: crossed ? false : game.hand,
       offen: crossed ? false : game.offen,
@@ -1605,7 +1670,10 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
     })
   }
 
-  const canNext = step === 1 ? game.passedOut || playing.includes(game.declarer) : step === 2 ? game.gameType : step === 3 ? game.matadors.count : true
+  // Spitzen: eine ganze Zahl von 1 bis zum Höchstwert der Spielart – das freie
+  // Feld hinter „Mehr …“ nimmt sonst auch 0 oder 99 an.
+  const matadorsValid = Number.isInteger(game.matadors.count) && game.matadors.count >= 1 && game.matadors.count <= (rule?.maxMatadors ?? 11)
+  const canNext = step === 1 ? game.passedOut || playing.includes(game.declarer) : step === 2 ? game.gameType : step === 3 ? matadorsValid : game.gameType === 'NULL' || matadorsValid
   // Ein Nullspiel kennt keine Spitzen: Schritt 3 wird in beide Richtungen
   // übersprungen – vorwärts (siehe `next`) und zurück von Schritt 4.
   const previousStep = step === 4 && game.gameType === 'NULL' ? 2 : step - 1
@@ -1621,7 +1689,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
     if (step < 4) return go(step + 1)
     if (game.passedOut) return onSave({ passedOut: true, note: game.note })
 
-    const { id, position, dealer, players: gamePlayers, gameValue, positiveGameValue, negativeGameValue, nullVariant, createdAt, updatedAt, matadors, ...payload } = game
+    const { id, position, dealer, players: gamePlayers, sittingOutPlayers, gameValue, positiveGameValue, negativeGameValue, nullVariant, createdAt, updatedAt, matadors, ...payload } = game
     // Ein Nullspiel hat keine Spitzen, der Server lehnt sie dort ab.
     return onSave(game.gameType === 'NULL' ? payload : { ...payload, matadors })
   }
@@ -1699,6 +1767,7 @@ function GameWizard({ list, existingGame, token, tournamentId, onClose, onSave }
             <small className="field-hint">Schwarz gespielt heißt immer auch Schneider gespielt.</small>
           </div>}
         </div>}
+        {error && <div className="error-message" role="alert">{error}</div>}
         </div>
       </div>
 

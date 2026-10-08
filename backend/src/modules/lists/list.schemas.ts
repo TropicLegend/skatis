@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { lineupSchema } from '../players/player.schemas.js';
 import { isoDateSchema } from '../tournaments/tournament.schemas.js';
+import { MAX_GAMES_PER_LIST } from './game-rules.js';
 import { gameSchema } from './game.schemas.js';
 
 /**
@@ -27,7 +28,7 @@ export const createListSchema = z.object({
   /** The lineup of the table in seating order (3, 4 or 5 names). */
   playerNames: lineupSchema.optional(),
   /** Games are appended in order – the API assigns the round numbers. */
-  games: z.array(gameSchema).max(200).optional(),
+  games: z.array(gameSchema).max(MAX_GAMES_PER_LIST).optional(),
 });
 
 /**

@@ -75,14 +75,32 @@ export const tournamentIdParams = z.object({
   tournamentId: tournamentIdSchema,
 });
 
-export const createTournamentSchema = z.object({
-  name: tournamentNameSchema,
-  adminPassword: passwordSchema,
-  password: passwordSchema,
-  matchdays: matchdaysSchema,
-  /** Optional: the playing times can also be set later via PATCH. */
-  matchdayWindows: matchdayWindowsSchema.optional(),
-});
+/**
+ * Whether two passwords are the same one. Passwords are hashed in their NFKC
+ * form (see `lib/password.ts`), so that is the form that is compared.
+ */
+export function isSamePassword(first: string, second: string): boolean {
+  return first.normalize('NFKC') === second.normalize('NFKC');
+}
+
+export const SAME_PASSWORD_MESSAGE =
+  'The player password must differ from the admin password – whoever knows the player password would be an admin otherwise';
+
+export const createTournamentSchema = z
+  .object({
+    name: tournamentNameSchema,
+    adminPassword: passwordSchema,
+    password: passwordSchema,
+    matchdays: matchdaysSchema,
+    /** Optional: the playing times can also be set later via PATCH. */
+    matchdayWindows: matchdayWindowsSchema.optional(),
+  })
+  // The login tries the admin password first: one password for both roles would
+  // hand the admin role to every member.
+  .refine((value) => !isSamePassword(value.adminPassword, value.password), {
+    message: SAME_PASSWORD_MESSAGE,
+    path: ['password'],
+  });
 
 /**
  * Opens a session. The tournament is identified by the path, so the body only

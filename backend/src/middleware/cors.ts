@@ -14,9 +14,15 @@ const ALLOW_ANY_ORIGIN = ALLOWED_ORIGINS.includes('*');
 export const cors: RequestHandler = (req, res, next) => {
   const origin = req.header('origin');
 
+  // With a list of origins the answer depends on who asks – also when the origin
+  // is refused. A cache has to know that, or it hands the answer for one origin
+  // to another.
+  if (!ALLOW_ANY_ORIGIN) {
+    res.setHeader('Vary', 'Origin');
+  }
+
   if (origin && (ALLOW_ANY_ORIGIN || ALLOWED_ORIGINS.includes(origin))) {
     res.setHeader('Access-Control-Allow-Origin', ALLOW_ANY_ORIGIN ? '*' : origin);
-    res.setHeader('Vary', 'Origin');
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');

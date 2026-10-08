@@ -46,8 +46,20 @@ export const validationError = (
   details?: unknown,
 ): HttpError => new HttpError(422, 'VALIDATION_ERROR', message, details);
 
-export const tooManyRequests = (message = 'Too many requests'): HttpError =>
-  new HttpError(429, 'TOO_MANY_REQUESTS', message);
+/**
+ * `retryAfterSeconds` ends up in `details` and – set by the error handler – in
+ * the `Retry-After` header, so a client knows how long to wait.
+ */
+export const tooManyRequests = (
+  message = 'Too many requests',
+  retryAfterSeconds?: number,
+): HttpError =>
+  new HttpError(
+    429,
+    'TOO_MANY_REQUESTS',
+    message,
+    retryAfterSeconds === undefined ? undefined : { retryAfterSeconds },
+  );
 
 export const serviceUnavailable = (message = 'Service unavailable'): HttpError =>
   new HttpError(503, 'SERVICE_UNAVAILABLE', message);

@@ -3,3 +3,8 @@
 node_modules
 dist
 .git
+
+# Lokale Einstellungen (`VITE_API_BASE` für Tests im WLAN) gehören nicht ins Image.
+.env
+.env.*
+!.env.example

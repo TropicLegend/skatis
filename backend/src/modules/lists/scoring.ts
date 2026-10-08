@@ -93,6 +93,15 @@ export interface ListResultsDto {
   players: PlayerResultDto[];
 }
 
+/**
+ * The bonus of a lineup as the tables use it. A list may exist before its
+ * players are chosen; it has no games then, so there is nothing to pay out and
+ * its (empty) table is built with a bonus of 0 instead of failing.
+ */
+function bonusPerGameOf(playerCount: number): number {
+  return playerCount === 0 ? 0 : opponentBonusPerGame(playerCount);
+}
+
 /** What a lost Alleinspiel of another player is worth in a list of this size. */
 export function opponentBonusPerGame(playerCount: number): number {
   const bonus = OPPONENT_BONUS.get(playerCount);
@@ -117,20 +126,20 @@ export function scoreList(
   matchday: string,
 ): ListResultsDto {
   const playerCount = lineup.length;
-  const bonusPerGame = opponentBonusPerGame(playerCount);
+  const bonusPerGame = bonusPerGameOf(playerCount);
 
   const played = games.filter((game) => game.declarer !== null);
   const passedOutCount = games.length - played.length;
 
-  const lostBy: Record<string, number> = {};
-  for (const name of lineup) lostBy[name] = 0;
+  // A map, not an object: the keys are names people typed in.
+  const lostBy = new Map<string, number>(lineup.map((name) => [name, 0]));
   for (const game of played) {
-    if (game.won === false && game.declarer !== null && game.declarer in lostBy) {
-      lostBy[game.declarer] = (lostBy[game.declarer] ?? 0) + 1;
+    if (game.won === false && game.declarer !== null && lostBy.has(game.declarer)) {
+      lostBy.set(game.declarer, (lostBy.get(game.declarer) ?? 0) + 1);
     }
   }
 
-  const totalLost = Object.values(lostBy).reduce((sum, count) => sum + count, 0);
+  const totalLost = [...lostBy.values()].reduce((sum, count) => sum + count, 0);
 
   const players = lineup.map((name, index): PlayerResultDto => {
     const declared = played.filter((game) => game.declarer === name);
@@ -146,7 +155,7 @@ export function scoreList(
     // The guard keeps a player without a loss at `0` instead of the negative
     // zero that `0 * -50` produces.
     const lossPenalty = lost.length === 0 ? 0 : lost.length * -LOSS_PENALTY;
-    const opponentWon = totalLost - (lostBy[name] ?? 0);
+    const opponentWon = totalLost - (lostBy.get(name) ?? 0);
     const opponentBonus = opponentWon * bonusPerGame;
 
     return {
@@ -278,7 +287,7 @@ export function accountProgression(
     lost[name] = 0;
   }
 
-  const bonusPerGame = opponentBonusPerGame(lineup.length);
+  const bonusPerGame = bonusPerGameOf(lineup.length);
 
   const rounds = games.map((game): RoundAccountDto => {
     const declarer = game.declarer;

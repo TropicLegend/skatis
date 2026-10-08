@@ -155,3 +155,14 @@ describe('accountProgression', () => {
     }
   });
 });
+
+describe('accountProgression without a lineup', () => {
+  it('reports no rounds instead of failing', () => {
+    const progression = accountProgression([], [], '2026-09-16');
+
+    expect(progression.playerCount).toBe(0);
+    expect(progression.lineup).toEqual([]);
+    expect(progression.rounds).toEqual([]);
+    expect(progression.accounts).toEqual({});
+  });
+});

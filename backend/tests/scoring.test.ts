@@ -46,6 +46,27 @@ describe('opponentBonusPerGame', () => {
 describe('scoreList', () => {
   const LINEUP = ['Anna', 'Bert', 'Clara', 'Dora'];
 
+  it('builds an empty table for a list whose players are not chosen yet', () => {
+    // Such a list exists (`POST /lists` without `playerNames`) and has no games.
+    // It must not fail: one of them used to take the whole standing down.
+    const results = scoreList([], [], '2026-09-16');
+
+    expect(results.playerCount).toBe(0);
+    expect(results.gameCount).toBe(0);
+    expect(results.opponentBonusPerGame).toBe(0);
+    expect(results.players).toEqual([]);
+  });
+
+  it('keeps the numbers of a player whose name is a property of every object', () => {
+    const lineup = ['constructor', 'toString', 'Clara'];
+    const results = scoreList(lineup, [game('Clara', false, 48)], '2026-09-16');
+
+    expect(byName(results, 'constructor').opponentWon).toBe(1);
+    expect(byName(results, 'constructor').total).toBe(40);
+    expect(byName(results, 'toString').total).toBe(40);
+    expect(byName(results, 'Clara').total).toBe(-96 - 50);
+  });
+
   it('credits a won Alleinspiel with the Spielwert and counts it as Gew', () => {
     const results = scoreList(LINEUP, [game('Bert', true, 120)], '2026-09-16');
     const bert = byName(results, 'Bert');

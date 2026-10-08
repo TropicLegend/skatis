@@ -1,0 +1,26 @@
+# Antwort-Header der ausgelieferten Seite. Die Datei landet in `conf.d` und gilt
+# damit für den ganzen `http`-Block – der Server-Block des nginx-Images bleibt
+# unverändert. Der Entrypoint des Images setzt beim Start `${CSP_CONNECT_SRC}` ein
+# (alles mit `$name` ohne Klammern sind nginx-Variablen und bleiben stehen).
+
+server_tokens off;
+
+# Content-Security-Policy: Skripte, Styles, Schriften und Bilder nur von der
+# eigenen Adresse, keine Inline-Skripte, kein Einbetten in fremde Seiten. So kann
+# eingeschleustes Markup kein Skript nachladen und kein Token aus dem Speicher des
+# Browsers lesen. `connect-src` nennt die API – siehe `CSP_CONNECT_SRC` im Dockerfile.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src ${CSP_CONNECT_SRC}; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "no-referrer" always;
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+
+# Die Dateien unter /assets/ tragen einen Hash im Namen und ändern sich nie – alles
+# andere (index.html, Manifest, Icons) wird bei jedem Aufruf neu geprüft. Ohne das
+# hielte ein Browser eine alte index.html fest und bekäme ein neues Release nicht mit.
+map $uri $skatis_cache_control {
+    default       "no-cache";
+    ~^/assets/    "public, max-age=31536000, immutable";
+}
+add_header Cache-Control $skatis_cache_control always;

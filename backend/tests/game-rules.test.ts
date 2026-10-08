@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../src/lib/http-error.js';
-import { assertDeclarerAllowed, assertLineupComplete } from '../src/modules/lists/game-entry.js';
+import {
+  assertDeclarerAllowed,
+  assertLineupComplete,
+  assertRoomForGame,
+} from '../src/modules/lists/game-entry.js';
 import {
   BASE_VALUES,
+  MAX_GAMES_PER_LIST,
   NULL_VALUES,
   calculateGameValue,
   countLevels,
@@ -108,6 +113,23 @@ describe('assertLineupComplete', () => {
     expect(() => assertLineupComplete(3)).not.toThrow();
     expect(() => assertLineupComplete(4)).not.toThrow();
     expect(() => assertLineupComplete(5)).not.toThrow();
+  });
+});
+
+describe('assertRoomForGame', () => {
+  it('accepts games until the list is full', () => {
+    expect(() => assertRoomForGame(0)).not.toThrow();
+    expect(() => assertRoomForGame(MAX_GAMES_PER_LIST - 1)).not.toThrow();
+  });
+
+  it('refuses another game once the list is full', () => {
+    try {
+      assertRoomForGame(MAX_GAMES_PER_LIST);
+      throw new Error('Expected the full list to refuse another game');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpError);
+      expect((error as HttpError).status).toBe(409);
+    }
   });
 });
 

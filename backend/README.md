@@ -385,6 +385,10 @@ many counted lists went into the numbers and `matchdaysCounted` how many
 different dates they were played on – over months of play those are very
 different numbers.
 
+A list whose players were never chosen has no games and nothing to score. It is
+left out of the standing altogether – it is not an evening, and it can never make
+the standing fail.
+
 The **ranking value** is `averageScore = score / gamesPlayed` – the score per
 game played, which makes players comparable who played a different number of
 games, and which is what keeps a long tournament fair when not everybody is there
@@ -438,7 +442,12 @@ passwords are stored as scrypt hashes; a password can never be read back.
 
 Both passwords are chosen when the tournament is created. Afterwards only the
 player password can be replaced (`PATCH /tournaments/:tournamentId`); the admin
-password is fixed for the lifetime of the tournament. A new player password ends
+password is fixed for the lifetime of the tournament.
+
+The two passwords have to **differ** – when the tournament is created and
+whenever the player password is replaced (`422` otherwise). The login tries the
+admin password first, so one password for both roles would make every member an
+admin. A new player password ends
 **all** running sessions at once – also the one that set it, so the change is
 followed by a fresh login. Every change is written to the
 [change log](#get-tournamentstournamentidlog), so members can see what an
@@ -750,7 +759,8 @@ them and get them later with `PATCH /tournaments/:tournamentId`.
 on, and together with a password the only thing needed to log in. Names may
 repeat, so the id is what counts.
 
-**Errors:** `422` invalid payload, `429` too many requests.
+**Errors:** `422` invalid payload – also when `password` equals `adminPassword`,
+`429` too many requests.
 
 #### `POST /tournaments/:tournamentId/session`
 
@@ -800,7 +810,10 @@ answer is the normalised one, so a client that sent a lower case id gets the
 canonical spelling back.
 
 **Errors:** `401` for an unknown id **and** for a wrong password (the endpoint does
-not reveal which tournaments exist), `422` invalid payload, `429` too many requests.
+not reveal which tournaments exist), `422` invalid payload, `429` too many requests
+from this address **or** too many wrong passwords for this tournament (see
+[Rate limits](#rate-limits); `Retry-After` and `details.retryAfterSeconds` say how
+long to wait).
 
 #### `POST /tournaments/:tournamentId/session/logout`
 
@@ -1283,7 +1296,8 @@ Tokens that are already out there stay valid until they expire, also after
 `password` is different: it ends every session (including this one), so the next
 request answers `401 The session is no longer valid – please sign in again`.
 
-**Errors:** `403` member token, `422` invalid payload.
+**Errors:** `403` member token, `422` invalid payload – also when the new
+`password` equals the admin password.
 
 #### `DELETE /tournaments/:tournamentId`
 
@@ -1330,6 +1344,12 @@ Content-Type: application/json
 
 **Errors:** `403` member token, `409` the name already exists, `422` invalid name.
 
+A name is 1 to 64 characters long and must not contain control characters (line
+breaks, tabs). Three names are reserved and refused with `422`: `.` and `..` – a
+browser resolves them as path segments, so `…/players/..` would address the
+tournament instead of the player – and `__proto__`, which is no usable key of the
+result tables. The same rules apply to the new name of a rename.
+
 **`PATCH /tournaments/:tournamentId/players/:playerName`** – admin only
 
 ```http
@@ -1349,7 +1369,7 @@ sits out with four players and is therefore not among the three. A rename to the
 same name is a no-op.
 
 **Errors:** `403` member token, `404` unknown player, `409` the new name is
-already taken.
+already taken, `422` invalid or reserved new name.
 
 **`DELETE /tournaments/:tournamentId/players/:playerName`** → `204`, no body.
 Admin only.
@@ -1704,6 +1724,9 @@ roles, also after the list was submitted.
 }
 ```
 
+A list whose players are not chosen yet answers an empty table (`playerCount: 0`,
+`players: []`) – it has no games, so there is nothing to score.
+
 **Errors:** `404` unknown list.
 
 #### `GET /tournaments/:tournamentId/lists/:listId/next-round`
@@ -1873,7 +1896,8 @@ itself when the day is over.
 
 **Errors:** `404` unknown list, `403` day not allowed / member token on
 `reopen`, `409` the day of the list is over (it counts by itself), `409` already
-submitted (`submit`) or not submitted (`reopen`).
+submitted (`submit`) or not submitted (`reopen`), `409` the list has no players
+yet (`submit` – an empty sheet cannot be handed in).
 
 #### `PATCH /tournaments/:tournamentId/lists/:listId`
 
@@ -1980,7 +2004,8 @@ A game that was passed out needs nothing else – the flow ends after step 1:
 `positiveGameValue: 0`, `negativeGameValue: 0`.
 
 **Errors:** `403` day not allowed for this role, `404` unknown list, `409` the
-list is locked, the lineup is not complete yet, or the declarer is one of the
+list is locked, the lineup is not complete yet, the list is full (a list holds at
+most 200 games – `details.maxGames`), or the declarer is one of the
 players who sit out this round (`details.dealer`, `details.sittingOutPlayers`,
 `details.playingPlayers`), `422` the game breaks the rules of the steps above
 (`details.issues` names the field).
@@ -2195,19 +2220,38 @@ the score per game played, however many evenings somebody missed.
 
 ## Rate limits
 
-The two endpoints that need no token are limited per caller address:
+The two endpoints that need no token are limited per caller address, and wrong
+passwords are additionally counted per tournament:
 
-| Setting                | Default | Meaning                                     |
-| ---------------------- | ------- | ------------------------------------------- |
-| `RATE_LIMIT_MAX`       | `20`    | requests per window, `0` disables the limit |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | length of the window in milliseconds        |
+| Setting                | Default | Meaning                                                                   |
+| ---------------------- | ------- | ------------------------------------------------------------------------- |
+| `RATE_LIMIT_MAX`       | `20`    | requests per window and caller address, `0` disables the limit            |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | length of the window in milliseconds                                      |
+| `LOGIN_FAILURE_MAX`    | `100`   | wrong passwords per window for **one tournament**, from any address; `0` disables it |
 
-Exceeding it answers `429` with `Retry-After` (in seconds) and the usual error
-envelope. The counter lives in the process, so with several instances the
-effective limit is multiplied by their number.
+Exceeding one of them answers `429` with `Retry-After` (in seconds) and the usual
+error envelope. The counters live in the process, so with several instances the
+effective limits are multiplied by their number.
+
+- **Per address** – an IPv4 address counts for itself, an IPv6 address counts as
+  its `/64`: a caller owns that whole network and could otherwise use a fresh
+  address for every request.
+- **Per tournament** – guesses that are spread over many addresses stay below the
+  limit per address, but they all aim at one id. Only _wrong_ passwords count; a
+  correct login gives its attempt back, so the people of a tournament never use
+  the limit up. While it is used up, nobody can log in to that tournament until
+  the window is over – sessions that are already open keep working.
+
+**Behind a proxy the API has to know who the proxy is** (`TRUST_PROXY`). A proxy
+it does not know makes every caller look like that proxy: all of them share _one_
+limit, and a single client that keeps logging in wrongly locks everybody else out
+of the login. The default knows the usual chain – Cloudflare in front, a reverse
+proxy on the same host or in the `192.168.*` network – see
+[Configuration](#configuration) for anything else.
 
 Authenticated endpoints are not rate limited – they require a token, and the only
-way to get one is the login endpoint, which is limited.
+way to get one is the login endpoint, which is limited. What a session can create
+is bounded instead: a list holds at most 200 games.
 
 ## Security notes
 
@@ -2220,16 +2264,43 @@ What the API already does:
 - A token is bound to one tournament: using it against another id answers `403`.
 - An unknown id and a wrong password both answer `401`, so login does not reveal
   which tournaments exist.
-- The endpoints without a token are rate limited, which slows password guessing.
+- The endpoints without a token are rate limited per caller address, and wrong
+  passwords are counted per tournament – that slows password guessing down, also
+  when it comes from many addresses.
+- The two passwords of a tournament have to differ, so the player password can
+  never open the admin role.
 - No endpoint enumerates tournaments and every read requires a token.
-- `x-powered-by` is disabled and request bodies are capped at 100 kb.
+- `x-powered-by` is disabled and request bodies are capped at 100 kb. Only JSON
+  bodies are read – a form, the one thing another website can post from a
+  visitor's browser without a preflight, is ignored.
+- Every answer carries `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`
+  (answers contain tokens and tournament data), `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer` and a `Content-Security-Policy` that allows
+  nothing – an answer opened as a document is inert.
+- Changes of one tournament run one after the other (`lib/keyed-lock.ts`), so two
+  requests that arrive together cannot both pass a check – two open lists for one
+  table, or a list deleted as "empty" while its first game is entered.
+- The API refuses to start with the `JWT_SECRET` placeholder of `.env.example`.
 
 What you have to do:
 
 - Serve the API over **HTTPS** – tokens and passwords travel inside the request.
-  Terminating TLS at a reverse proxy is fine, the API trusts `loopback`.
+  Terminating TLS at a reverse proxy is fine; set HSTS there.
+- Make sure **`TRUST_PROXY`** matches what is in front of the API. The default
+  trusts `loopback`, `192.168.0.0/16` and the proxies of Cloudflare; a reverse
+  proxy on another address (the `172.*` gateway of a Docker network, the `10.*`
+  pod network of a cluster) has to be added. The rate limits count per caller
+  address – with a proxy that is not trusted all callers share one limit, with
+  one that is trusted wrongly a caller can pick its own address. Check it once:
+  two connections must not share a `429`.
+- Do not let anything but your proxy reach the API. Whoever connects from a
+  trusted range decides which address the API counts: a machine in the
+  `192.168.*` network that talks to the API directly, or – when the origin is
+  open to the internet – another Cloudflare customer who points a Worker at it.
+- Set **`CORS_ORIGIN`** to the origin of your frontend instead of `*`.
 - Keep `JWT_SECRET` secret and random (at least 32 characters): whoever knows it
-  can mint tokens for any tournament.
+  can mint tokens for any tournament. Never bake a `.env` into an image – the
+  `.dockerignore` keeps it out of the build context.
 - Send the token only to your own API and keep it out of URLs, Referer headers
   and logs.
 
@@ -2241,7 +2312,14 @@ Known limitations:
   the session version of its tournament and a request with an older version is
   rejected. Deleting a tournament does not revoke tokens, but they become worthless:
   the middleware answers `401` for a tournament that does not exist any more.
-- The rate limiter counts per process, not across instances.
+- The rate limiter and the queue for changes count per process, not across
+  instances.
+- The admin password cannot be replaced. If it leaks, the tournament has to be
+  moved to a new one – there is no way to lock the old password out.
+- The per-tournament login limit can be turned against a tournament: whoever
+  knows its id and keeps sending wrong passwords from several addresses blocks
+  new logins while they do. Open sessions are not affected; raise or disable
+  `LOGIN_FAILURE_MAX` if that matters more than the cap on guessing.
 - The tournament id is not a secret: it is shown in the frontend and acts as the
   user name. The passwords are what protects a tournament.
 - `CORS_ORIGIN` defaults to `*`, which is fine for a browser app that sends a
@@ -2271,6 +2349,14 @@ Known limitations:
 | `409 Every player of a list has to be part of the tournament`                     | a name in `playerNames` was typed differently – see `unknownPlayers`                                                    |
 | `409 … plays in … list(s) – remove them from these lists first`                   | a player can only be deleted while they are on no list                                                                  |
 | `409 A list consists of 3, 4 or 5 players`                                        | the lineup has the wrong size                                                                                           |
+| `409 The list has no players yet`                                                 | games, the next round and handing a list in all need the lineup – set it with `PUT …/players`                            |
+| `409 A list holds at most 200 games`                                              | the list is full – start a new list                                                                                     |
+| `422 The player password must differ from the admin password`                     | one password for both roles would make every member an admin – choose another player password                          |
+| `422 This name is reserved`                                                       | `.`, `..` and `__proto__` cannot be player names                                                                         |
+| `429 Too many failed attempts`                                                    | too many wrong passwords for this tournament (`LOGIN_FAILURE_MAX`) – wait for `Retry-After` seconds                      |
+| everybody gets `429` on the login although only one client misbehaves             | the API counts a proxy instead of the callers – add the address of that proxy to `TRUST_PROXY` (see [Configuration](#configuration)) |
+| startup aborts with `… is no address, subnet or known name`                       | an entry of `TRUST_PROXY` has a typo – write subnets as `192.168.0.0/16`, not `192.168.*`                               |
+| startup aborts with `JWT_SECRET still is the placeholder of .env.example`         | generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`                     |
 | `404 List … does not exist in this tournament`                                    | the `:listId` is wrong or the list was deleted – fetch the lists of the evening with `GET /lists?matchday=…`            |
 | `422` with `details.issues[].path`                                                | the field named in `path` is wrong                                                                                      |
 | `429 Too many requests`                                                           | wait for `Retry-After` seconds                                                                                          |
@@ -2287,16 +2373,47 @@ All settings come from the environment – see `.env.example`:
 | `NODE_ENV`             | `development`      | `development`, `test` or `production`                                  |
 | `PORT` / `HOST`        | `3000` / `0.0.0.0` | HTTP bind address                                                      |
 | `DATABASE_URL`         | –                  | PostgreSQL connection string (required)                                |
-| `JWT_SECRET`           | –                  | ≥ 32 characters (required)                                             |
+| `JWT_SECRET`           | –                  | ≥ 32 random characters (required); the placeholder of `.env.example` is refused |
 | `JWT_EXPIRES_IN`       | `12h`              | Token lifetime                                                         |
 | `LOG_LEVEL`            | `info`             | `fatal`…`trace` or `silent`                                            |
 | `CORS_ORIGIN`          | `*`                | Comma separated origins or `*`                                         |
 | `RATE_LIMIT_MAX`       | `20`               | Requests per window for the endpoints without a token, `0` disables it |
 | `RATE_LIMIT_WINDOW_MS` | `60000`            | Length of that window in milliseconds                                  |
-| `TZ`                   | system             | Timezone that decides the current matchday                             |
+| `LOGIN_FAILURE_MAX`    | `100`              | Wrong passwords per window for one tournament, `0` disables it         |
+| `TRUST_PROXY`          | `loopback, 192.168.0.0/16, cloudflare` | Which proxies may report the address of a caller – see below |
+| `TZ`                   | system             | Timezone that decides the current matchday (the Docker image defaults to `Europe/Berlin`) |
 | `AUTO_MIGRATE`         | `true`             | Apply pending migrations on startup (`false` skips it)                 |
 
 Invalid configuration aborts startup with a list of the offending variables.
+
+`TRUST_PROXY` is handed to Express as its
+[`trust proxy`](https://expressjs.com/en/guide/behind-proxies.html) setting and
+decides whose `X-Forwarded-For` is believed:
+
+| Value                                            | Use it when                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `loopback, 192.168.0.0/16, cloudflare` (default) | Cloudflare in front, a reverse proxy on the same host or in the `192.168.*` network – or any part of that chain |
+| `false`                                          | callers connect to the API directly, there is no proxy                       |
+| `1`, `2`, …                                      | that many proxies are in front of the API, whatever their addresses          |
+| `loopback, 172.16.0.0/12, cloudflare`            | a list of your own: addresses, subnets (IPv4 or IPv6) and the names below    |
+
+The names a list may contain: `loopback` (`127.0.0.0/8`, `::1`), `linklocal`,
+`uniquelocal` (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and
+`cloudflare` – the 15 IPv4 and 7 IPv6 ranges Cloudflare publishes at
+<https://www.cloudflare.com/ips/>, kept in `src/config/cloudflare-ips.ts` (read on
+2026-10-08; compare them with that page when Cloudflare announces a change). A
+value of your own **replaces** the default, so repeat what you still need. An
+entry that is no address, subnet or known name aborts startup.
+
+Express reads `X-Forwarded-For` from the API outwards and takes the first address
+that is _not_ in the list for the caller. A caller therefore cannot choose its
+address by sending the header itself: Cloudflare appends the address the request
+really came from, and that is where the walk stops.
+
+`true` (believe everybody) is refused: every caller could then choose its own
+address and walk around the rate limit. With the API in a container the reverse
+proxy often connects from the gateway of the Docker network (`172.*`) or from the
+pod network of a cluster (`10.*`) – neither is part of the default, add it.
 
 ## Project structure
 
@@ -2311,9 +2428,10 @@ backend/
 │   ├── config/env.ts           # validated environment
 │   ├── lib/                    # dates, errors, logger, migrations, passwords,
 │   │                           # prisma, revoked sessions, session version,
-│   │                           # tokens, tournament id generation
+│   │                           # tokens, tournament id generation, the queue
+│   │                           # for changes of one tournament (keyed-lock)
 │   ├── middleware/             # auth, cors, error handler, request context,
-│   │                           # not found, rate limits
+│   │                           # not found, rate limits, security headers
 │   ├── modules/
 │   │   ├── audit/              # the change log ("Protokoll") of a tournament
 │   │   ├── rules/              # the rules of the game as read-only data (/rules)
@@ -2349,12 +2467,20 @@ envelope). The pure rule modules are covered as well: the Skat rules incl. the
 Spielwert, the Geber rule and the round preview, the result table and the
 progression, the standing and its history, the player statistics, the list locks
 with the date arithmetic behind them, the change log entries and the renaming of
-the names inside the games. Business logic that needs PostgreSQL – the Prisma
+the names inside the games, the rate limits, the queue for changes and the
+validation of the configuration. Business logic that needs PostgreSQL – the Prisma
 queries of the services – has to be exercised against a real instance.
 
 ## Deployment notes
 
-- Build with `npm run build`, then run `npm start`.
+- Build with `npm run build`, then run `npm start` – or use the image:
+  `docker build -t skatis-backend backend`. It installs from the lockfile
+  (`npm ci`), contains no development dependencies, runs as the user `node`, sets
+  `NODE_ENV=production` and `TZ=Europe/Berlin` (override both as needed) and has
+  a `HEALTHCHECK` on `GET /api/health`. The Prisma engines are part of the image,
+  so starting it needs no access to the internet.
+- Give it `DATABASE_URL`, `JWT_SECRET`, `TRUST_PROXY` and `CORS_ORIGIN` through the
+  environment – never through a `.env` inside the image.
 - Migrations are applied on startup (see
   [Database migrations](#database-migrations)), so no separate step is required.
   To keep schema changes out of the application container, run `npm run db:deploy`
@@ -2363,4 +2489,7 @@ queries of the services – has to be exercised against a real instance.
   migrations; without them start with `AUTO_MIGRATE=false`.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown (stop accepting requests, close
   the Prisma pool, force exit after 10 s).
-- Run behind a TLS terminating proxy; tokens are sent as bearer headers.
+- Run behind a TLS terminating proxy; tokens are sent as bearer headers. The API
+  has to trust that proxy (`TRUST_PROXY`), or the rate limits count the proxy
+  instead of the callers – the default covers Cloudflare, `loopback` and
+  `192.168.*`.
