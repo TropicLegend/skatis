@@ -1,5 +1,5 @@
 import type { ListStatus, Prisma, Tournament } from '@prisma/client';
-import { conflict, forbidden, notFound } from '../../lib/http-error.js';
+import { conflict, notFound } from '../../lib/http-error.js';
 import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
