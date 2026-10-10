@@ -48,6 +48,19 @@ describe('tournamentStandings', () => {
     expect(row(standings, 'Dora').gamesPlayed).toBe(2);
   });
 
+  it('ranks only the players supplied to the standing', () => {
+    const results = [
+      matchday('2026-09-16', [
+        game('Bert', true, 120, ['Bert', 'Clara', 'Dora']),
+        game('Anna', true, 23, ['Anna', 'Clara', 'Dora']),
+      ]),
+    ];
+    const standing = tournamentStandings('K7M2P4QX', ['Anna', 'Clara', 'Dora'], results);
+
+    expect(standing.players.map((player) => player.name)).not.toContain('Bert');
+    expect(standing.players[0]).toMatchObject({ name: 'Anna', rank: 1 });
+  });
+
   it('credits the Spielwerte of the own Alleinspiele and debits a loss twice', () => {
     const standings = tournamentStandings('K7M2P4QX', ROSTER, [
       matchday('2026-09-16', [game('Bert', true, 120), game('Bert', false, 20)]),

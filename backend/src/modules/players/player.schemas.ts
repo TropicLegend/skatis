@@ -47,6 +47,10 @@ export const renamePlayerSchema = z.object({
   name: newPlayerNameSchema,
 });
 
+export const playerStandingVisibilitySchema = z.object({
+  hiddenFromStandings: z.boolean(),
+});
+
 export const playerParams = z.object({
   tournamentId: tournamentIdSchema,
   playerName: playerNameSchema,

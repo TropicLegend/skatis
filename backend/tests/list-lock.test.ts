@@ -187,26 +187,31 @@ describe('the lock and the rejection of the API agree', () => {
 
 describe('assertListDeletable', () => {
   it('allows a member to delete an empty open list', () => {
-    expect(() => assertListDeletable('OPEN', 0, 'MEMBER')).not.toThrow();
+    expect(() => assertListDeletable('OPEN', 0, 'MEMBER', TODAY)).not.toThrow();
+  });
+
+  it('does not let a member delete an empty open list from another day', () => {
+    expect(() => assertListDeletable('OPEN', 0, 'MEMBER', OTHER_DAY)).toThrow(HttpError);
+    expect(() => assertListDeletable('OPEN', 0, 'ADMIN', OTHER_DAY)).not.toThrow();
   });
 
   it('keeps deletion of a populated list admin-only', () => {
     let error: unknown;
     try {
-      assertListDeletable('OPEN', 1, 'MEMBER');
+      assertListDeletable('OPEN', 1, 'MEMBER', TODAY);
     } catch (caught) {
       error = caught;
     }
 
     expect(error).toBeInstanceOf(HttpError);
     expect((error as HttpError).status).toBe(403);
-    expect(() => assertListDeletable('OPEN', 1, 'ADMIN')).not.toThrow();
+    expect(() => assertListDeletable('OPEN', 1, 'ADMIN', OTHER_DAY)).not.toThrow();
   });
 
   it('does not let a member delete a submitted list', () => {
     let error: unknown;
     try {
-      assertListDeletable('SUBMITTED', 0, 'MEMBER');
+      assertListDeletable('SUBMITTED', 0, 'MEMBER', TODAY);
     } catch (caught) {
       error = caught;
     }

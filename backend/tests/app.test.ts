@@ -327,6 +327,26 @@ describe('api', () => {
     expect([404, 503]).toContain(reached.status);
   });
 
+  it('lets only an admin change a player standing visibility', async () => {
+    const { token: memberToken } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
+    const denied = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Anna/standing-visibility`)
+      .set('Authorization', `Bearer ${memberToken}`)
+      .send({ hiddenFromStandings: true });
+
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe('FORBIDDEN');
+
+    const { token: adminToken } = issueSessionToken(TOURNAMENT_ID, 'ADMIN');
+    const invalid = await request(app)
+      .patch(`/api/tournaments/${TOURNAMENT_ID}/players/Anna/standing-visibility`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+
+    expect(invalid.status).toBe(422);
+    expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('validates the lineup of a list before touching the database', async () => {
     const { token } = issueSessionToken(TOURNAMENT_ID, 'MEMBER');
     const response = await request(app)

@@ -274,10 +274,15 @@ export function assertListDeletable(
   status: 'OPEN' | 'SUBMITTED',
   gameCount: number,
   role: TournamentRole,
+  matchday: string,
+  today: string = todayIso(),
 ): void {
   if (role === 'ADMIN') return;
 
   assertListEditable(status, role);
+  if (matchday !== today) {
+    throw forbidden('Members may only delete an empty, open list from today.');
+  }
   if (gameCount > 0) {
     throw forbidden('Only an admin can delete a list that contains games.');
   }

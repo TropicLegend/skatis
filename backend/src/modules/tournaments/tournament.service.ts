@@ -196,7 +196,7 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
   const [roster, lists] = await Promise.all([
     prisma.player.findMany({
       where: { tournamentId: tournament.id },
-      select: { name: true },
+      select: { name: true, hiddenFromStandings: true },
       orderBy: { name: 'asc' },
     }),
     prisma.gameList.findMany({
@@ -252,6 +252,7 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
   return {
     tournamentId: tournament.id,
     roster: roster.map((player) => player.name),
+    visibleRoster: roster.filter((player) => !player.hiddenFromStandings).map((player) => player.name),
     results: matchdays,
     games: scorable.flatMap((list) => list.games),
   };
@@ -261,6 +262,7 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
 interface CountedResults {
   tournamentId: string;
   roster: string[];
+  visibleRoster: string[];
   /** One result table per counted list, oldest matchday first. */
   results: ListResultsDto[];
   /** Every game of the counted lists, in the same order. */
@@ -271,9 +273,9 @@ interface CountedResults {
 export async function getTournamentStandings(
   tournamentId: string,
 ): Promise<TournamentStandingsDto> {
-  const { tournamentId: id, roster, results } = await loadCountedResults(tournamentId);
+  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId);
 
-  return tournamentStandings(id, roster, results);
+  return tournamentStandings(id, visibleRoster, results);
 }
 
 /**
@@ -285,8 +287,8 @@ export async function getStandingsHistory(
   tournamentId: string,
   groupBy: StandingsGroupBy,
 ): Promise<StandingsHistoryDto> {
-  const { tournamentId: id, roster, results } = await loadCountedResults(tournamentId);
-  const standings = tournamentStandings(id, roster, results);
+  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId);
+  const standings = tournamentStandings(id, visibleRoster, results);
 
   return standingsHistory(
     id,

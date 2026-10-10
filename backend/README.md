@@ -197,6 +197,10 @@ tournament once and can then be put on a list:
   typo, because a player who plays in a list cannot be deleted. The names recorded
   in already entered games are rewritten as well. Adding, renaming and removing a
   player all need the admin password – the roster belongs to the admin.
+- `PATCH …/players/:playerName/standing-visibility` is admin-only and takes
+  `{ "hiddenFromStandings": true }` to hide a player or `false` to show them
+  again. Hidden players are omitted from the standing and its history; their
+  roster entry and game results remain unchanged.
 
 ### Entering a game
 
@@ -1920,9 +1924,9 @@ number outside of 1…999 (the schema is strict, so `matchday` is rejected too),
 
 **Response** `204` – no body, removes the list and all its games. Admins may
 delete any list. Members may delete an empty list while its stored status is
-`OPEN`, regardless of its matchday. A list containing any games is admin-only.
+`OPEN` only when its matchday is today. A list containing any games is admin-only.
 
-**Errors:** `403` member tries to delete a list with games, `404` unknown list,
+**Errors:** `403` member tries to delete a list with games or from another day, `404` unknown list,
 `409` member tries to delete a list whose status is `SUBMITTED`.
 
 ### Games

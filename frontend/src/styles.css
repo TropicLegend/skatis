@@ -138,6 +138,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .ranking-row .up{color:#4d7957}
 .ranking-row .down{color:var(--red)}
 .ranking-row>strong:last-child{font-weight:800}
+.player-tag.player-hidden{opacity:.62}
 /* Spieler-Ansicht: eigene Seite mit Kennzahlen, Verlauf und Tabellen */
 .stats-row.player-stats{grid-template-columns:repeat(4,1fr);margin-bottom:26px}
 .stat small{grid-column:1/-1;font-size:10px;line-height:1.45;color:var(--muted)}

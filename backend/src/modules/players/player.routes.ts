@@ -2,8 +2,19 @@ import { Router } from 'express';
 import { withTournamentLock } from '../../lib/keyed-lock.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
-import { createPlayerSchema, playerParams, renamePlayerSchema } from './player.schemas.js';
-import { createPlayer, deletePlayer, listPlayers, renamePlayer } from './player.service.js';
+import {
+  createPlayerSchema,
+  playerParams,
+  playerStandingVisibilitySchema,
+  renamePlayerSchema,
+} from './player.schemas.js';
+import {
+  createPlayer,
+  deletePlayer,
+  listPlayers,
+  renamePlayer,
+  setPlayerStandingVisibility,
+} from './player.service.js';
 
 /** Mounted below `/api/tournaments/:tournamentId/players`. */
 export const playerRouter = Router({ mergeParams: true });
@@ -29,6 +40,22 @@ playerRouter.post('/', authenticate('ADMIN'), async (req, res) => {
   );
 
   res.status(201).json({ data: player });
+});
+
+/** Admin only: includes or excludes a player from standings and their history. */
+playerRouter.patch('/:playerName/standing-visibility', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId, playerName } = playerParams.parse(req.params);
+  const { hiddenFromStandings } = playerStandingVisibilitySchema.parse(req.body ?? {});
+  const player = await withTournamentLock(tournamentId, () =>
+    setPlayerStandingVisibility(
+      tournamentId,
+      playerName,
+      hiddenFromStandings,
+      currentAuth(req).role,
+    ),
+  );
+
+  res.json({ data: player });
 });
 
 /**

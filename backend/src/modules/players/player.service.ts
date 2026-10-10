@@ -9,10 +9,11 @@ import type { CreatePlayerInput } from './player.schemas.js';
 
 export interface PlayerDto {
   name: string;
+  hiddenFromStandings: boolean;
 }
 
 export function toPlayerDto(player: Player): PlayerDto {
-  return { name: player.name };
+  return { name: player.name, hiddenFromStandings: player.hiddenFromStandings };
 }
 
 export async function listPlayers(tournamentId: string): Promise<PlayerDto[]> {
@@ -94,6 +95,35 @@ export async function deletePlayer(
   });
 }
 
+/** Toggles whether a player is included in the tournament standings. */
+export async function setPlayerStandingVisibility(
+  tournamentId: string,
+  name: string,
+  hiddenFromStandings: boolean,
+  role: TournamentRole,
+): Promise<PlayerDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const player = await findPlayerOrThrow(tournament.id, name);
+
+  if (player.hiddenFromStandings === hiddenFromStandings) {
+    return toPlayerDto(player);
+  }
+
+  const updated = await prisma.player.update({
+    where: { id: player.id },
+    data: { hiddenFromStandings },
+  });
+
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'player.standing_visibility_changed',
+    details: { name: player.name, hiddenFromStandings },
+  });
+
+  return toPlayerDto(updated);
+}
+
 /**
  * Corrects the name of a player. A name is the identity of a player, so a typo
  * would otherwise be permanent – and a player cannot be removed once they play.
@@ -155,7 +185,7 @@ export async function renamePlayer(
     details: { from: name, to: newName },
   });
 
-  return { name: newName };
+  return { name: newName, hiddenFromStandings: player.hiddenFromStandings };
 }
 
 /**

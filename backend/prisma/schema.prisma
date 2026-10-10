@@ -56,13 +56,14 @@ model Tournament {
 /// A person taking part in a tournament. Players are created once per
 /// tournament and can then be put on its lists.
 model Player {
-  id           String           @id @default(uuid())
-  tournamentId String
-  name         String           @db.VarChar(64)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  lineups      GameListPlayer[]
+  id                   String           @id @default(uuid())
+  tournamentId         String
+  name                 String           @db.VarChar(64)
+  hiddenFromStandings  Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  tournament           Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  lineups              GameListPlayer[]
 
   /// Within a tournament a name identifies a player.
   @@unique([tournamentId, name])

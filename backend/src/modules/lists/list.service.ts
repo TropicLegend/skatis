@@ -1,6 +1,6 @@
 import type { ListStatus, Prisma, Tournament } from '@prisma/client';
 import { conflict, forbidden, notFound } from '../../lib/http-error.js';
-import { parseIsoDate, toIsoDate } from '../../lib/dates.js';
+import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
 import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
@@ -527,8 +527,9 @@ export async function deleteList(
 ): Promise<void> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
+  const today = todayIso();
 
-  assertListDeletable(list.status, list.games.length, role);
+  assertListDeletable(list.status, list.games.length, role, toIsoDate(list.matchday), today);
 
   const details = { ...listDetails(list), gameCount: list.games.length };
 
@@ -538,13 +539,15 @@ export async function deleteList(
   const result = await prisma.gameList.deleteMany({
     where: {
       id: list.id,
-      ...(role === 'ADMIN' ? {} : { status: 'OPEN', games: { none: {} } }),
+      ...(role === 'ADMIN'
+        ? {}
+        : { status: 'OPEN', matchday: parseIsoDate(today), games: { none: {} } }),
     },
   });
   if (result.count === 0) {
-    throw role === 'ADMIN'
-      ? notFound(`List ${listId} does not exist in this tournament`)
-      : forbidden('Only an admin can delete a list that was submitted or contains games.');
+    const latest = await findListOrThrow(tournament.id, listId);
+    assertListDeletable(latest.status, latest.games.length, role, toIsoDate(latest.matchday), today);
+    throw conflict('The list changed while it was being deleted. Reload and try again.');
   }
 
   await recordAudit({ tournamentId: tournament.id, role, action: 'list.deleted', details });
