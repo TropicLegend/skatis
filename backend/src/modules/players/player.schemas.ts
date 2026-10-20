@@ -51,6 +51,26 @@ export const playerStandingVisibilitySchema = z.object({
   hiddenFromStandings: z.boolean(),
 });
 
+export const playerGroupNameSchema = z
+  .string()
+  .trim()
+  .min(1, 'A group name is required')
+  .max(64, 'A group name must be at most 64 characters long')
+  .refine((name) => !CONTROL_CHARACTERS.test(name), 'A group name must not contain control characters');
+
+export const createPlayerGroupSchema = z.object({ name: playerGroupNameSchema });
+
+export const playerGroupParams = z.object({
+  tournamentId: tournamentIdSchema,
+  groupId: z.uuid(),
+});
+
+export const setPlayerGroupMembersSchema = z.object({
+  playerNames: z
+    .array(playerNameSchema)
+    .refine((names) => new Set(names).size === names.length, 'Player names must be unique'),
+});
+
 export const playerParams = z.object({
   tournamentId: tournamentIdSchema,
   playerName: playerNameSchema,

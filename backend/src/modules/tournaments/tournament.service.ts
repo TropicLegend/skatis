@@ -34,6 +34,7 @@ export const tournamentPublicSelect = {
   name: true,
   matchdays: true,
   matchdayWindows: true,
+  opponentBonusVariant: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { lists: true } },
@@ -47,6 +48,7 @@ export interface TournamentDto {
   matchdays: number[];
   /** Optional playing time per weekday – `{}` when the admin set none. */
   matchdayWindows: MatchdayWindows;
+  opponentBonusVariant: 'OFFICIAL' | 'MATHEMATICAL';
   listCount: number;
   createdAt: string;
   updatedAt: string;
@@ -58,6 +60,7 @@ export function toTournamentDto(tournament: TournamentRow): TournamentDto {
     name: tournament.name,
     matchdays: sortedDays(tournament.matchdays),
     matchdayWindows: matchdayWindowsOf(tournament.matchdayWindows),
+    opponentBonusVariant: tournament.opponentBonusVariant,
     listCount: tournament._count.lists,
     createdAt: tournament.createdAt.toISOString(),
     updatedAt: tournament.updatedAt.toISOString(),
@@ -190,13 +193,24 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
  * `loadCountedResults` reads that input once for the standing and for its history
  * (`getStandingsHistory`), so the two views can never describe different data.
  */
-async function loadCountedResults(tournamentId: string): Promise<CountedResults> {
+async function loadCountedResults(tournamentId: string, groupId?: string): Promise<CountedResults> {
   const tournament = await getTournamentRow(tournamentId);
+  if (groupId) {
+    const group = await prisma.playerGroup.findFirst({
+      where: { id: groupId, tournamentId: tournament.id },
+      select: { id: true },
+    });
+    if (!group) throw notFound('Player group does not exist in this tournament');
+  }
 
   const [roster, lists] = await Promise.all([
     prisma.player.findMany({
       where: { tournamentId: tournament.id },
-      select: { name: true, hiddenFromStandings: true },
+      select: {
+        name: true,
+        hiddenFromStandings: true,
+        groups: { select: { groupId: true } },
+      },
       orderBy: { name: 'asc' },
     }),
     prisma.gameList.findMany({
@@ -246,13 +260,20 @@ async function loadCountedResults(tournamentId: string): Promise<CountedResults>
       list.lineup.map((entry) => entry.player.name),
       list.games,
       toIsoDate(list.matchday),
+      tournament.opponentBonusVariant,
     ),
   );
 
   return {
     tournamentId: tournament.id,
     roster: roster.map((player) => player.name),
-    visibleRoster: roster.filter((player) => !player.hiddenFromStandings).map((player) => player.name),
+    visibleRoster: roster
+      .filter(
+        (player) =>
+          !player.hiddenFromStandings &&
+          (!groupId || player.groups.some((membership) => membership.groupId === groupId)),
+      )
+      .map((player) => player.name),
     results: matchdays,
     games: scorable.flatMap((list) => list.games),
   };
@@ -272,8 +293,9 @@ interface CountedResults {
 /** The standing of the tournament over all counted lists, best player first. */
 export async function getTournamentStandings(
   tournamentId: string,
+  groupId?: string,
 ): Promise<TournamentStandingsDto> {
-  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId);
+  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId, groupId);
 
   return tournamentStandings(id, visibleRoster, results);
 }
@@ -286,8 +308,9 @@ export async function getTournamentStandings(
 export async function getStandingsHistory(
   tournamentId: string,
   groupBy: StandingsGroupBy,
+  groupId?: string,
 ): Promise<StandingsHistoryDto> {
-  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId);
+  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId, groupId);
   const standings = tournamentStandings(id, visibleRoster, results);
 
   return standingsHistory(
@@ -366,6 +389,10 @@ export async function updateTournament(
     data.matchdayWindows = input.matchdayWindows;
     changed.push('matchdayWindows');
   }
+  if (input.opponentBonusVariant !== undefined) {
+    data.opponentBonusVariant = input.opponentBonusVariant;
+    changed.push('opponentBonusVariant');
+  }
   if (input.password !== undefined) {
     data.passwordHash = await hashPassword(input.password);
     // Ein neues Spielerpasswort beendet alle laufenden Sitzungen: jedes ausgestellte
@@ -390,6 +417,9 @@ export async function updateTournament(
       changed,
       name: updated.name,
       matchdays: updated.matchdays,
+      ...(input.opponentBonusVariant === undefined
+        ? {}
+        : { opponentBonusVariant: updated.opponentBonusVariant }),
       ...(input.matchdayWindows === undefined
         ? {}
         : { matchdayWindows: auditWindows(input.matchdayWindows) }),

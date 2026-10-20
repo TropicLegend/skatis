@@ -3,16 +3,23 @@ import { withTournamentLock } from '../../lib/keyed-lock.js';
 import { authenticate, currentAuth } from '../../middleware/authenticate.js';
 import { tournamentIdParams } from '../tournaments/tournament.schemas.js';
 import {
+  createPlayerGroupSchema,
   createPlayerSchema,
+  playerGroupParams,
   playerParams,
   playerStandingVisibilitySchema,
   renamePlayerSchema,
+  setPlayerGroupMembersSchema,
 } from './player.schemas.js';
 import {
   createPlayer,
+  createPlayerGroup,
   deletePlayer,
+  deletePlayerGroup,
+  listPlayerGroups,
   listPlayers,
   renamePlayer,
+  setPlayerGroupMembers,
   setPlayerStandingVisibility,
 } from './player.service.js';
 
@@ -25,6 +32,38 @@ playerRouter.get('/', authenticate(), async (req, res) => {
   const players = await listPlayers(tournamentId);
 
   res.json({ data: players });
+});
+
+playerRouter.get('/groups', authenticate(), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const groups = await listPlayerGroups(tournamentId);
+  res.json({ data: groups });
+});
+
+playerRouter.post('/groups', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const { name } = createPlayerGroupSchema.parse(req.body ?? {});
+  const group = await withTournamentLock(tournamentId, () =>
+    createPlayerGroup(tournamentId, name, currentAuth(req).role),
+  );
+  res.status(201).json({ data: group });
+});
+
+playerRouter.put('/groups/:groupId/players', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId, groupId } = playerGroupParams.parse(req.params);
+  const { playerNames } = setPlayerGroupMembersSchema.parse(req.body ?? {});
+  const group = await withTournamentLock(tournamentId, () =>
+    setPlayerGroupMembers(tournamentId, groupId, playerNames, currentAuth(req).role),
+  );
+  res.json({ data: group });
+});
+
+playerRouter.delete('/groups/:groupId', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId, groupId } = playerGroupParams.parse(req.params);
+  await withTournamentLock(tournamentId, () =>
+    deletePlayerGroup(tournamentId, groupId, currentAuth(req).role),
+  );
+  res.status(204).end();
 });
 
 /**

@@ -126,10 +126,12 @@ export const updateTournamentSchema = z
     name: tournamentNameSchema.optional(),
     matchdays: matchdaysSchema.optional(),
     matchdayWindows: matchdayWindowsSchema.optional(),
+    opponentBonusVariant: z.enum(['OFFICIAL', 'MATHEMATICAL']).optional(),
     password: passwordSchema.optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
-    message: 'Provide at least one of name, matchdays, matchdayWindows or password',
+    message:
+      'Provide at least one of name, matchdays, matchdayWindows, opponentBonusVariant or password',
   });
 
 export const listTournamentsQuery = z.object({
@@ -144,7 +146,10 @@ export const listTournamentsQuery = z.object({
  */
 export const standingsHistoryQuery = z.object({
   groupBy: z.enum(['matchday', 'week', 'month']).default('matchday'),
+  groupId: z.uuid().optional(),
 });
+
+export const standingsQuery = z.object({ groupId: z.uuid().optional() });
 
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>;
 export type OpenSessionInput = z.infer<typeof openSessionSchema>;

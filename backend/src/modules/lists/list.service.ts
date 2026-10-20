@@ -298,7 +298,12 @@ export async function getListResults(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  return scoreList(lineupNames(list), list.games, toIsoDate(list.matchday));
+  return scoreList(
+    lineupNames(list),
+    list.games,
+    toIsoDate(list.matchday),
+    tournament.opponentBonusVariant,
+  );
 }
 
 /**
@@ -313,7 +318,12 @@ export async function getListProgression(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  return accountProgression(lineupNames(list), list.games, toIsoDate(list.matchday));
+  return accountProgression(
+    lineupNames(list),
+    list.games,
+    toIsoDate(list.matchday),
+    tournament.opponentBonusVariant,
+  );
 }
 
 /**

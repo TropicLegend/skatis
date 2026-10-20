@@ -33,6 +33,9 @@ export const AUDIT_ACTIONS = [
   'player.renamed',
   'player.removed',
   'player.standing_visibility_changed',
+  'group.created',
+  'group.deleted',
+  'group.members_changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

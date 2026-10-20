@@ -27,6 +27,7 @@ import {
   openSessionSchema,
   standingsHistoryQuery,
   tournamentIdParams,
+  standingsQuery,
   updateTournamentSchema,
 } from './tournament.schemas.js';
 
@@ -144,7 +145,8 @@ tournamentRouter.get('/:tournamentId/session', authenticate(), (req, res) => {
  */
 tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
-  const standings = await getTournamentStandings(tournamentId);
+  const { groupId } = standingsQuery.parse(req.query);
+  const standings = await getTournamentStandings(tournamentId, groupId);
 
   res.json({ data: standings });
 });
@@ -156,8 +158,8 @@ tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res
  */
 tournamentRouter.get('/:tournamentId/standings/history', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
-  const { groupBy } = standingsHistoryQuery.parse(req.query);
-  const history = await getStandingsHistory(tournamentId, groupBy);
+  const { groupBy, groupId } = standingsHistoryQuery.parse(req.query);
+  const history = await getStandingsHistory(tournamentId, groupBy, groupId);
 
   res.json({ data: history });
 });

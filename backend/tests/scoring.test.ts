@@ -2,6 +2,7 @@ import type { Game } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { toGameDto } from '../src/modules/lists/game.mapper.js';
 import {
+  accountProgression,
   LOSS_PENALTY,
   WIN_BONUS,
   opponentBonusPerGame,
@@ -37,6 +38,12 @@ describe('opponentBonusPerGame', () => {
     expect(opponentBonusPerGame(5)).toBe(24);
   });
 
+  it('uses the mathematical bonus of +45, +30 and +22.5', () => {
+    expect(opponentBonusPerGame(3, 'MATHEMATICAL')).toBe(45);
+    expect(opponentBonusPerGame(4, 'MATHEMATICAL')).toBe(30);
+    expect(opponentBonusPerGame(5, 'MATHEMATICAL')).toBe(22.5);
+  });
+
   it('refuses a lineup the rules do not know', () => {
     expect(() => opponentBonusPerGame(2)).toThrow(/cannot be scored/);
     expect(() => opponentBonusPerGame(6)).toThrow(/cannot be scored/);
@@ -45,6 +52,25 @@ describe('opponentBonusPerGame', () => {
 
 describe('scoreList', () => {
   const LINEUP = ['Anna', 'Bert', 'Clara', 'Dora'];
+
+  it('applies the selected variant to result tables and account progression', () => {
+    const threePlayerLineup = ['Anna', 'Bert', 'Clara'];
+    const results = scoreList(
+      threePlayerLineup,
+      [game('Bert', false, 20, threePlayerLineup)],
+      '2026-09-16',
+      'MATHEMATICAL',
+    );
+    const progression = accountProgression(
+      threePlayerLineup,
+      [{ ...game('Bert', false, 20, threePlayerLineup), position: 1, dealer: 'Anna' }],
+      '2026-09-16',
+      'MATHEMATICAL',
+    );
+
+    expect(byName(results, 'Anna').opponentBonus).toBe(45);
+    expect(progression.accounts.Anna).toBe(45);
+  });
 
   it('builds an empty table for a list whose players are not chosen yet', () => {
     // Such a list exists (`POST /lists` without `playerNames`) and has no games.

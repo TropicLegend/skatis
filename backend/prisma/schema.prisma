@@ -23,6 +23,11 @@ enum ListStatus {
   SUBMITTED
 }
 
+enum OpponentBonusVariant {
+  OFFICIAL
+  MATHEMATICAL
+}
+
 /// A tournament. `id` is the public identifier – shown in the frontend after
 /// creation and required to log in.
 model Tournament {
@@ -36,6 +41,7 @@ model Tournament {
   /// A day without an entry is played "all day". Once the "to" of a day has passed,
   /// its lists count as submitted; before the "from" members may not create any.
   matchdayWindows   Json?
+  opponentBonusVariant OpponentBonusVariant @default(OFFICIAL)
   adminPasswordHash String
   passwordHash      String
   /// Counts how often the player password was replaced. Tokens carry the version
@@ -46,6 +52,7 @@ model Tournament {
   updatedAt         DateTime   @updatedAt
   lists             GameList[]
   players           Player[]
+  playerGroups      PlayerGroup[]
   auditLogs         AuditLog[]
   revokedSessions   RevokedSession[]
 
@@ -64,10 +71,34 @@ model Player {
   updatedAt            DateTime         @updatedAt
   tournament           Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   lineups              GameListPlayer[]
+  groups               PlayerGroupMembership[]
 
   /// Within a tournament a name identifies a player.
   @@unique([tournamentId, name])
   @@map("players")
+}
+
+model PlayerGroup {
+  id           String                  @id @default(uuid())
+  tournamentId String
+  name         String                  @db.VarChar(64)
+  createdAt    DateTime                @default(now())
+  tournament   Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  members      PlayerGroupMembership[]
+
+  @@unique([tournamentId, name])
+  @@map("player_groups")
+}
+
+model PlayerGroupMembership {
+  groupId  String
+  playerId String
+  group    PlayerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  player   Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, playerId])
+  @@index([playerId])
+  @@map("player_group_memberships")
 }
 
 /// One list per matchday of a tournament.

@@ -139,6 +139,22 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .ranking-row .down{color:var(--red)}
 .ranking-row>strong:last-child{font-weight:800}
 .player-tag.player-hidden{opacity:.62}
+.player-groups{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+.player-groups-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.player-groups-heading h3{margin:0;font-size:14px}
+.player-groups-heading form{display:flex;gap:6px;max-width:240px}
+.player-groups-heading input{min-width:0;margin:0}
+.player-group{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border-bottom:1px solid var(--line);padding:9px 0}
+.player-group summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;font-size:12px;font-weight:700}
+.player-group summary small{color:var(--muted);font-weight:500}
+.group-members{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:6px 12px;padding-top:6px}
+.group-members label{display:flex;align-items:center;gap:7px;font-size:12px}
+.group-members input{accent-color:var(--green);margin:0}
+.ranking-controls{display:flex;align-items:flex-end;gap:16px}
+.ranking-controls label,.bonus-variant-field{display:grid;gap:5px;font-size:11px;color:var(--muted)}
+.ranking-controls select,.bonus-variant-field select{min-height:38px;border:1px solid var(--line);border-radius:5px;padding:0 10px;background:#fff;color:var(--ink);font:inherit}
+.bonus-variant-field{margin:14px 0}
+.bonus-variant-field .field-hint{margin-top:2px}
 /* Spieler-Ansicht: eigene Seite mit Kennzahlen, Verlauf und Tabellen */
 .stats-row.player-stats{grid-template-columns:repeat(4,1fr);margin-bottom:26px}
 .stat small{grid-column:1/-1;font-size:10px;line-height:1.45;color:var(--muted)}
@@ -297,6 +313,9 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .roster-panel{grid-template-columns:1fr;gap:14px;margin-top:26px}
   .player-tags{gap:8px}
   .player-tag{min-height:40px;padding:8px 10px}
+   .ranking-heading{align-items:flex-start;flex-wrap:wrap;gap:12px}
+   .ranking-controls{width:100%;align-items:stretch;flex-direction:column;gap:8px}
+   .ranking-controls label select{width:100%}
 
   /* Tischliste */
   .workspace-head{display:block;text-align:left;padding:18px 0 14px}
@@ -614,6 +633,9 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
 .pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:20px 0 0;flex-wrap:wrap}
 .pagination span{font-size:12px;color:var(--muted)}
 .list-grid.loading{opacity:.55;pointer-events:none}
+
+.settings-modal{max-width:560px;max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
+.settings-modal .modal-actions{position:sticky;bottom:0;z-index:2;background:#fbfaf6;padding:12px 0 2px;border-top:1px solid var(--line)}
 
 /* Handy: das klassische Protokoll als Blöcke – je Spiel erst die Zeile des Spiels
    (Spielnummer, Spielart, Spitzen, +/−), darunter die drei Werte je Spieler. Das

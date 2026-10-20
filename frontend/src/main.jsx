@@ -649,6 +649,9 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [showCreate, setShowCreate] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [players, setPlayers] = useState([])
+  const [playerGroups, setPlayerGroups] = useState([])
+  const [newGroupName, setNewGroupName] = useState('')
+  const [standingGroupId, setStandingGroupId] = useState('all')
   const [playerName, setPlayerName] = useState('')
   const [playerError, setPlayerError] = useState('')
   const [editingPlayer, setEditingPlayer] = useState(null)
@@ -695,7 +698,37 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const showRanking = !mobile || section === 'ranking'
   const showPlayers = !mobile || section === 'players'
   async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })); setPlayerError('') }
+  async function loadPlayerGroups() { setPlayerGroups(await request(`/tournaments/${tournament.id}/players/groups`, { token })) }
   async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
+  async function addPlayerGroup(event) {
+    event.preventDefault(); setPlayerError('')
+    try {
+      const group = await request(`/tournaments/${tournament.id}/players/groups`, { method: 'POST', token, body: { name: newGroupName } })
+      setPlayerGroups((current) => [...current, group].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewGroupName('')
+    } catch (error) { setPlayerError(errorNotice(error)) }
+  }
+  async function removePlayerGroup(group) {
+    setPlayerError('')
+    try {
+      await request(`/tournaments/${tournament.id}/players/groups/${group.id}`, { method: 'DELETE', token })
+      setPlayerGroups((current) => current.filter((entry) => entry.id !== group.id))
+      if (standingGroupId === group.id) setStandingGroupId('all')
+    } catch (error) { setPlayerError(errorNotice(error)) }
+  }
+  async function toggleGroupMember(group, player, checked) {
+    setPlayerError('')
+    const playerNames = checked
+      ? [...group.playerNames, player.name]
+      : group.playerNames.filter((name) => name !== player.name)
+    try {
+      const updated = await request(`/tournaments/${tournament.id}/players/groups/${group.id}/players`, {
+        method: 'PUT', token, body: { playerNames },
+      })
+      setPlayerGroups((current) => current.map((entry) => entry.id === group.id ? updated : entry))
+      setRankingRevision((revision) => revision + 1)
+    } catch (error) { setPlayerError(errorNotice(error)) }
+  }
   function startEditing(player) { setEditingPlayer(player.name); setEditedPlayerName(player.name); setPlayerError('') }
   async function renamePlayer(event, oldName) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players/${encodeURIComponent(oldName)}`, { method: 'PATCH', token, body: { name: editedPlayerName } }); setEditingPlayer(null); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
   async function togglePlayerStandingVisibility(player) {
@@ -707,13 +740,19 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
         body: { hiddenFromStandings: !player.hiddenFromStandings },
       })
       setPlayers((current) => current.map((entry) => entry.name === player.name ? updated : entry))
-      setStanding(await request(`/tournaments/${tournament.id}/standings`, { token }))
       setRankingRevision((revision) => revision + 1)
     } catch (error) {
       setPlayerError(errorNotice(error))
     }
   }
-  useEffect(() => { loadPlayers().catch((error) => setPlayerError(errorNotice(error))) }, [tournament?.id])
+  useEffect(() => {
+    loadPlayers().catch((error) => setPlayerError(errorNotice(error)))
+    loadPlayerGroups().catch((error) => setPlayerError(errorNotice(error)))
+  }, [tournament?.id])
+
+  useEffect(() => {
+    setListRankings({})
+  }, [tournament?.opponentBonusVariant])
 
   // Die Übersicht fragt den Server nach Spieltag und Serie und bekommt eine Seite
   // von höchstens `LISTS_PAGE_SIZE` Listen samt Gesamtzahl und Auswahlwerten zurück.
@@ -755,8 +794,9 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     return () => { active = false }
   }, [tournament?.id, token, filter, seriesFilter, offset, reload, defaultFiltersReady])
   useEffect(() => {
-    request(`/tournaments/${tournament.id}/standings`, { token }).then(setStanding).catch(() => setStanding(null))
-  }, [lists, tournament?.id, token])
+    const query = standingGroupId === 'all' ? '' : `?groupId=${encodeURIComponent(standingGroupId)}`
+    request(`/tournaments/${tournament.id}/standings${query}`, { token }).then(setStanding).catch(() => setStanding(null))
+  }, [lists, tournament?.id, token, standingGroupId, rankingRevision, tournament?.opponentBonusVariant])
 
   // Mini-Ranglisten der Karten: Geladen wird, was noch fehlt – die Listen der
   // Spieler-Seite und die der aktuellen Seite der Übersicht.
@@ -808,8 +848,8 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
         <button className="secondary-button" disabled={offset + LISTS_PAGE_SIZE >= page.total} onClick={() => setOffset(offset + LISTS_PAGE_SIZE)}>Weiter <ArrowRight size={15} /></button>
       </div>}
     </>}
-    {showRanking && standing && <TournamentRanking key={rankingRevision} standing={standing} tournament={tournament} token={token} onOpenPlayer={openPlayer} />}
-    {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className={`player-tag${player.hiddenFromStandings ? ' player-hidden' : ''}`} key={player.name}>{player.name}{role === 'ADMIN' && <><button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button><button className="icon-button" type="button" aria-label={player.hiddenFromStandings ? `${player.name} in Rangliste einblenden` : `${player.name} aus Rangliste ausblenden`} title={player.hiddenFromStandings ? 'In Rangliste einblenden' : 'Aus Rangliste ausblenden'} onClick={() => togglePlayerStandingVisibility(player)}>{player.hiddenFromStandings ? <Eye size={14} /> : <EyeOff size={14} />}</button></>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
+    {showRanking && standing && <TournamentRanking key={`${rankingRevision}-${standingGroupId}-${tournament.opponentBonusVariant}`} standing={standing} tournament={tournament} token={token} groups={playerGroups} groupId={standingGroupId} onGroupChange={setStandingGroupId} onOpenPlayer={openPlayer} />}
+    {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className={`player-tag${player.hiddenFromStandings ? ' player-hidden' : ''}`} key={player.name}>{player.name}{role === 'ADMIN' && <><button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button><button className="icon-button" type="button" aria-label={player.hiddenFromStandings ? `${player.name} in Rangliste einblenden` : `${player.name} aus Rangliste ausblenden`} title={player.hiddenFromStandings ? 'In Rangliste einblenden' : 'Aus Rangliste ausblenden'} onClick={() => togglePlayerStandingVisibility(player)}>{player.hiddenFromStandings ? <Eye size={14} /> : <EyeOff size={14} />}</button></>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{role === 'ADMIN' && <div className="player-groups"><div className="player-groups-heading"><h3>Spielergruppen</h3><form onSubmit={addPlayerGroup}><input required maxLength="64" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Gruppenname" /><button className="icon-button" title="Gruppe erstellen"><Plus size={17} /></button></form></div>{playerGroups.map((group) => <details className="player-group" key={group.id}><summary><span>{group.name}</span><small>{group.playerNames.length} Spieler</small></summary><button className="icon-button danger" type="button" title={`${group.name} löschen`} onClick={() => removePlayerGroup(group)}><Trash2 size={15} /></button><div className="group-members">{players.map((player) => <label key={player.name}><input type="checkbox" checked={group.playerNames.includes(player.name)} onChange={(event) => toggleGroupMember(group, player, event.target.checked)} />{player.name}</label>)}</div></details>)}</div>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onCreated(); setFilter(created.matchday); setSeriesFilter(String(created.series)); setDefaultFiltersReady(true); setOffset(0); setReload((count) => count + 1) }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
@@ -862,6 +902,7 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   useScrollLock()
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [windows, setWindows] = useState(tournament.matchdayWindows || {})
+  const [opponentBonusVariant, setOpponentBonusVariant] = useState(tournament.opponentBonusVariant || 'OFFICIAL')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   // Die Spielzeiten der gewählten Tage einsammeln – dieselbe Prüfung wie beim
@@ -870,9 +911,9 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
     event.preventDefault(); setError('')
     const { windows: matchdayWindows, error: windowError } = windowsFrom(matchdays, windows)
     if (windowError) { setError(windowError); return }
-    try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, matchdayWindows, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) }
+    try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, matchdayWindows, opponentBonusVariant, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) }
   }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><label className="bonus-variant-field">Gegenspielpunkte<select value={opponentBonusVariant} onChange={(event) => setOpponentBonusVariant(event.target.value)}><option value="OFFICIAL">Offizielle Variante (+40 / +30 / +24)</option><option value="MATHEMATICAL">Mathematisch korrekte Variante (+45 / +30 / +22,5)</option></select><small className="field-hint">Die Einstellung gilt für die Listen und die gesamte Rangliste dieses Turniers.</small></label><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
 }
 
 function ListCard({ list, ranking, index = 0, onClick }) {
@@ -880,7 +921,7 @@ function ListCard({ list, ranking, index = 0, onClick }) {
   return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
 }
 
-function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
+function TournamentRanking({ standing, tournament, token, groups, groupId, onGroupChange, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
   const [histories, setHistories] = useState({})
   const [historyError, setHistoryError] = useState('')
@@ -894,16 +935,17 @@ function TournamentRanking({ standing, tournament, token, onOpenPlayer }) {
   useEffect(() => {
     if (!tournament?.id || histories[scale]) return undefined
     let active = true
-    request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}`, { token })
+    const groupQuery = groupId === 'all' ? '' : `&groupId=${encodeURIComponent(groupId)}`
+    request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}${groupQuery}`, { token })
       .then((history) => { if (active) { setHistories((current) => ({ ...current, [scale]: history })); setHistoryError('') } })
       .catch((problem) => { if (active) setHistoryError(errorNotice(problem)) })
     return () => { active = false }
-  }, [tournament?.id, token, scale, histories])
+  }, [tournament?.id, token, scale, histories, groupId])
 
   const history = histories[scale]
   const chart = standingsProgressChart(history)
   return <section className="tournament-ranking">
-    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span></div>
+    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><div className="ranking-controls"><label><span>Spielergruppe</span><select aria-label="Rangliste nach Spielergruppe filtern" value={groupId} onChange={(event) => onGroupChange(event.target.value)}><option value="all">Alle Spieler</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span></div></div>
     {mobile ? <div className="ranking-cards">
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
@@ -1212,7 +1254,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
     try {
       const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}/${action}`, { method: 'POST', token })
       onUpdated(updated)
-      succeed(action === 'submit' ? 'Liste wurde geschlossen.' : 'Liste wurde wieder geöffnet.')
+      succeed(action === 'submit' ? 'Liste wurde abgegeben.' : 'Liste wurde wieder geöffnet.')
     } catch (e) { fail(e) }
   }
 
@@ -1252,7 +1294,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
       <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
-        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Schließen</button>}
+        {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Liste abgeben</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
         {canDeleteList && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
         <button className="primary-button" disabled={list.locked} onClick={() => { setProblem(''); setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>

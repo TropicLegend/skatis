@@ -1,5 +1,7 @@
 import { MAX_LINEUP, MIN_LINEUP } from './game-rules.js';
 
+export type OpponentBonusVariant = 'OFFICIAL' | 'MATHEMATICAL';
+
 /**
  * The result table ("Ergebnistabelle") of a list, as described in the README of
  * the repository. Everything in here is pure – the service only feeds it the
@@ -15,8 +17,8 @@ import { MAX_LINEUP, MIN_LINEUP } from './game-rules.js';
  * The final result ("Gesamtergebnis") adds two more parts:
  *
  * * +50 per won and −50 per lost Alleinspiel
- * * a bonus for every Alleinspiel that **another** player lost (+40 with 3,
- *   +30 with 4 and +24 with 5 players)
+ * * an official or mathematical bonus for every Alleinspiel that **another**
+ *   player lost
  *
  * `scoreList` sums all of it up into the table of the evening, `accountProgression`
  * reports the very same numbers round by round – where every player stood before
@@ -24,11 +26,18 @@ import { MAX_LINEUP, MIN_LINEUP } from './game-rules.js';
  */
 
 /** Bonus for every lost Alleinspiel of another player, by size of the lineup. */
-const OPPONENT_BONUS = new Map<number, number>([
-  [3, 40],
-  [4, 30],
-  [5, 24],
-]);
+const OPPONENT_BONUS: Record<OpponentBonusVariant, ReadonlyMap<number, number>> = {
+  OFFICIAL: new Map([
+    [3, 40],
+    [4, 30],
+    [5, 24],
+  ]),
+  MATHEMATICAL: new Map([
+    [3, 45],
+    [4, 30],
+    [5, 22.5],
+  ]),
+};
 
 /** Flat bonus per won and penalty per lost Alleinspiel. */
 export const WIN_BONUS = 50;
@@ -98,13 +107,16 @@ export interface ListResultsDto {
  * players are chosen; it has no games then, so there is nothing to pay out and
  * its (empty) table is built with a bonus of 0 instead of failing.
  */
-function bonusPerGameOf(playerCount: number): number {
-  return playerCount === 0 ? 0 : opponentBonusPerGame(playerCount);
+function bonusPerGameOf(playerCount: number, variant: OpponentBonusVariant): number {
+  return playerCount === 0 ? 0 : opponentBonusPerGame(playerCount, variant);
 }
 
 /** What a lost Alleinspiel of another player is worth in a list of this size. */
-export function opponentBonusPerGame(playerCount: number): number {
-  const bonus = OPPONENT_BONUS.get(playerCount);
+export function opponentBonusPerGame(
+  playerCount: number,
+  variant: OpponentBonusVariant = 'OFFICIAL',
+): number {
+  const bonus = OPPONENT_BONUS[variant].get(playerCount);
   if (bonus === undefined) {
     throw new Error(
       `A list has ${MIN_LINEUP} to ${MAX_LINEUP} players, so a lineup of ${playerCount} cannot be scored`,
@@ -124,9 +136,10 @@ export function scoreList(
   lineup: readonly string[],
   games: readonly ScorableGame[],
   matchday: string,
+  variant: OpponentBonusVariant = 'OFFICIAL',
 ): ListResultsDto {
   const playerCount = lineup.length;
-  const bonusPerGame = bonusPerGameOf(playerCount);
+  const bonusPerGame = bonusPerGameOf(playerCount, variant);
 
   const played = games.filter((game) => game.declarer !== null);
   const passedOutCount = games.length - played.length;
@@ -275,6 +288,7 @@ export function accountProgression(
   lineup: readonly string[],
   games: readonly ProgressableGame[],
   matchday: string,
+  variant: OpponentBonusVariant = 'OFFICIAL',
 ): AccountProgressionDto {
   const accounts: Record<string, number> = {};
   const points: Record<string, number> = {};
@@ -287,7 +301,7 @@ export function accountProgression(
     lost[name] = 0;
   }
 
-  const bonusPerGame = bonusPerGameOf(lineup.length);
+  const bonusPerGame = bonusPerGameOf(lineup.length, variant);
 
   const rounds = games.map((game): RoundAccountDto => {
     const declarer = game.declarer;

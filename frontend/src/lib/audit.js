@@ -79,6 +79,13 @@ export function describeAuditEntry(entry) {
         parts.push(`Spielzeiten: ${spans.length ? spans.join(', ') : 'keine'}`)
       }
       if (changed.includes('password')) parts.push('Neues Spieler-Passwort gesetzt')
+      if (changed.includes('opponentBonusVariant')) {
+        parts.push(
+          details.opponentBonusVariant === 'MATHEMATICAL'
+            ? 'Mathematisch korrekte Gegenspielpunkte'
+            : 'Offizielle Gegenspielpunkte',
+        )
+      }
       return { title: 'Turnier-Einstellungen geändert', detail: parts.join(' · ') }
     }
     case 'list.created':
@@ -132,6 +139,20 @@ export function describeAuditEntry(entry) {
       }
     case 'player.removed':
       return { title: 'Spieler entfernt', detail: details.name ?? '' }
+    case 'player.standing_visibility_changed':
+      return {
+        title: details.hiddenFromStandings ? 'Spieler aus Rangliste ausgeblendet' : 'Spieler in Rangliste eingeblendet',
+        detail: details.name ?? '',
+      }
+    case 'group.created':
+      return { title: 'Spielergruppe erstellt', detail: details.name ?? '' }
+    case 'group.deleted':
+      return { title: 'Spielergruppe gelöscht', detail: details.name ?? '' }
+    case 'group.members_changed':
+      return {
+        title: `Mitglieder von ${details.name ?? 'Spielergruppe'} geändert`,
+        detail: listSummary('Spieler', details.playerNames),
+      }
     default:
       return { title: entry?.action ?? 'Änderung', detail: '' }
   }

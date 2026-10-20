@@ -201,6 +201,10 @@ tournament once and can then be put on a list:
   `{ "hiddenFromStandings": true }` to hide a player or `false` to show them
   again. Hidden players are omitted from the standing and its history; their
   roster entry and game results remain unchanged.
+- Admins can create groups with `POST …/players/groups`, replace their members
+  with `PUT …/players/groups/:groupId/players` and delete them with
+  `DELETE …/players/groups/:groupId`. Group membership only filters the standing
+  and its history when the optional `groupId` query is supplied.
 
 ### Entering a game
 
@@ -301,7 +305,7 @@ The final result (`total`) adds two more parts to that account:
 | --------------- | --------------------------------------------------------------------------------------------------- |
 | `wonBonus`      | `+50` per won Alleinspiel (`Gew`)                                                                   |
 | `lossPenalty`   | `-50` per lost Alleinspiel (`Verl`)                                                                 |
-| `opponentBonus` | `+40` / `+30` / `+24` per lost Alleinspiel **of another player**, for a lineup of 3 / 4 / 5 players |
+| `opponentBonus` | Official: `+40` / `+30` / `+24`; mathematical: `+45` / `+30` / `+22.5` per other player's loss, for a lineup of 3 / 4 / 5 |
 
 So `total = points + wonBonus + lossPenalty + opponentBonus`, where
 `points = wonGameValue - lostGameValue`. Each part is reported separately, so a
@@ -374,10 +378,11 @@ The whole `total` of the sheet is carried over, part by part:
    lost Alleinspiel. The tournament carries them over like the Spielwerte, so a
    won game is worth its Spielwert **plus** 50 in the standing.
 4. **`opponentBonus`** – the bonus for every Alleinspiel **another** player lost,
-   `+40` / `+30` / `+24` for a lineup of 3 / 4 / 5 players. This is how a player
-   gains points in a game they did not take part in: like in the table of the
-   evening, the bonus goes to the whole lineup, not only to the three players at
-   the table.
+  according to the tournament's selected variant: official `+40` / `+30` / `+24`
+  or mathematical `+45` / `+30` / `+22.5` for 3 / 4 / 5 players. This is how a
+  player gains points in a game they did not take part in: like in the table of
+  the evening, the bonus goes to the whole lineup, not only to the three players
+  at the table.
 
 `score = points + wonBonus + lossPenalty + opponentBonus` adds those parts up
 over all counted lists – the sum of the `total` column of the player's sheets.
@@ -1086,6 +1091,10 @@ that is still open **on its own day** does not count yet, and reopening one take
 it out again – the standing always describes what is final. Reading is allowed
 for both roles.
 
+Optional query `?groupId=<uuid>` limits the rows to players assigned to that
+group. Without it, all visible players are included. Hidden players remain
+excluded either way.
+
 **Errors:** `404` unknown tournament.
 
 #### `GET /tournaments/:tournamentId/standings/history`
@@ -1095,7 +1104,8 @@ matchday – or of every ISO week or month. It is what a progression chart of th
 ranking is drawn from, and it follows the rules of
 [Tournament standings](#tournament-standings). Reading is allowed for both roles.
 
-Query: `?groupBy=matchday|week|month` (default `matchday`).
+Query: `?groupBy=matchday|week|month` (default `matchday`), optionally with
+`&groupId=<uuid>` to show only members of that group.
 
 **Response** `200` – the month example of the table above:
 
@@ -1263,6 +1273,7 @@ Every field is optional, at least one is required.
 | `name`            | string   | same rules as on creation                                        |
 | `matchdays`       | number[] | 1–7 unique weekdays                                              |
 | `matchdayWindows` | object   | playing time per weekday – see below                             |
+| `opponentBonusVariant` | string | `OFFICIAL` (default) or `MATHEMATICAL`                       |
 | `password`        | string   | 8–128 characters, sets a new player one                          |
 
 An admin uses `matchdays` to steer **when** members may work on lists: a member
@@ -1277,6 +1288,11 @@ lists, after the `to` the days' lists count as submitted – see
 [domain rules](#domain-rules). An empty object clears all playing times; a
 weekday that is not in `matchdays` may carry an entry (it simply never applies).
 The times are understood in the server's timezone (`TZ`).
+
+`opponentBonusVariant` selects the bonus for a lost game of another player on
+every list in the tournament. `OFFICIAL` keeps the traditional `+40 / +30 / +24`
+for lineups of 3 / 4 / 5. `MATHEMATICAL` uses `+45 / +30 / +22.5`. Existing
+results are recalculated with the selected variant in list tables and standings.
 
 The **admin password cannot be changed** through the API: it is the password that
 grants these changes, so it stays as it was set when the tournament was created.

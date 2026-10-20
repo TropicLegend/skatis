@@ -14,9 +14,11 @@ import {
 } from '../src/modules/lists/list.schemas.js';
 import { gameSchema, playedGameSchema } from '../src/modules/lists/game.schemas.js';
 import {
+  createPlayerGroupSchema,
   createPlayerSchema,
   lineupSchema,
   playerParams,
+  setPlayerGroupMembersSchema,
   renamePlayerSchema,
 } from '../src/modules/players/player.schemas.js';
 
@@ -117,6 +119,16 @@ describe('updateTournamentSchema', () => {
     expect(updateTournamentSchema.parse({ matchdays: [1, 4] })).toEqual({ matchdays: [1, 4] });
   });
 
+  it('accepts both opponent bonus variants and rejects unknown variants', () => {
+    expect(updateTournamentSchema.parse({ opponentBonusVariant: 'OFFICIAL' })).toEqual({
+      opponentBonusVariant: 'OFFICIAL',
+    });
+    expect(updateTournamentSchema.parse({ opponentBonusVariant: 'MATHEMATICAL' })).toEqual({
+      opponentBonusVariant: 'MATHEMATICAL',
+    });
+    expect(() => updateTournamentSchema.parse({ opponentBonusVariant: 'CUSTOM' })).toThrow();
+  });
+
   it('accepts a new player password', () => {
     expect(updateTournamentSchema.parse({ password: 'neues-geheimnis' })).toEqual({
       password: 'neues-geheimnis',
@@ -170,6 +182,22 @@ describe('updateTournamentSchema', () => {
         matchdayWindows: { '3': { from: '18:00', to: '22:30', extra: 1 } },
       }),
     ).toThrow();
+  });
+});
+
+describe('player group schemas', () => {
+  it('accepts trimmed group names and unique tournament player names', () => {
+    expect(createPlayerGroupSchema.parse({ name: '  Gruppe A  ' })).toEqual({ name: 'Gruppe A' });
+    expect(setPlayerGroupMembersSchema.parse({ playerNames: ['Anna', 'Bert'] })).toEqual({
+      playerNames: ['Anna', 'Bert'],
+    });
+    expect(setPlayerGroupMembersSchema.parse({ playerNames: [] })).toEqual({ playerNames: [] });
+  });
+
+  it('rejects empty group names, control characters, and duplicate members', () => {
+    expect(() => createPlayerGroupSchema.parse({ name: '  ' })).toThrow();
+    expect(() => createPlayerGroupSchema.parse({ name: 'A\nB' })).toThrow();
+    expect(() => setPlayerGroupMembersSchema.parse({ playerNames: ['Anna', 'Anna'] })).toThrow();
   });
 });
 
