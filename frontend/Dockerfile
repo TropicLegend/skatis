@@ -1,7 +1,7 @@
 # Baut das Frontend im Image selbst: `npm ci` nach Lockfile, dann `npm run build`.
 # So kann kein veralteter `dist`-Ordner vom Build-Host hineingeraten – er wird
 # hier nie kopiert, nur erzeugt.
-FROM node:24.21.0-alpine AS build
+FROM node:alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -16,7 +16,7 @@ RUN if [ -z "${VITE_API_BASE}" ]; then unset VITE_API_BASE; else export VITE_API
     && npm run build
 
 # Nur das Ergebnis des Baus: `dist` enthält index.html und assets/.
-FROM nginx:1.30-alpine
+FROM nginx:alpine
 
 # Wohin die Seite Anfragen schicken darf (`connect-src` der Content-Security-Policy):
 # die eigene Adresse und die ausgelieferte API. Wer mit `VITE_API_BASE` eine andere
