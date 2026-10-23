@@ -1,6 +1,6 @@
 # Zwei Stufen: die erste baut (`npm ci` nach Lockfile, dann `tsc`), die zweite
 # enthält nur, was zum Laufen gebraucht wird – ohne Compiler, Linter und Tests.
-FROM node:24.21.0-alpine AS build
+FROM node:alpine3.24 AS build
 WORKDIR /app
 
 # Erst die Manifeste: solange sie sich nicht ändern, bleibt die Installation im
@@ -14,7 +14,7 @@ COPY src ./src
 RUN npm run build
 
 
-FROM node:24.21.0-alpine
+FROM node:alpine3.24
 
 # `production` gilt auch, wenn die Umgebung nichts setzt; `TZ` entscheidet, wann
 # ein Spieltag endet (siehe README) – beides lässt sich beim Start überschreiben.
