@@ -32,6 +32,8 @@ export interface StandingRow {
   /** Position in the table, `1` is the best. `null` while the player has no game. */
   rank: number | null;
   name: string;
+  /** Group label shown beside the player when they belong to a group. */
+  group: { name: string; rank: number } | null;
   /** Games of the counted lists the player took part in. */
   gamesPlayed: number;
   /** Alleinspiele the player won ("Gew") – the source of `wonBonus`. */
@@ -75,6 +77,8 @@ export interface TournamentStandingsDto {
   matchdaysCounted: number;
   /** How many submitted lists went into the standing – a date may have several. */
   listsCounted: number;
+  /** All matchdays with a list, including days that are still open. */
+  availableMatchdays?: string[];
   /** The players of the tournament, best first. */
   players: StandingRow[];
 }
@@ -85,6 +89,16 @@ export interface TournamentStandingsDto {
  * can be compared although they played a different number of games.
  */
 export const SESSION_GAME_COUNT = 36;
+
+export interface StandingGroupInfo {
+  name: string;
+  rank: number;
+}
+
+export interface TournamentStandingsOptions {
+  groups?: ReadonlyMap<string, StandingGroupInfo>;
+  grouped?: boolean;
+}
 
 /** Rounds to two decimals and never returns a negative zero. */
 function round2(value: number): number {
@@ -127,7 +141,9 @@ export function tournamentStandings(
   tournamentId: string,
   names: readonly string[],
   lists: readonly ListResultsDto[],
+  options: TournamentStandingsOptions = {},
 ): TournamentStandingsDto {
+  const groupOf = (name: string) => options.groups?.get(name) ?? null;
   const accounts = new Map<string, Account>();
   for (const name of names) {
     accounts.set(name, emptyAccount());
@@ -166,13 +182,20 @@ export function tournamentStandings(
       lossPenalty: account.lossPenalty,
       opponentBonus: account.opponentBonus,
       score,
+      group: groupOf(name),
       // The ranking uses the unrounded average, so rounding cannot change it.
       average: account.gamesPlayed === 0 ? null : score / account.gamesPlayed,
     };
   });
 
-  // Best average first; players without a game come last, sorted by name.
+  // In grouped mode, the group's priority precedes the average. Otherwise the
+  // tournament keeps its normal average-first ranking.
   rows.sort((a, b) => {
+    if (options.grouped) {
+      const priorityA = a.group?.rank ?? Number.MAX_SAFE_INTEGER;
+      const priorityB = b.group?.rank ?? Number.MAX_SAFE_INTEGER;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+    }
     if (a.average === null || b.average === null) {
       if (a.gamesPlayed !== b.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
       return a.name.localeCompare(b.name);
@@ -192,16 +215,23 @@ export function tournamentStandings(
   // Equal averages share a rank, the next one continues after them.
   let rank = 0;
   let previous: number | null = null;
+  let previousGroupRank: number | null = null;
 
   const players: StandingRow[] = rows.map((row, index) => {
-    if (row.average !== null && row.average !== previous) {
+    const groupRank = options.grouped ? (row.group?.rank ?? null) : null;
+    if (
+      row.average !== null &&
+      (row.average !== previous || groupRank !== previousGroupRank)
+    ) {
       rank = index + 1;
       previous = row.average;
+      previousGroupRank = groupRank;
     }
 
     return {
       rank: row.average === null ? null : rank,
       name: row.name,
+      group: row.group,
       gamesPlayed: row.gamesPlayed,
       won: row.won,
       lost: row.lost,

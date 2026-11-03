@@ -1,4 +1,4 @@
-import type { ListStatus, Prisma, Tournament } from '@prisma/client';
+import type { GameList, ListStatus, Prisma, Tournament } from '@prisma/client';
 import { conflict, notFound } from '../../lib/http-error.js';
 import { parseIsoDate, todayIso, toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
@@ -45,6 +45,9 @@ export interface ListDto {
   series: number;
   /** "Tisch" from the head of the sheet – which table this sheet belongs to. */
   table: number;
+  tableLabel: string;
+  /** Only shown when multiple lists share the same day, series and table. */
+  tableLabelVisible: boolean;
   /** The stored status – `OPEN` until somebody hands the list in. */
   status: ListStatus;
   /**
@@ -109,13 +112,14 @@ export function lineupNames(list: ListWithGames): string[] {
 
 /** The place of a list – what a log entry about it has to repeat. */
 function listDetails(
-  list: Pick<ListWithGames, 'id' | 'matchday' | 'series' | 'table'>,
+  list: Pick<ListWithGames, 'id' | 'matchday' | 'series' | 'table' | 'tableLabel'>,
 ): AuditDetails {
   return {
     listId: list.id,
     matchday: toIsoDate(list.matchday),
     series: list.series,
     table: list.table,
+    tableLabel: list.tableLabel,
   };
 }
 
@@ -123,6 +127,7 @@ export function toListDto(
   list: ListWithGames,
   context: ListViewContext,
   withGames = false,
+  tableLabelVisible = false,
 ): ListDto {
   const lockReasons = listLockReasons(list, context.matchdays, context.windows, context.role);
 
@@ -132,6 +137,8 @@ export function toListDto(
     matchday: toIsoDate(list.matchday),
     series: list.series,
     table: list.table,
+    tableLabel: list.tableLabel,
+    tableLabelVisible,
     status: list.status,
     counted: countsForStanding(list, context.windows),
     submittedAt: list.submittedAt ? list.submittedAt.toISOString() : null,
@@ -152,6 +159,33 @@ export function toListDto(
   }
 
   return dto;
+}
+
+function tableSlotKey(matchday: Date, series: number, table: number): string {
+  return `${toIsoDate(matchday)}:${series}:${table}`;
+}
+
+async function tableLabelIsVisible(
+  tournamentId: string,
+  list: Pick<GameList, 'matchday' | 'series' | 'table'>,
+): Promise<boolean> {
+  const count = await prisma.gameList.count({
+    where: {
+      tournamentId,
+      matchday: list.matchday,
+      series: list.series,
+      table: list.table,
+    },
+  });
+  return count > 1;
+}
+
+async function toListDtoWithTableContext(
+  list: ListWithGames,
+  context: ListViewContext,
+  withGames = false,
+): Promise<ListDto> {
+  return toListDto(list, context, withGames, await tableLabelIsVisible(context.tournamentId, list));
 }
 
 /** Loads a list by id, including its games. Throws 404 when it does not exist. */
@@ -239,6 +273,7 @@ export async function listLists(
         { matchday: 'desc' },
         { series: 'asc' },
         { table: 'asc' },
+        { tableLabel: 'asc' },
         { createdAt: 'desc' },
       ],
       take: query.limit,
@@ -262,8 +297,32 @@ export async function listLists(
     }),
   ]);
 
+  const pageDays = [...new Set(rows.map((row) => toIsoDate(row.matchday)))];
+  const slotCounts = pageDays.length
+    ? await prisma.gameList.groupBy({
+        by: ['matchday', 'series', 'table'],
+        where: {
+          tournamentId: tournament.id,
+          matchday: { in: pageDays.map(parseIsoDate) },
+        },
+        _count: { _all: true },
+      })
+    : [];
+  const duplicateSlots = new Set(
+    slotCounts
+      .filter((slot) => slot._count._all > 1)
+      .map((slot) => tableSlotKey(slot.matchday, slot.series, slot.table)),
+  );
+
   return {
-    items: rows.map((row) => toListDto(row, listViewContext(tournament, role))),
+    items: rows.map((row) =>
+      toListDto(
+        row,
+        listViewContext(tournament, role),
+        false,
+        duplicateSlots.has(tableSlotKey(row.matchday, row.series, row.table)),
+      ),
+    ),
     total,
     limit: query.limit,
     offset: query.offset,
@@ -281,7 +340,7 @@ export async function getList(
 ): Promise<ListDto> {
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
-  return toListDto(list, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(list, listViewContext(tournament, role), true);
 }
 
 /**
@@ -341,6 +400,7 @@ async function assertSlotFree(
   matchday: Date,
   series: number,
   table: number,
+  tableLabel: string,
   exceptListId?: string,
 ): Promise<void> {
   const blocking = await prisma.gameList.findFirst({
@@ -349,6 +409,7 @@ async function assertSlotFree(
       matchday,
       series,
       table,
+      tableLabel,
       status: 'OPEN',
       ...(exceptListId ? { id: { not: exceptListId } } : {}),
     },
@@ -358,10 +419,37 @@ async function assertSlotFree(
   if (!takesSlot(blocking, matchdayWindowsOf(tournament.matchdayWindows))) return;
 
   throw conflict(
-    `Serie ${series}, Tisch ${table} is still playing on ${toIsoDate(matchday)} – ` +
+    `Serie ${series}, Tisch ${table}${tableLabel} is still playing on ${toIsoDate(matchday)} – ` +
       'hand that list in first, or use another table or series',
     { listId: blocking?.id },
   );
+}
+
+async function assertTableLabelFree(
+  tournamentId: string,
+  matchday: Date,
+  series: number,
+  table: number,
+  tableLabel: string,
+  exceptListId?: string,
+): Promise<void> {
+  const existing = await prisma.gameList.findFirst({
+    where: {
+      tournamentId,
+      matchday,
+      series,
+      table,
+      tableLabel,
+      ...(exceptListId ? { id: { not: exceptListId } } : {}),
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    throw conflict(
+      `Serie ${series}, Tisch ${table}${tableLabel} already exists on ${toIsoDate(matchday)}`,
+      { listId: existing.id, tableLabel },
+    );
+  }
 }
 
 export async function createList(
@@ -374,7 +462,14 @@ export async function createList(
 
   const matchday = parseIsoDate(input.matchday);
 
-  await assertSlotFree(tournament, matchday, input.series, input.table);
+  await assertTableLabelFree(
+    tournament.id,
+    matchday,
+    input.series,
+    input.table,
+    input.tableLabel,
+  );
+  await assertSlotFree(tournament, matchday, input.series, input.table, input.tableLabel);
 
   const games = input.games ?? [];
   const players = await resolveTournamentPlayers(tournament.id, input.playerNames ?? []);
@@ -407,6 +502,7 @@ export async function createList(
       matchday,
       series: input.series,
       table: input.table,
+      tableLabel: input.tableLabel,
       lineup: {
         create: players.map((player, index) => ({
           position: index + 1,
@@ -427,11 +523,12 @@ export async function createList(
       matchday: input.matchday,
       series: input.series,
       table: input.table,
+      tableLabel: input.tableLabel,
       playerNames: lineup,
     },
   });
 
-  return toListDto(list, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(list, listViewContext(tournament, role), true);
 }
 
 /**
@@ -480,7 +577,7 @@ export async function setListPlayers(
     details: { ...listDetails(list), playerNames: [...playerNames] },
   });
 
-  return toListDto(updated, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(updated, listViewContext(tournament, role), true);
 }
 
 /** Admin only (enforced by the route): corrects the head of the sheet – a member
@@ -500,15 +597,28 @@ export async function updateList(
 
   const series = input.series ?? list.series;
   const table = input.table ?? list.table;
-  if (series === list.series && table === list.table) {
-    return toListDto(list, listViewContext(tournament, role), true);
+  const tableLabel = input.tableLabel ?? list.tableLabel;
+  if (
+    series === list.series &&
+    table === list.table &&
+    tableLabel === list.tableLabel
+  ) {
+    return toListDtoWithTableContext(list, listViewContext(tournament, role), true);
   }
 
-  await assertSlotFree(tournament, list.matchday, series, table, list.id);
+  await assertTableLabelFree(
+    tournament.id,
+    list.matchday,
+    series,
+    table,
+    tableLabel,
+    list.id,
+  );
+  await assertSlotFree(tournament, list.matchday, series, table, tableLabel, list.id);
 
   const updated = await prisma.gameList.update({
     where: { id: list.id },
-    data: { series, table },
+    data: { series, table, tableLabel },
     include: listWithGamesInclude,
   });
 
@@ -521,12 +631,14 @@ export async function updateList(
       matchday: toIsoDate(list.matchday),
       fromSeries: list.series,
       fromTable: list.table,
+      fromTableLabel: list.tableLabel,
       series,
       table,
+      tableLabel,
     },
   });
 
-  return toListDto(updated, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(updated, listViewContext(tournament, role), true);
 }
 
 /** Members may delete an empty open list; admins may also remove populated lists. */
@@ -601,7 +713,7 @@ export async function submitList(
     details: listDetails(list),
   });
 
-  return toListDto(updated, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(updated, listViewContext(tournament, role), true);
 }
 
 /**
@@ -635,5 +747,5 @@ export async function reopenList(
     details: listDetails(list),
   });
 
-  return toListDto(updated, listViewContext(tournament, role), true);
+  return toListDtoWithTableContext(updated, listViewContext(tournament, role), true);
 }

@@ -35,6 +35,18 @@ export function assertRoomForGame(gameCount: number): void {
   }
 }
 
+/** New games may only be appended after every preceding round exists. */
+export function assertGameSequenceComplete(positions: readonly number[]): void {
+  const ordered = [...positions].sort((a, b) => a - b);
+  const missingPosition = ordered.findIndex((position, index) => position !== index + 1);
+  if (missingPosition === -1) return;
+
+  const expectedPosition = missingPosition + 1;
+  throw conflict(`Cannot add a game because game ${expectedPosition} is missing`, {
+    missingPosition: expectedPosition,
+  });
+}
+
 /**
  * Step 1 of the entry flow: the Alleinspieler has to be part of the lineup and
  * has to be one of the three players of this round – the Geber sits out with 4

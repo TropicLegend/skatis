@@ -3,6 +3,8 @@ import {
   createTournamentSchema,
   listTournamentsQuery,
   openSessionSchema,
+  standingsHistoryQuery,
+  standingsQuery,
   tournamentIdSchema,
   updateTournamentSchema,
 } from '../src/modules/tournaments/tournament.schemas.js';
@@ -20,6 +22,7 @@ import {
   playerParams,
   setPlayerGroupMembersSchema,
   renamePlayerSchema,
+  updatePlayerGroupSchema,
 } from '../src/modules/players/player.schemas.js';
 
 const validTournament = {
@@ -187,7 +190,10 @@ describe('updateTournamentSchema', () => {
 
 describe('player group schemas', () => {
   it('accepts trimmed group names and unique tournament player names', () => {
-    expect(createPlayerGroupSchema.parse({ name: '  Gruppe A  ' })).toEqual({ name: 'Gruppe A' });
+    expect(createPlayerGroupSchema.parse({ name: '  Gruppe A  ', rank: 1 })).toEqual({
+      name: 'Gruppe A',
+      rank: 1,
+    });
     expect(setPlayerGroupMembersSchema.parse({ playerNames: ['Anna', 'Bert'] })).toEqual({
       playerNames: ['Anna', 'Bert'],
     });
@@ -196,8 +202,33 @@ describe('player group schemas', () => {
 
   it('rejects empty group names, control characters, and duplicate members', () => {
     expect(() => createPlayerGroupSchema.parse({ name: '  ' })).toThrow();
+    expect(() => createPlayerGroupSchema.parse({ name: 'Gruppe A', rank: 0 })).toThrow();
     expect(() => createPlayerGroupSchema.parse({ name: 'A\nB' })).toThrow();
     expect(() => setPlayerGroupMembersSchema.parse({ playerNames: ['Anna', 'Anna'] })).toThrow();
+  });
+
+  it('allows admins to change a group name or rank', () => {
+    expect(updatePlayerGroupSchema.parse({ rank: 2 })).toEqual({ rank: 2 });
+    expect(updatePlayerGroupSchema.parse({ name: 'Liga B', rank: 3 })).toEqual({
+      name: 'Liga B',
+      rank: 3,
+    });
+    expect(() => updatePlayerGroupSchema.parse({})).toThrow();
+  });
+});
+
+describe('standings query filters', () => {
+  it('defaults to all players and current standings', () => {
+    expect(standingsQuery.parse({})).toEqual({ grouped: false });
+    expect(standingsHistoryQuery.parse({})).toEqual({ groupBy: 'matchday', grouped: false });
+  });
+
+  it('accepts grouped sorting and a historical matchday', () => {
+    expect(standingsQuery.parse({ grouped: 'true', asOf: '2026-10-20' })).toEqual({
+      grouped: true,
+      asOf: '2026-10-20',
+    });
+    expect(() => standingsQuery.parse({ asOf: '2026-02-30' })).toThrow();
   });
 });
 
@@ -498,6 +529,7 @@ describe('updateListSchema', () => {
   it('accepts a partial update', () => {
     expect(updateListSchema.parse({ table: 5 })).toEqual({ table: 5 });
     expect(updateListSchema.parse({ series: 2, table: 3 })).toEqual({ series: 2, table: 3 });
+    expect(updateListSchema.parse({ tableLabel: 'b' })).toEqual({ tableLabel: 'B' });
   });
 
   it('reads the numbers from strings as well', () => {
@@ -526,7 +558,15 @@ describe('createListSchema', () => {
       matchday: '2026-09-16',
       series: 1,
       table: 3,
+      tableLabel: 'A',
     });
+  });
+
+  it('normalizes table labels and rejects non-letter labels', () => {
+    const base = { matchday: '2026-09-16', series: 1, table: 1 };
+    expect(createListSchema.parse({ ...base, tableLabel: ' b ' }).tableLabel).toBe('B');
+    expect(createListSchema.parse({ ...base, tableLabel: 'aa' }).tableLabel).toBe('AA');
+    expect(() => createListSchema.parse({ ...base, tableLabel: 'A1' })).toThrow();
   });
 
   it('reads the numbers of the head from strings as well', () => {

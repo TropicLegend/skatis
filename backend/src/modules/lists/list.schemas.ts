@@ -21,10 +21,17 @@ export const tableSchema = z.coerce
   .min(1, 'Tisch must be at least 1')
   .max(999, 'Tisch must be at most 999');
 
+export const tableLabelSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{1,2}$/, 'Table label must be one or two letters')
+  .transform((value) => value.toUpperCase());
+
 export const createListSchema = z.object({
   matchday: isoDateSchema,
   series: seriesSchema,
   table: tableSchema,
+  tableLabel: tableLabelSchema.default('A'),
   /** The lineup of the table in seating order (3, 4 or 5 names). */
   playerNames: lineupSchema.optional(),
   /** Games are appended in order – the API assigns the round numbers. */
@@ -43,10 +50,12 @@ export const updateListSchema = z
   .strictObject({
     series: seriesSchema.optional(),
     table: tableSchema.optional(),
+    tableLabel: tableLabelSchema.optional(),
   })
-  .refine((value) => value.series !== undefined || value.table !== undefined, {
-    message: 'Provide a serie and/or a table',
-  });
+  .refine(
+    (value) => value.series !== undefined || value.table !== undefined || value.tableLabel !== undefined,
+    { message: 'Provide a serie, table and/or table label' },
+  );
 
 /**
  * Replaces the players of a list. Only players of the same tournament are

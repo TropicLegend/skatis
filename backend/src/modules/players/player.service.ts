@@ -10,6 +10,7 @@ import type { CreatePlayerInput } from './player.schemas.js';
 export interface PlayerGroupDto {
   id: string;
   name: string;
+  rank: number;
   playerNames: string[];
 }
 
@@ -19,6 +20,7 @@ function toPlayerGroupDto(
   return {
     id: group.id,
     name: group.name,
+    rank: group.rank,
     playerNames: group.members.map((member) => member.player.name).sort((a, b) => a.localeCompare(b)),
   };
 }
@@ -52,7 +54,7 @@ export async function listPlayerGroups(tournamentId: string): Promise<PlayerGrou
   const groups = await prisma.playerGroup.findMany({
     where: { tournamentId: tournament.id },
     include: playerGroupInclude,
-    orderBy: { name: 'asc' },
+    orderBy: [{ rank: 'asc' }, { name: 'asc' }],
   });
 
   return groups.map(toPlayerGroupDto);
@@ -61,6 +63,7 @@ export async function listPlayerGroups(tournamentId: string): Promise<PlayerGrou
 export async function createPlayerGroup(
   tournamentId: string,
   name: string,
+  rank: number,
   role: TournamentRole,
 ): Promise<PlayerGroupDto> {
   const tournament = await getTournamentRow(tournamentId);
@@ -71,17 +74,53 @@ export async function createPlayerGroup(
   if (existing) throw conflict(`A group named "${name}" already exists`);
 
   const group = await prisma.playerGroup.create({
-    data: { tournamentId: tournament.id, name },
+    data: { tournamentId: tournament.id, name, rank },
     include: playerGroupInclude,
   });
   await recordAudit({
     tournamentId: tournament.id,
     role,
     action: 'group.created',
-    details: { groupId: group.id, name: group.name },
+    details: { groupId: group.id, name: group.name, rank: group.rank },
   });
 
   return toPlayerGroupDto(group);
+}
+
+export async function updatePlayerGroup(
+  tournamentId: string,
+  groupId: string,
+  input: { name?: string; rank?: number },
+  role: TournamentRole,
+): Promise<PlayerGroupDto> {
+  const tournament = await getTournamentRow(tournamentId);
+  const group = await prisma.playerGroup.findFirst({
+    where: { id: groupId, tournamentId: tournament.id },
+  });
+  if (!group) throw notFound('Player group does not exist in this tournament');
+
+  const name = input.name ?? group.name;
+  if (name !== group.name) {
+    const existing = await prisma.playerGroup.findUnique({
+      where: { tournamentId_name: { tournamentId: tournament.id, name } },
+      select: { id: true },
+    });
+    if (existing) throw conflict(`A group named "${name}" already exists`);
+  }
+
+  const updated = await prisma.playerGroup.update({
+    where: { id: group.id },
+    data: { name, ...(input.rank === undefined ? {} : { rank: input.rank }) },
+    include: playerGroupInclude,
+  });
+  await recordAudit({
+    tournamentId: tournament.id,
+    role,
+    action: 'group.updated',
+    details: { groupId: group.id, name: updated.name, rank: updated.rank },
+  });
+
+  return toPlayerGroupDto(updated);
 }
 
 export async function deletePlayerGroup(
@@ -132,6 +171,9 @@ export async function setPlayerGroupMembers(
   await prisma.$transaction(async (transaction) => {
     await transaction.playerGroupMembership.deleteMany({ where: { groupId: group.id } });
     if (players.length > 0) {
+      await transaction.playerGroupMembership.deleteMany({
+        where: { playerId: { in: players.map((player) => player.id) } },
+      });
       await transaction.playerGroupMembership.createMany({
         data: players.map((player) => ({ groupId: group.id, playerId: player.id })),
       });

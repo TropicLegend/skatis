@@ -10,6 +10,7 @@ import {
   playerStandingVisibilitySchema,
   renamePlayerSchema,
   setPlayerGroupMembersSchema,
+  updatePlayerGroupSchema,
 } from './player.schemas.js';
 import {
   createPlayer,
@@ -21,6 +22,7 @@ import {
   renamePlayer,
   setPlayerGroupMembers,
   setPlayerStandingVisibility,
+  updatePlayerGroup,
 } from './player.service.js';
 
 /** Mounted below `/api/tournaments/:tournamentId/players`. */
@@ -42,11 +44,20 @@ playerRouter.get('/groups', authenticate(), async (req, res) => {
 
 playerRouter.post('/groups', authenticate('ADMIN'), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
-  const { name } = createPlayerGroupSchema.parse(req.body ?? {});
+  const { name, rank } = createPlayerGroupSchema.parse(req.body ?? {});
   const group = await withTournamentLock(tournamentId, () =>
-    createPlayerGroup(tournamentId, name, currentAuth(req).role),
+    createPlayerGroup(tournamentId, name, rank, currentAuth(req).role),
   );
   res.status(201).json({ data: group });
+});
+
+playerRouter.patch('/groups/:groupId', authenticate('ADMIN'), async (req, res) => {
+  const { tournamentId, groupId } = playerGroupParams.parse(req.params);
+  const input = updatePlayerGroupSchema.parse(req.body ?? {});
+  const group = await withTournamentLock(tournamentId, () =>
+    updatePlayerGroup(tournamentId, groupId, input, currentAuth(req).role),
+  );
+  res.json({ data: group });
 });
 
 playerRouter.put('/groups/:groupId/players', authenticate('ADMIN'), async (req, res) => {

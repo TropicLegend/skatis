@@ -59,6 +59,7 @@ function setDesktopMode(on) {
 applyDesktopMode(desktopModeStored())
 
 const weekdays = [['1', 'Montag'], ['2', 'Dienstag'], ['3', 'Mittwoch'], ['4', 'Donnerstag'], ['5', 'Freitag'], ['6', 'Samstag'], ['7', 'Sonntag']]
+const TABLE_LABEL_OPTIONS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((letter) => `A${letter}`)]
 
 function localDateIso() {
   const date = new Date()
@@ -651,7 +652,9 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [players, setPlayers] = useState([])
   const [playerGroups, setPlayerGroups] = useState([])
   const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupRank, setNewGroupRank] = useState(1)
   const [standingGroupId, setStandingGroupId] = useState('all')
+  const [standingAsOf, setStandingAsOf] = useState('current')
   const [playerName, setPlayerName] = useState('')
   const [playerError, setPlayerError] = useState('')
   const [editingPlayer, setEditingPlayer] = useState(null)
@@ -698,14 +701,33 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const showRanking = !mobile || section === 'ranking'
   const showPlayers = !mobile || section === 'players'
   async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })); setPlayerError('') }
-  async function loadPlayerGroups() { setPlayerGroups(await request(`/tournaments/${tournament.id}/players/groups`, { token })) }
+  async function loadPlayerGroups() {
+    const groups = await request(`/tournaments/${tournament.id}/players/groups`, { token })
+    setPlayerGroups(groups.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)))
+  }
   async function addPlayer(event) { event.preventDefault(); setPlayerError(''); try { await request(`/tournaments/${tournament.id}/players`, { method: 'POST', token, body: { name: playerName } }); setPlayerName(''); await loadPlayers() } catch (error) { setPlayerError(errorNotice(error)) } }
   async function addPlayerGroup(event) {
     event.preventDefault(); setPlayerError('')
     try {
-      const group = await request(`/tournaments/${tournament.id}/players/groups`, { method: 'POST', token, body: { name: newGroupName } })
-      setPlayerGroups((current) => [...current, group].sort((a, b) => a.name.localeCompare(b.name)))
+      const group = await request(`/tournaments/${tournament.id}/players/groups`, {
+        method: 'POST', token, body: { name: newGroupName, rank: Number(newGroupRank) },
+      })
+      setPlayerGroups((current) => [...current, group].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)))
       setNewGroupName('')
+      setNewGroupRank(group.rank + 1)
+    } catch (error) { setPlayerError(errorNotice(error)) }
+  }
+  async function changePlayerGroupRank(group, rank) {
+    if (!Number.isInteger(rank) || rank < 1 || rank > 999 || rank === group.rank) return
+    setPlayerError('')
+    try {
+      const updated = await request(`/tournaments/${tournament.id}/players/groups/${group.id}`, {
+        method: 'PATCH', token, body: { rank },
+      })
+      setPlayerGroups((current) => current
+        .map((entry) => entry.id === group.id ? updated : entry)
+        .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)))
+      setRankingRevision((revision) => revision + 1)
     } catch (error) { setPlayerError(errorNotice(error)) }
   }
   async function removePlayerGroup(group) {
@@ -725,7 +747,12 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       const updated = await request(`/tournaments/${tournament.id}/players/groups/${group.id}/players`, {
         method: 'PUT', token, body: { playerNames },
       })
-      setPlayerGroups((current) => current.map((entry) => entry.id === group.id ? updated : entry))
+      setPlayerGroups((current) => current.map((entry) => {
+        if (entry.id === group.id) return updated
+        return checked
+          ? { ...entry, playerNames: entry.playerNames.filter((name) => name !== player.name) }
+          : entry
+      }))
       setRankingRevision((revision) => revision + 1)
     } catch (error) { setPlayerError(errorNotice(error)) }
   }
@@ -794,9 +821,13 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     return () => { active = false }
   }, [tournament?.id, token, filter, seriesFilter, offset, reload, defaultFiltersReady])
   useEffect(() => {
-    const query = standingGroupId === 'all' ? '' : `?groupId=${encodeURIComponent(standingGroupId)}`
+    const params = new URLSearchParams()
+    if (standingGroupId === 'grouped') params.set('grouped', 'true')
+    else if (standingGroupId !== 'all') params.set('groupId', standingGroupId)
+    if (standingAsOf !== 'current') params.set('asOf', standingAsOf)
+    const query = params.size ? `?${params}` : ''
     request(`/tournaments/${tournament.id}/standings${query}`, { token }).then(setStanding).catch(() => setStanding(null))
-  }, [lists, tournament?.id, token, standingGroupId, rankingRevision, tournament?.opponentBonusVariant])
+  }, [lists, tournament?.id, token, standingGroupId, standingAsOf, rankingRevision, tournament?.opponentBonusVariant])
 
   // Mini-Ranglisten der Karten: Geladen wird, was noch fehlt – die Listen der
   // Spieler-Seite und die der aktuellen Seite der Übersicht.
@@ -848,12 +879,40 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
         <button className="secondary-button" disabled={offset + LISTS_PAGE_SIZE >= page.total} onClick={() => setOffset(offset + LISTS_PAGE_SIZE)}>Weiter <ArrowRight size={15} /></button>
       </div>}
     </>}
-    {showRanking && standing && <TournamentRanking key={`${rankingRevision}-${standingGroupId}-${tournament.opponentBonusVariant}`} standing={standing} tournament={tournament} token={token} groups={playerGroups} groupId={standingGroupId} onGroupChange={setStandingGroupId} onOpenPlayer={openPlayer} />}
+    {showRanking && standing && <TournamentRanking key={`${rankingRevision}-${standingGroupId}-${standingAsOf}-${tournament.opponentBonusVariant}`} standing={standing} tournament={tournament} token={token} groups={playerGroups} groupId={standingGroupId} asOf={standingAsOf} onGroupChange={setStandingGroupId} onAsOfChange={setStandingAsOf} onOpenPlayer={openPlayer} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className={`player-tag${player.hiddenFromStandings ? ' player-hidden' : ''}`} key={player.name}>{player.name}{role === 'ADMIN' && <><button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button><button className="icon-button" type="button" aria-label={player.hiddenFromStandings ? `${player.name} in Rangliste einblenden` : `${player.name} aus Rangliste ausblenden`} title={player.hiddenFromStandings ? 'In Rangliste einblenden' : 'Aus Rangliste ausblenden'} onClick={() => togglePlayerStandingVisibility(player)}>{player.hiddenFromStandings ? <Eye size={14} /> : <EyeOff size={14} />}</button></>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{role === 'ADMIN' && <div className="player-groups"><div className="player-groups-heading"><h3>Spielergruppen</h3><form onSubmit={addPlayerGroup}><input required maxLength="64" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Gruppenname" /><button className="icon-button" title="Gruppe erstellen"><Plus size={17} /></button></form></div>{playerGroups.map((group) => <details className="player-group" key={group.id}><summary><span>{group.name}</span><small>{group.playerNames.length} Spieler</small></summary><button className="icon-button danger" type="button" title={`${group.name} löschen`} onClick={() => removePlayerGroup(group)}><Trash2 size={15} /></button><div className="group-members">{players.map((player) => <label key={player.name}><input type="checkbox" checked={group.playerNames.includes(player.name)} onChange={(event) => toggleGroupMember(group, player, event.target.checked)} />{player.name}</label>)}</div></details>)}</div>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
+    {showPlayers && role === 'ADMIN' && <PlayerGroupMatrix players={players} groups={playerGroups} newGroupName={newGroupName} newGroupRank={newGroupRank} onNameChange={setNewGroupName} onRankChange={setNewGroupRank} onCreate={addPlayerGroup} onDelete={removePlayerGroup} onRankSelect={changePlayerGroupRank} onMemberToggle={toggleGroupMember} />}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onCreated(); setFilter(created.matchday); setSeriesFilter(String(created.series)); setDefaultFiltersReady(true); setOffset(0); setReload((count) => count + 1) }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
   </Shell>
+}
+
+function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onNameChange, onRankChange, onCreate, onDelete, onRankSelect, onMemberToggle }) {
+  const maxRank = Math.max(groups.length + 1, ...groups.map((group) => group.rank + 1), 5)
+  const rankOptions = Array.from({ length: maxRank }, (_, index) => index + 1)
+
+  return <section className="roster-panel group-matrix-panel">
+    <div><span className="eyebrow">Admin-Bereich</span><h2>Gruppenzuordnung</h2><p>Jeder Spieler gehört höchstens einer Gruppe an. Der Gruppenrang bestimmt die Reihenfolge der gruppierten Rangliste.</p></div>
+    <div className="roster-content">
+      <form className="group-matrix-create" onSubmit={onCreate}>
+        <label>Gruppenname<input required maxLength="64" value={newGroupName} onChange={(event) => onNameChange(event.target.value)} placeholder="Gruppe A" /></label>
+        <label>Rang<input required type="number" min="1" max="999" value={newGroupRank} onChange={(event) => onRankChange(event.target.value)} /></label>
+        <button className="primary-button" title="Gruppe erstellen"><Plus size={17} /> Gruppe</button>
+      </form>
+      {groups.length > 0 && <div className="group-matrix-scroll"><table className="group-matrix">
+        <thead><tr><th scope="col">Spieler</th>{groups.map((group) => <th scope="col" key={group.id}>
+          <div className="group-matrix-heading"><strong>{group.name}</strong><button className="icon-button danger" type="button" title={`${group.name} löschen`} aria-label={`${group.name} löschen`} onClick={() => onDelete(group)}><Trash2 size={15} /></button></div>
+          <label className="group-rank-field">Rang<select value={group.rank} aria-label={`Rang von ${group.name}`} onChange={(event) => onRankSelect(group, Number(event.target.value))}>{rankOptions.map((rank) => <option key={rank} value={rank}>{rank}</option>)}</select></label>
+        </th>)}</tr></thead>
+        <tbody>{players.map((player) => <tr key={player.name}>
+          <th scope="row">{player.name}</th>
+          {groups.map((group) => <td key={group.id}><input type="checkbox" checked={group.playerNames.includes(player.name)} aria-label={`${player.name} zu ${group.name} zuordnen`} onChange={(event) => onMemberToggle(group, player, event.target.checked)} /></td>)}
+        </tr>)}</tbody>
+      </table></div>}
+      {groups.length === 0 && <p className="empty-state group-matrix-empty">Noch keine Gruppen erstellt.</p>}
+    </div>
+  </section>
 }
 
 /**
@@ -918,10 +977,10 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
 
 function ListCard({ list, ranking, index = 0, onClick }) {
   const totalPoints = ranking?.players?.reduce((sum, player) => sum + player.total, 0)
-  return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
+  return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
 }
 
-function TournamentRanking({ standing, tournament, token, groups, groupId, onGroupChange, onOpenPlayer }) {
+function TournamentRanking({ standing, tournament, token, groups, groupId, asOf, onGroupChange, onAsOfChange, onOpenPlayer }) {
   const [scale, setScale] = useState(PROGRESS_SCALES[0].id)
   const [histories, setHistories] = useState({})
   const [historyError, setHistoryError] = useState('')
@@ -935,22 +994,38 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, onGro
   useEffect(() => {
     if (!tournament?.id || histories[scale]) return undefined
     let active = true
-    const groupQuery = groupId === 'all' ? '' : `&groupId=${encodeURIComponent(groupId)}`
-    request(`/tournaments/${tournament.id}/standings/history?groupBy=${scale}${groupQuery}`, { token })
+    const params = new URLSearchParams({ groupBy: scale })
+    if (groupId === 'grouped') params.set('grouped', 'true')
+    else if (groupId !== 'all') params.set('groupId', groupId)
+    if (asOf !== 'current') params.set('asOf', asOf)
+    request(`/tournaments/${tournament.id}/standings/history?${params}`, { token })
       .then((history) => { if (active) { setHistories((current) => ({ ...current, [scale]: history })); setHistoryError('') } })
       .catch((problem) => { if (active) setHistoryError(errorNotice(problem)) })
     return () => { active = false }
-  }, [tournament?.id, token, scale, histories, groupId])
+  }, [tournament?.id, token, scale, histories, groupId, asOf])
 
   const history = histories[scale]
   const chart = standingsProgressChart(history)
   return <section className="tournament-ranking">
-    <div className="ranking-heading"><div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div><div className="ranking-controls"><label><span>Spielergruppe</span><select aria-label="Rangliste nach Spielergruppe filtern" value={groupId} onChange={(event) => onGroupChange(event.target.value)}><option value="all">Alle Spieler</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span></div></div>
+    <div className="ranking-heading">
+      <div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div>
+      <div className="ranking-controls">
+        <label><span>Sortierung</span><select aria-label="Rangliste sortieren" value={groupId} onChange={(event) => onGroupChange(event.target.value)}>
+          <option value="all">Alle Spieler</option><option value="grouped">Alle Spieler mit Gruppen</option>
+          {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+        </select></label>
+        <label><span>Stand</span><select aria-label="Ranglistenstand auswählen" value={asOf} onChange={(event) => onAsOfChange(event.target.value)}>
+          <option value="current">Aktueller Stand</option>
+          {(standing.availableMatchdays ?? []).map((day) => <option key={day} value={day}>Stand vom {day.split('-').reverse().join('.')}</option>)}
+        </select></label>
+        <span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span>
+      </div>
+    </div>
     {mobile ? <div className="ranking-cards">
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
           <span className="rank-badge">{player.rank ?? '–'}</span>
-          <span className="rank-name">{player.name}</span>
+          <span className="rank-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name} · Rang {player.group.rank}</small>}</span>
           <span className="rank-average"><strong>{player.averageScore === null ? '–' : <CountUp value={player.averageScore} />}</strong><small>Ø Punkte</small></span>
           <ChevronRight size={18} className="rank-caret" />
         </button>
@@ -971,7 +1046,7 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, onGro
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => onOpenPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
-        <span>{player.name}</span>
+        <span className="ranking-player-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name} · Rang {player.group.rank}</small>}</span>
         <span className="num">{player.gamesPlayed}</span>
         <span className="num">{player.averageScore ?? '–'}</span>
         <span className="num">{player.averageScorePer36 ?? '–'}</span>
@@ -1139,14 +1214,14 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     <div className="player-tables">
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Aufschlüsselung</span><h2>Nach Zeitraum</h2></div><span className="dealer-note">{groupByLabel}</span></div>
-        <table className="detail-table"><thead><tr><th>Zeitraum</th><th>Spiele</th><th>Punkte</th><th>Ø</th><th>Gesamt</th></tr></thead><tbody>
-          {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td className={period.change > 0 ? 'delta-up' : period.change < 0 ? 'delta-down' : 'muted'}>{signedValue(period.change)}</td><td>{period.averageScore ?? '–'}</td><td><strong>{period.score}</strong></td></tr>) : <tr><td colSpan={5} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
+        <table className="detail-table"><thead><tr><th>Stand</th><th>Spiele gesamt</th><th>Punktestand</th><th>Ø Punkte je Spiel</th></tr></thead><tbody>
+          {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td>{period.score}</td><td><strong>{period.averageScore ?? '–'}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
         </tbody></table>
       </section>
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Bilanz</span><h2>Seine Abende</h2></div><span className="dealer-note">{evenings.length} gewertete Zettel · antippen öffnet den Tisch</span></div>
         <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
-          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
+          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table}${list.tableLabelVisible ? list.tableLabel : ''} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
         </tbody></table>
       </section>
     </div>
@@ -1161,18 +1236,40 @@ function CreateListModal({ token, tournament, role, players, lists, canManagePla
   // Der Vorschlag ist der heutige Tag des Geräts – beim Öffnen des Dialogs bestimmt,
   // nicht beim Laden der Seite: eine App, die über Nacht offen blieb, schlüge sonst
   // gestern vor, und Mitglieder dürfen nur für heute anlegen.
-  const [form, setForm] = useState(() => ({ matchday: localToday(), series: 1, table: 1 })); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  // Ein Tisch spielt immer nur eine Liste: solange die Liste zu diesem Spieltag,
-  // dieser Serie und diesem Tisch offen ist, darf keine zweite entstehen. Der
-  // Server prüft dasselbe noch einmal – hier spart es nur den Fehlversuch.
-  const blocking = lists.find((list) => list.status === 'OPEN' && !list.counted && list.matchday === form.matchday && Number(list.series) === Number(form.series) && Number(list.table) === Number(form.table))
+  const [form, setForm] = useState(() => ({ matchday: localToday(), series: 1, table: 1, tableLabel: 'A' })); const [lineup, setLineup] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  const sameBaseSlot = lists.filter((list) => list.matchday === form.matchday && Number(list.series) === Number(form.series) && Number(list.table) === Number(form.table))
+  const labelConflict = sameBaseSlot.find((list) => list.tableLabel === form.tableLabel)
   // Mit Spielzeit legt der Server die Regeln fest („von“–„bis“); hier steht nur
   // der Hinweis, damit der Fehlversuch gar nicht passiert. Der Admin darf immer
   // vorarbeiten, für ihn gibt es deshalb keinen Hinweis.
   const playingTime = matchdayWindow(tournament, form.matchday)
   const windowPhase = role === 'ADMIN' ? null : windowState(tournament, form.matchday)
-  async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { const created = await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), playerNames: lineup } }); await onCreated(created) } catch (err) { setError(err.message) } finally { setBusy(false) } }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2><p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Spiel eins.</p><form onSubmit={submit}><div className="form-grid"><label>Spieltag<input type="date" required value={form.matchday} onChange={(e) => setForm({ ...form, matchday: e.target.value })} /></label><label>Serie<input type="number" min="1" value={form.series} onChange={(e) => setForm({ ...form, series: e.target.value })} /></label><label>Tisch<input type="number" min="1" value={form.table} onChange={(e) => setForm({ ...form, table: e.target.value })} /></label></div><LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />{windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}{windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}{blocking && <div className="error-message">Serie {form.series}, Tisch {form.table} spielt an diesem Spieltag noch: {blocking.players.map((player) => player.name).join(', ')}. Erst diese Liste abgeben – oder eine andere Serie bzw. einen anderen Tisch wählen.</div>}{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button></div></form></div></div>
+  async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { const created = await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), tableLabel: form.tableLabel, playerNames: lineup } }); await onCreated(created) } catch (err) { setError(err.message) } finally { setBusy(false) } }
+  return <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}>
+      <button className="modal-close" onClick={onClose}><X size={18} /></button>
+      <span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2>
+      <p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Spiel eins.</p>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <label>Spieltag<input type="date" required value={form.matchday} onChange={(event) => setForm({ ...form, matchday: event.target.value })} /></label>
+          <label>Serie<input type="number" min="1" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label>
+          <label>Tisch<input type="number" min="1" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label>
+          <label>Tischkürzel<select value={form.tableLabel} onChange={(event) => setForm({ ...form, tableLabel: event.target.value })}>{TABLE_LABEL_OPTIONS.map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+        </div>
+        {sameBaseSlot.length > 0 && <small className="field-hint">Für diesen Tag, diese Serie und diesen Tisch gibt es bereits: {sameBaseSlot.map((list) => list.tableLabel).join(', ')}. Wähle ein freies Kürzel.</small>}
+        <LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />
+        {windowPhase === 'before' && <div className="info-message">Die Spielzeit beginnt um {playingTime.from} – eine Liste lässt sich erst ab dann anlegen.</div>}
+        {windowPhase === 'over' && <div className="info-message">Die Spielzeit dieses Tages ist vorbei – seine Listen gelten als abgegeben. Korrekturen macht der Admin.</div>}
+        {labelConflict && <div className="error-message">Kürzel {form.tableLabel} wird für diesen Tag, diese Serie und diesen Tisch bereits verwendet. Wähle ein anderes.</div>}
+        {error && <div className="error-message">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button>
+          <button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase) || Boolean(labelConflict)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button>
+        </div>
+      </form>
+    </div>
+  </div>
 }
 
 /**
@@ -1184,17 +1281,33 @@ function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
   useEscape(onClose)
   useBackToClose(onClose)
   useScrollLock()
-  const [form, setForm] = useState({ series: list.series, table: list.table })
+  const [form, setForm] = useState({ series: list.series, table: list.table, tableLabel: list.tableLabel })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'PATCH', token, body: { series: Number(form.series), table: Number(form.table) } })
+      const updated = await request(`/tournaments/${tournament.id}/lists/${list.id}`, { method: 'PATCH', token, body: { series: Number(form.series), table: Number(form.table), tableLabel: form.tableLabel } })
       onSaved(updated)
     } catch (problem) { setError(problem.message) } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal" role="dialog" aria-modal="true" aria-label="Tisch und Serie ändern" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Korrektur</span><h2>Tisch und Serie ändern</h2><p className="modal-copy">Falls sich ein Mitglied vertan hat: Hier lässt sich der Platz der Liste korrigieren. Spiele, Sitzreihenfolge und Spieltag bleiben unverändert.</p><form onSubmit={submit}><div className="form-grid"><label>Serie<input type="number" required min="1" max="999" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label><label>Tisch<input type="number" required min="1" max="999" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label></div><small className="field-hint">Spielt an diesem Spieltag noch eine andere Liste auf demselben Platz, lehnt der Server ab – erst diese Liste abgeben oder einen anderen Platz wählen.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy}>{busy ? 'Wird gespeichert …' : <>Speichern <Check size={16} /></>}</button></div></form></div></div>
+  return <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal" role="dialog" aria-modal="true" aria-label="Tisch, Serie und Kürzel ändern" onClick={(event) => event.stopPropagation()}>
+      <button className="modal-close" onClick={onClose}><X size={18} /></button>
+      <span className="eyebrow">Korrektur</span><h2>Tisch, Serie und Kürzel ändern</h2>
+      <p className="modal-copy">Tisch und Seriennummer lassen sich korrigieren. Das Kürzel unterscheidet Listen mit gleichem Tag, gleicher Serie und gleichem Tisch.</p>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <label>Serie<input type="number" required min="1" max="999" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label>
+          <label>Tisch<input type="number" required min="1" max="999" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label>
+          <label>Tischkürzel<select value={form.tableLabel} onChange={(event) => setForm({ ...form, tableLabel: event.target.value })}>{TABLE_LABEL_OPTIONS.map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+        </div>
+        <small className="field-hint">Wähle ein freies Kürzel für diesen Tischslot.</small>
+        {error && <div className="error-message">{error}</div>}
+        <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button" disabled={busy}>{busy ? 'Wird gespeichert …' : <>Speichern <Check size={16} /></>}</button></div>
+      </form>
+    </div>
+  </div>
 }
 
 function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLogout, onUpdated }) {
@@ -1292,7 +1405,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Tischliste">
     <div className="workspace-head">
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
-      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
+      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</span><h1>Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
         {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Liste abgeben</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
@@ -1625,7 +1738,7 @@ function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete })
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="modal detail-modal" role="dialog" aria-modal="true" aria-label="Spieldetails" onClick={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose}><X size={18} /></button>
-      <span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}</span>
+      <span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</span>
       <h2>Spiel {game.position}: {outcomeLabel(game)}</h2>
       <p className="modal-copy">{game.passedOut ? `Eingepasst – ${game.dealer} gab. In diesem Spiel gab es keinen Alleinspieler.` : `${game.declarer} spielte allein, ${game.dealer} war Geber.`}</p>
       <div className="modal-actions detail-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>

@@ -19,6 +19,7 @@ import {
   standingsHistory,
   tournamentStandings,
   type StandingRow,
+  type StandingGroupInfo,
   type StandingsGroupBy,
   type StandingsHistoryDto,
   type TournamentStandingsDto,
@@ -193,6 +194,12 @@ export async function getTournamentRow(tournamentId: string): Promise<Tournament
  * `loadCountedResults` reads that input once for the standing and for its history
  * (`getStandingsHistory`), so the two views can never describe different data.
  */
+interface StandingsOptions {
+  groupId?: string;
+  grouped?: boolean;
+  asOf?: string;
+}
+
 async function loadCountedResults(tournamentId: string, groupId?: string): Promise<CountedResults> {
   const tournament = await getTournamentRow(tournamentId);
   if (groupId) {
@@ -203,13 +210,18 @@ async function loadCountedResults(tournamentId: string, groupId?: string): Promi
     if (!group) throw notFound('Player group does not exist in this tournament');
   }
 
-  const [roster, lists] = await Promise.all([
+  const [roster, lists, allMatchdays] = await Promise.all([
     prisma.player.findMany({
       where: { tournamentId: tournament.id },
       select: {
         name: true,
         hiddenFromStandings: true,
-        groups: { select: { groupId: true } },
+        groups: {
+          select: {
+            groupId: true,
+            group: { select: { name: true, rank: true } },
+          },
+        },
       },
       orderBy: { name: 'asc' },
     }),
@@ -246,6 +258,11 @@ async function loadCountedResults(tournamentId: string, groupId?: string): Promi
         },
       },
     }),
+    prisma.gameList.groupBy({
+      by: ['matchday'],
+      where: { tournamentId: tournament.id },
+      orderBy: { matchday: 'asc' },
+    }),
   ]);
 
   // A sheet without its players has nothing to score: no game can be entered
@@ -264,18 +281,25 @@ async function loadCountedResults(tournamentId: string, groupId?: string): Promi
     ),
   );
 
+  const visiblePlayers = roster.filter(
+    (player) =>
+      !player.hiddenFromStandings &&
+      (!groupId || player.groups.some((membership) => membership.groupId === groupId)),
+  );
+  const groups = new Map<string, StandingGroupInfo>();
+  for (const player of visiblePlayers) {
+    const group = player.groups[0]?.group;
+    if (group) groups.set(player.name, group);
+  }
+
   return {
     tournamentId: tournament.id,
     roster: roster.map((player) => player.name),
-    visibleRoster: roster
-      .filter(
-        (player) =>
-          !player.hiddenFromStandings &&
-          (!groupId || player.groups.some((membership) => membership.groupId === groupId)),
-      )
-      .map((player) => player.name),
+    visibleRoster: visiblePlayers.map((player) => player.name),
+    groups,
     results: matchdays,
     games: scorable.flatMap((list) => list.games),
+    availableMatchdays: allMatchdays.map((entry) => toIsoDate(entry.matchday)),
   };
 }
 
@@ -284,20 +308,29 @@ interface CountedResults {
   tournamentId: string;
   roster: string[];
   visibleRoster: string[];
+  groups: Map<string, StandingGroupInfo>;
   /** One result table per counted list, oldest matchday first. */
   results: ListResultsDto[];
   /** Every game of the counted lists, in the same order. */
   games: StatGame[];
+  availableMatchdays: string[];
 }
 
 /** The standing of the tournament over all counted lists, best player first. */
 export async function getTournamentStandings(
   tournamentId: string,
-  groupId?: string,
+  options: StandingsOptions = {},
 ): Promise<TournamentStandingsDto> {
-  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId, groupId);
-
-  return tournamentStandings(id, visibleRoster, results);
+  const { tournamentId: id, visibleRoster, groups, results, availableMatchdays } =
+    await loadCountedResults(tournamentId, options.groupId);
+  const snapshot = options.asOf ? results.filter((result) => result.matchday <= options.asOf!) : results;
+  return {
+    ...tournamentStandings(id, visibleRoster, snapshot, {
+      groups,
+      grouped: options.grouped,
+    }),
+    availableMatchdays,
+  };
 }
 
 /**
@@ -308,15 +341,22 @@ export async function getTournamentStandings(
 export async function getStandingsHistory(
   tournamentId: string,
   groupBy: StandingsGroupBy,
-  groupId?: string,
+  options: StandingsOptions = {},
 ): Promise<StandingsHistoryDto> {
-  const { tournamentId: id, visibleRoster, results } = await loadCountedResults(tournamentId, groupId);
-  const standings = tournamentStandings(id, visibleRoster, results);
+  const { tournamentId: id, visibleRoster, groups, results } = await loadCountedResults(
+    tournamentId,
+    options.groupId,
+  );
+  const snapshot = options.asOf ? results.filter((result) => result.matchday <= options.asOf!) : results;
+  const standings = tournamentStandings(id, visibleRoster, snapshot, {
+    groups,
+    grouped: options.grouped,
+  });
 
   return standingsHistory(
     id,
     standings.players.map((player) => player.name),
-    results,
+    snapshot,
     groupBy,
   );
 }
@@ -340,8 +380,8 @@ export async function getPlayerStats(
   tournamentId: string,
   playerName: string,
 ): Promise<PlayerStatsDto> {
-  const { tournamentId: id, roster, results, games } = await loadCountedResults(tournamentId);
-  const standings = tournamentStandings(id, roster, results);
+  const { tournamentId: id, roster, groups, results, games } = await loadCountedResults(tournamentId);
+  const standings = tournamentStandings(id, roster, results, { groups });
 
   const player = standings.players.find((entry) => entry.name === playerName);
   if (!player) {

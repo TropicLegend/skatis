@@ -7,7 +7,12 @@ import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { assertListEditable, assertMatchdayAllowed } from './list-access.js';
 import { findListOrThrow, lineupNames, type ListWithGames } from './list.service.js';
-import { assertDeclarerAllowed, assertLineupComplete, assertRoomForGame } from './game-entry.js';
+import {
+  assertDeclarerAllowed,
+  assertGameSequenceComplete,
+  assertLineupComplete,
+  assertRoomForGame,
+} from './game-entry.js';
 import {
   toGameCreateData,
   toGameDto,
@@ -136,6 +141,7 @@ export async function createGame(
   const lineup = lineupNames(list);
   assertLineupComplete(lineup.length);
   assertRoomForGame(list.games.length);
+  assertGameSequenceComplete(list.games.map((game) => game.position));
 
   // Player 1 deals in round 1, then player 2 and so on.
   const dealer = nextDealer(lineup, lastDealer(list));

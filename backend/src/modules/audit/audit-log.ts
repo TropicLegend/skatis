@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS = [
   'player.removed',
   'player.standing_visibility_changed',
   'group.created',
+  'group.updated',
   'group.deleted',
   'group.members_changed',
 ] as const;

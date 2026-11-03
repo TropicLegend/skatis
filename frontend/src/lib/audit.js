@@ -117,6 +117,9 @@ export function describeAuditEntry(entry) {
       const changes = []
       if (details.fromSeries !== details.series) changes.push(`Serie ${details.fromSeries} → ${details.series}`)
       if (details.fromTable !== details.table) changes.push(`Tisch ${details.fromTable} → ${details.table}`)
+      if (details.fromTableLabel !== details.tableLabel) {
+        changes.push(`Kürzel ${details.fromTableLabel} → ${details.tableLabel}`)
+      }
       return {
         title: 'Tisch/Serie der Liste geändert',
         detail: [details.matchday ? shortDate(details.matchday) : null, changes.join(' · ')]
@@ -145,9 +148,17 @@ export function describeAuditEntry(entry) {
         detail: details.name ?? '',
       }
     case 'group.created':
-      return { title: 'Spielergruppe erstellt', detail: details.name ?? '' }
+      return {
+        title: 'Spielergruppe erstellt',
+        detail: `${details.name ?? ''}${details.rank === undefined ? '' : ` · Rang ${details.rank}`}`,
+      }
     case 'group.deleted':
       return { title: 'Spielergruppe gelöscht', detail: details.name ?? '' }
+    case 'group.updated':
+      return {
+        title: 'Spielergruppe geändert',
+        detail: `${details.name ?? ''}${details.rank === undefined ? '' : ` · Rang ${details.rank}`}`,
+      }
     case 'group.members_changed':
       return {
         title: `Mitglieder von ${details.name ?? 'Spielergruppe'} geändert`,

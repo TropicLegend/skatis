@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HttpError } from '../src/lib/http-error.js';
 import {
   assertDeclarerAllowed,
+  assertGameSequenceComplete,
   assertLineupComplete,
   assertRoomForGame,
 } from '../src/modules/lists/game-entry.js';
@@ -130,6 +131,18 @@ describe('assertRoomForGame', () => {
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).status).toBe(409);
     }
+  });
+});
+
+describe('assertGameSequenceComplete', () => {
+  it('accepts an empty or contiguous sequence', () => {
+    expect(() => assertGameSequenceComplete([])).not.toThrow();
+    expect(() => assertGameSequenceComplete([1, 2, 3, 4])).not.toThrow();
+  });
+
+  it('refuses to append when a preceding game is missing', () => {
+    expect(() => assertGameSequenceComplete([1, 2, 4])).toThrow(/game 3 is missing/i);
+    expect(() => assertGameSequenceComplete([1, 2, 3, 5])).toThrow(/game 4 is missing/i);
   });
 });
 

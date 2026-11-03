@@ -138,7 +138,32 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .ranking-row .up{color:#4d7957}
 .ranking-row .down{color:var(--red)}
 .ranking-row>strong:last-child{font-weight:800}
+.ranking-player-name{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.rank-group-label{display:block;color:var(--muted);font-size:10px;font-weight:500;line-height:1.25}
+.rank-name .rank-group-label{margin-top:2px}
 .player-tag.player-hidden{opacity:.62}
+.roster-content>.player-groups{display:none}
+.group-matrix-panel{margin-top:20px}
+.group-matrix-create{display:flex;align-items:flex-end;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.group-matrix-create label{display:grid;gap:4px;min-width:150px;flex:1;font-size:11px;color:var(--muted)}
+.group-matrix-create label:nth-child(2){min-width:90px;max-width:120px;flex:0 0 100px}
+.group-matrix-create input{margin:0}
+.group-matrix-create .primary-button{display:inline-flex;align-items:center;gap:6px}
+.group-matrix-scroll{max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.group-matrix{border-collapse:separate;border-spacing:0;min-width:100%;width:max-content}
+.group-matrix th,.group-matrix td{padding:9px 12px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center;background:#fffdf9}
+.group-matrix thead th{position:sticky;top:0;background:#f1eee6;z-index:2;min-width:145px}
+.group-matrix thead th:first-child,.group-matrix tbody th{position:sticky;left:0;text-align:left;min-width:150px;z-index:3;background:#f6f3eb}
+.group-matrix thead th:first-child{z-index:4}
+.group-matrix tr:last-child>*{border-bottom:0}
+.group-matrix tr>*:last-child{border-right:0}
+.group-matrix-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.group-matrix-heading strong{color:var(--ink)}
+.group-matrix-heading .icon-button{padding:4px}
+.group-rank-field{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:3px;font-size:10px;color:var(--muted)}
+.group-rank-field select{min-height:30px;width:auto;padding:0 8px}
+.group-matrix td input{width:18px;height:18px;margin:0;accent-color:var(--moss)}
+.group-matrix-empty{padding:20px;text-align:center;border:1px dashed var(--line);border-radius:6px}
 .player-groups{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
 .player-groups-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .player-groups-heading h3{margin:0;font-size:14px}

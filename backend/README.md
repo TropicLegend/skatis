@@ -203,8 +203,11 @@ tournament once and can then be put on a list:
   roster entry and game results remain unchanged.
 - Admins can create groups with `POST …/players/groups`, replace their members
   with `PUT …/players/groups/:groupId/players` and delete them with
-  `DELETE …/players/groups/:groupId`. Group membership only filters the standing
-  and its history when the optional `groupId` query is supplied.
+  `DELETE …/players/groups/:groupId`. Group membership filters one group with
+  `groupId` or prioritizes all groups with `grouped=true` in the standing/history.
+- A group has a positive integer `rank`. `PATCH …/players/groups/:groupId` changes
+  its name and/or rank. A player can belong to at most one group; assigning them
+  to another group moves them out of their previous one.
 
 ### Entering a game
 
@@ -247,7 +250,8 @@ A game follows the four steps of README.md. The API checks every one of them:
 
 The API derives the remaining properties:
 
-- `position` – the round, counted from 1. Games are appended.
+- `position` – the round, counted from 1. Games are appended only when every
+  earlier position exists; a gap such as missing game 4 blocks adding game 5.
 - `dealer` – the next player of the seating order, starting with player 1.
 - `players` – the three players of the round: the lineup minus the ones who sit
   out according to the table above. These are exactly the players who may be the
@@ -1091,9 +1095,16 @@ that is still open **on its own day** does not count yet, and reopening one take
 it out again – the standing always describes what is final. Reading is allowed
 for both roles.
 
-Optional query `?groupId=<uuid>` limits the rows to players assigned to that
-group. Without it, all visible players are included. Hidden players remain
-excluded either way.
+Optional queries:
+
+- `?groupId=<uuid>` limits the rows to that group.
+- `?grouped=true` sorts all players by group rank, then average; players without
+  a group are last. Each row includes its group name and rank when assigned.
+- `?asOf=YYYY-MM-DD` returns the standing through that matchday. The response's
+  `availableMatchdays` lists every date that has a list, including open days.
+
+Without these filters, all visible players keep the normal average-first order.
+Hidden players remain excluded in every mode.
 
 **Errors:** `404` unknown tournament.
 
@@ -1105,7 +1116,8 @@ ranking is drawn from, and it follows the rules of
 [Tournament standings](#tournament-standings). Reading is allowed for both roles.
 
 Query: `?groupBy=matchday|week|month` (default `matchday`), optionally with
-`&groupId=<uuid>` to show only members of that group.
+`&groupId=<uuid>` or `&grouped=true` for a group-filtered or group-prioritized
+history. `&asOf=YYYY-MM-DD` limits it to the selected historical date.
 
 **Response** `200` – the month example of the table above:
 
@@ -1334,6 +1346,11 @@ lists and games (cascade).
 | POST   | `/tournaments/:tournamentId/players`             | ADMIN | `{ name }` – 1–64 characters, unique inside the tournament |
 | PATCH  | `/tournaments/:tournamentId/players/:playerName` | ADMIN | `{ name }` – correct the name of a player                  |
 | DELETE | `/tournaments/:tournamentId/players/:playerName` | ADMIN | Remove a player (only while not on any list)               |
+| GET    | `/tournaments/:tournamentId/players/groups`      | any   | Groups, ranks and members                                   |
+| POST   | `/tournaments/:tournamentId/players/groups`      | ADMIN | Create `{ name, rank }`                                     |
+| PATCH  | `/tournaments/:tournamentId/players/groups/:groupId` | ADMIN | Change a group name and/or rank                          |
+| PUT    | `/tournaments/:tournamentId/players/groups/:groupId/players` | ADMIN | Replace group members; membership moves across groups |
+| DELETE | `/tournaments/:tournamentId/players/groups/:groupId` | ADMIN | Delete a group                                            |
 
 Players are the roster of the tournament: they are created once and then put on
 a list, which is what makes a game possible at all. **The roster is managed by an
@@ -1343,6 +1360,11 @@ player is identified by their name inside the tournament, so there is no id to
 remember – the `:playerName` path parameter is the name itself (URL-encoded, e.g.
 `players/Anna%20M%C3%BCller`). Names are compared exactly: `anna` and `Anna` are
 two different players.
+
+A group is created as `{ "name": "Gruppe A", "rank": 1 }`. The rank is a
+positive integer; equal ranks are allowed. A player may belong to at most one
+group. Replacing a group's member list moves selected players out of any
+previous group automatically, so the membership matrix remains exclusive.
 
 **`GET /tournaments/:tournamentId/players`** → `200`, sorted by name, not paginated.
 
@@ -1494,12 +1516,14 @@ their options while searching. `?limit=` is capped at 100.
 | `matchday`    | string   | `YYYY-MM-DD`, a matchday of the tournament – several lists may share it    |
 | `series`      | number   | "Serie" of the head, an integer ≥ 1 – required                             |
 | `table`       | number   | "Tisch" of the head, an integer ≥ 1 – required                             |
+| `tableLabel`  | string   | one or two letters, e.g. `A` or `B`; defaults to `A` for API compatibility |
 | `playerNames` | string[] | optional: 3–5 names of this tournament **in seating order**, no duplicates |
 | `games`       | game[]   | optional: entered in order, they become rounds 1…n                         |
 
-A table of a series can only have **one** sheet per evening, so `Serie 1,
-Tisch 3` of `2026-09-18` exists once. Several lists still share a matchday – they
-differ in series or table.
+The pair of a table label and a series can only identify one sheet per evening.
+Several lists may share the same date, series and table when their labels differ
+(`A`, `B`, …). The label is included in list data, but the frontend displays it
+only when more than one list has the same date, series and table.
 
 Lineup and first games may be sent in one request, which saves a round trip when
 an evening is entered at once.
@@ -1511,6 +1535,7 @@ an evening is entered at once.
   "matchday": "2026-09-18",
   "series": 1,
   "table": 3,
+  "tableLabel": "A",
   "playerNames": ["Anna", "Bert", "Clara", "Dora"],
   "games": [{ "passedOut": false, "declarer": "Bert", "gameType": "NULL", "won": true }]
 }
@@ -1519,10 +1544,11 @@ an evening is entered at once.
 **Response** `201` – the list as above, plus `games`.
 
 **Errors:** `403` the day is not a matchday, or the token is a member token and
-the day is not today, `409` Serie and Tisch already have a sheet for that day
-(`details.listId` is the existing one), `409` a name in `playerNames` is not a
-player of this tournament (`details.unknownPlayers`), `422` a missing or invalid
-series/table, a lineup of the wrong size, a duplicate name or an invalid game.
+the day is not today, `409` the same label already exists for that date, series
+and table (`details.listId` is the existing one), `409` the same labeled slot is
+still open, `409` a name in `playerNames` is not a player of this tournament
+(`details.unknownPlayers`), `422` a missing or invalid series/table/label, a
+lineup of the wrong size, a duplicate name or an invalid game.
 
 #### `GET /tournaments/:tournamentId/lists/:listId`
 
@@ -1536,6 +1562,8 @@ series/table, a lineup of the wrong size, a duplicate name or an invalid game.
     "matchday": "2026-09-18",
     "series": 1,
     "table": 3,
+    "tableLabel": "A",
+    "tableLabelVisible": false,
     "status": "OPEN",
     "counted": false,
     "submittedAt": null,
@@ -1922,19 +1950,20 @@ yet (`submit` – an empty sheet cannot be handed in).
 #### `PATCH /tournaments/:tournamentId/lists/:listId`
 
 Admin only: corrects the head of the sheet – a member may have written the wrong
-table or series. The matchday, the lineup and the games stay as they are, so the
-list keeps its result and only its place changes. Both numbers keep their range
-(1…999) and at least one of them has to be sent.
+table, series or table label. The matchday, the lineup and the games stay as they
+are, so the list keeps its result and only its place changes. Series and table
+keep their range (1…999), and at least one of the three fields has to be sent.
 
 ```json
-{ "series": 2, "table": 5 }
+{ "series": 2, "table": 5, "tableLabel": "B" }
 ```
 
-**Response** `200` – the list including its games, with the new `series`/`table`.
+**Response** `200` – the list including its games, with the new series, table and label.
 
 **Errors:** `403` member token, `404` unknown list, `422` an empty body or a
 number outside of 1…999 (the schema is strict, so `matchday` is rejected too),
-`409` another open list of that evening still plays that table of that series.
+`409` the same label already exists for that date, series and table, or that
+labeled slot is still open.
 
 #### `DELETE /tournaments/:tournamentId/lists/:listId`
 
@@ -2024,8 +2053,9 @@ A game that was passed out needs nothing else – the flow ends after step 1:
 `positiveGameValue: 0`, `negativeGameValue: 0`.
 
 **Errors:** `403` day not allowed for this role, `404` unknown list, `409` the
-list is locked, the lineup is not complete yet, the list is full (a list holds at
-most 200 games – `details.maxGames`), or the declarer is one of the
+list is locked, the lineup is not complete yet, a previous game number is
+missing (`details.missingPosition`), the list is full (a list holds at most 200
+games – `details.maxGames`), or the declarer is one of the
 players who sit out this round (`details.dealer`, `details.sittingOutPlayers`,
 `details.playingPlayers`), `422` the game breaks the rules of the steps above
 (`details.issues` names the field).

@@ -145,8 +145,8 @@ tournamentRouter.get('/:tournamentId/session', authenticate(), (req, res) => {
  */
 tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
-  const { groupId } = standingsQuery.parse(req.query);
-  const standings = await getTournamentStandings(tournamentId, groupId);
+  const { groupId, grouped, asOf } = standingsQuery.parse(req.query);
+  const standings = await getTournamentStandings(tournamentId, { groupId, grouped, asOf });
 
   res.json({ data: standings });
 });
@@ -158,8 +158,8 @@ tournamentRouter.get('/:tournamentId/standings', authenticate(), async (req, res
  */
 tournamentRouter.get('/:tournamentId/standings/history', authenticate(), async (req, res) => {
   const { tournamentId } = tournamentIdParams.parse(req.params);
-  const { groupBy, groupId } = standingsHistoryQuery.parse(req.query);
-  const history = await getStandingsHistory(tournamentId, groupBy, groupId);
+  const { groupBy, groupId, grouped, asOf } = standingsHistoryQuery.parse(req.query);
+  const history = await getStandingsHistory(tournamentId, groupBy, { groupId, grouped, asOf });
 
   res.json({ data: history });
 });

@@ -82,6 +82,7 @@ model PlayerGroup {
   id           String                  @id @default(uuid())
   tournamentId String
   name         String                  @db.VarChar(64)
+  rank         Int                     @default(1)
   createdAt    DateTime                @default(now())
   tournament   Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   members      PlayerGroupMembership[]
@@ -97,6 +98,7 @@ model PlayerGroupMembership {
   player   Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@id([groupId, playerId])
+  @@unique([playerId])
   @@index([playerId])
   @@map("player_group_memberships")
 }
@@ -110,6 +112,8 @@ model GameList {
   series       Int
   /// Tisch of the evening – the number of the table this sheet belongs to.
   table        Int              @map("table_number")
+  /// Letter separating repeated lists for the same date, series and table.
+  tableLabel   String           @default("A") @db.VarChar(2) @map("table_label")
   status       ListStatus       @default(OPEN)
   submittedAt  DateTime?
   createdAt    DateTime         @default(now())
@@ -125,6 +129,7 @@ model GameList {
   // checks – a unique index on the slot would also block the second series of an
   // evening whose day is over.
   @@index([tournamentId, matchday])
+  @@unique([tournamentId, matchday, series, table, tableLabel], map: "game_lists_slot_label_key")
   @@map("game_lists")
 }
 

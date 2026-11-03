@@ -58,7 +58,21 @@ export const playerGroupNameSchema = z
   .max(64, 'A group name must be at most 64 characters long')
   .refine((name) => !CONTROL_CHARACTERS.test(name), 'A group name must not contain control characters');
 
-export const createPlayerGroupSchema = z.object({ name: playerGroupNameSchema });
+const playerGroupRankSchema = z.number().int().min(1).max(999);
+
+export const createPlayerGroupSchema = z.object({
+  name: playerGroupNameSchema,
+  rank: playerGroupRankSchema,
+});
+
+export const updatePlayerGroupSchema = z
+  .strictObject({
+    name: playerGroupNameSchema.optional(),
+    rank: playerGroupRankSchema.optional(),
+  })
+  .refine((value) => value.name !== undefined || value.rank !== undefined, {
+    message: 'Provide a group name and/or rank',
+  });
 
 export const playerGroupParams = z.object({
   tournamentId: tournamentIdSchema,

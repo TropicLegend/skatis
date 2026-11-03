@@ -147,9 +147,15 @@ export const listTournamentsQuery = z.object({
 export const standingsHistoryQuery = z.object({
   groupBy: z.enum(['matchday', 'week', 'month']).default('matchday'),
   groupId: z.uuid().optional(),
+  grouped: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  asOf: isoDateSchema.optional(),
 });
 
-export const standingsQuery = z.object({ groupId: z.uuid().optional() });
+export const standingsQuery = z.object({
+  groupId: z.uuid().optional(),
+  grouped: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  asOf: isoDateSchema.optional(),
+});
 
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>;
 export type OpenSessionInput = z.infer<typeof openSessionSchema>;

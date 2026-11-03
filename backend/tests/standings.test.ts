@@ -61,6 +61,30 @@ describe('tournamentStandings', () => {
     expect(standing.players[0]).toMatchObject({ name: 'Anna', rank: 1 });
   });
 
+  it('uses the group rank before average only in grouped ranking mode', () => {
+    const results = [
+      matchday('2026-09-16', [
+        game('Anna', true, 120, ['Anna', 'Clara', 'Dora']),
+        game('Bert', true, 20, ['Bert', 'Clara', 'Dora']),
+      ]),
+    ];
+    const groups = new Map([
+      ['Anna', { name: 'Gruppe B', rank: 2 }],
+      ['Bert', { name: 'Gruppe A', rank: 1 }],
+    ]);
+
+    const averageFirst = tournamentStandings('K7M2P4QX', ['Anna', 'Bert'], results, { groups });
+    const grouped = tournamentStandings('K7M2P4QX', ['Anna', 'Bert'], results, {
+      groups,
+      grouped: true,
+    });
+
+    expect(averageFirst.players.map((player) => player.name)).toEqual(['Anna', 'Bert']);
+    expect(grouped.players.map((player) => player.name)).toEqual(['Bert', 'Anna']);
+    expect(grouped.players[0]).toMatchObject({ group: { name: 'Gruppe A', rank: 1 }, rank: 1 });
+    expect(grouped.players[1]).toMatchObject({ group: { name: 'Gruppe B', rank: 2 }, rank: 2 });
+  });
+
   it('credits the Spielwerte of the own Alleinspiele and debits a loss twice', () => {
     const standings = tournamentStandings('K7M2P4QX', ROSTER, [
       matchday('2026-09-16', [game('Bert', true, 120), game('Bert', false, 20)]),
