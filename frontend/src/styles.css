@@ -164,6 +164,14 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .group-rank-field select{min-height:30px;width:auto;padding:0 8px}
 .group-matrix td input{width:18px;height:18px;margin:0;accent-color:var(--moss)}
 .group-matrix-empty{padding:20px;text-align:center;border:1px dashed var(--line);border-radius:6px}
+.letter-stepper{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:#fff}
+.letter-stepper output{min-width:32px;text-align:center;color:var(--ink);font:500 14px 'DM Mono',monospace}
+.letter-stepper-arrows{display:flex;flex-direction:column;align-items:center;gap:0}
+.letter-stepper .icon-button{width:24px;height:18px;padding:0;display:grid;place-items:center;border-radius:3px}
+.letter-stepper .icon-button:disabled{opacity:.35;cursor:not-allowed}
+.workspace-grid-with-game-action{padding-bottom:84px}
+.inline-game-entry{display:none}
+.desktop-game-entry{position:fixed;right:28px;bottom:28px;z-index:9;display:inline-flex;align-items:center;gap:7px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
 .player-groups{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
 .player-groups-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .player-groups-heading h3{margin:0;font-size:14px}
@@ -349,6 +357,10 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .workspace-title h1{font-size:30px}
   .workspace-actions{display:grid;grid-template-columns:1fr;gap:10px;margin-top:16px}
   .workspace-actions .primary-button,.workspace-actions .secondary-button{width:100%}
+   .inline-game-entry{display:inline-flex}
+   .desktop-game-entry{display:none}
+   .workspace-grid-with-game-action{padding-bottom:0}
+   .letter-stepper .icon-button{width:24px;height:18px;min-height:0;border-radius:3px}
   .panel-heading{padding:14px}
   .panel-tools{gap:10px}
 

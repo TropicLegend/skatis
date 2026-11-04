@@ -12,8 +12,8 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente. :D
   * Nutzer mit normalem Passwort können nur an Spieltagen Listen dieses Tages erstellen, editieren und abgeben; bis zum Abgeben können sie Spiele korrigieren und nur das letzte Spiel einer Liste löschen. Eine leere, noch offene Liste des heutigen Tages dürfen sie selbst löschen. Nach dem Abgeben bleibt die Liste nur für Admins änderbar.
   * Admins können Spiele jederzeit ändern und löschen - auch nachdem die Liste geschlossen wurde.
   * Ist für einen Spieltag eine Uhrzeit (von bis) gesetzt: vor der Von-Zeit können Mitglieder keine Liste anlegen; sobald die Bis-Zeit vorbei ist, gelten alle Listen des Tages als abgegeben (sie zählen für die Rangliste und sind für Mitglieder gesperrt, Admins können weiter korrigieren).
-  * Listen können nur für Spieler geführt werden, die dem Turnier zugefügt wurden. Ein Tischkürzel A/B/C wird beim Anlegen gewählt und nur angezeigt, wenn Datum, Serie und Tischnummer mehrfach vorkommen.
-  * Ein Spieler kann höchstens einer Gruppe zugeordnet sein. Die gruppierte Rangliste sortiert zuerst nach Gruppenrang, dann nach Spielerwert; unzugeordnete Spieler stehen am Ende. Frühere Ranglistenstände lassen sich je Spieltag auswählen.
+  * Listen können nur für Spieler geführt werden, die dem Turnier zugefügt wurden. Ein Serienkürzel A/B/C wird beim Anlegen gewählt und nur angezeigt, wenn Datum, Serie und Tischnummer mehrfach vorkommen.
+  * Ein Spieler kann höchstens einer Gruppe zugeordnet sein. Die gruppierte Rangliste sortiert zuerst nach Gruppenrang, dann nach Spielerwert; neben dem Namen steht „Gruppe N“. Unzugeordnete Spieler stehen am Ende. Frühere Ranglistenstände lassen sich je Spieltag auswählen.
   * Spiele können nur für Spieler geführt werden, die Teil der Liste sind.
   * Die Zurück-Taste des Browsers bleibt in der App: von einer Liste zur Übersicht, von der Spieler-Seite zur Rangliste, und offene Dialoge schließen sich damit – aus der Website heraus führt sie nicht mehr. Nach einem Neuladen steht die zuletzt geöffnete Liste wieder da.
 

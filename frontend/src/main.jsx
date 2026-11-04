@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronRight, CircleHelp, Clock, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Clock, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
@@ -977,7 +977,7 @@ function TournamentSettings({ token, tournament, onClose, onUpdated }) {
 
 function ListCard({ list, ranking, index = 0, onClick }) {
   const totalPoints = ranking?.players?.reduce((sum, player) => sum + player.total, 0)
-  return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}<small>Serie {list.series}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
+  return <button className="list-card card-enter" style={{ '--i': index }} onClick={onClick}><div className="list-card-top"><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Abgegeben' : 'Offen'}</span><ChevronRight size={17} /></div><div className="date-line"><CalendarDays size={16} />{list.matchday}</div><h3>Tisch {list.table}<small>Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''}</small></h3><div className="player-line">{list.players?.length ? list.players.map((player) => <span key={player.name}>{player.name}</span>) : <span className="muted">Noch keine Spieler</span>}</div>{ranking?.players?.length > 0 && <div className="mini-ranking"><span>{list.counted ? 'Endergebnis' : 'Aktueller Stand'}</span>{ranking.players.slice().sort((a, b) => b.total - a.total).map((player) => <div key={player.name}><span>{player.name}</span><strong>{player.total}</strong></div>)}</div>}<div className="card-footer"><span>{list.gameCount || 0} Spiele</span><span>{totalPoints === undefined ? '–' : totalPoints} Gesamtpunkte</span></div></button>
 }
 
 function TournamentRanking({ standing, tournament, token, groups, groupId, asOf, onGroupChange, onAsOfChange, onOpenPlayer }) {
@@ -1025,7 +1025,7 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
           <span className="rank-badge">{player.rank ?? '–'}</span>
-          <span className="rank-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name} · Rang {player.group.rank}</small>}</span>
+          <span className="rank-name">{player.name}{player.group && <small className="rank-group-label">Gruppe {player.group.rank}</small>}</span>
           <span className="rank-average"><strong>{player.averageScore === null ? '–' : <CountUp value={player.averageScore} />}</strong><small>Ø Punkte</small></span>
           <ChevronRight size={18} className="rank-caret" />
         </button>
@@ -1046,7 +1046,7 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => onOpenPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
-        <span className="ranking-player-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name} · Rang {player.group.rank}</small>}</span>
+        <span className="ranking-player-name">{player.name}{player.group && <small className="rank-group-label">Gruppe {player.group.rank}</small>}</span>
         <span className="num">{player.gamesPlayed}</span>
         <span className="num">{player.averageScore ?? '–'}</span>
         <span className="num">{player.averageScorePer36 ?? '–'}</span>
@@ -1221,7 +1221,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Bilanz</span><h2>Seine Abende</h2></div><span className="dealer-note">{evenings.length} gewertete Zettel · antippen öffnet den Tisch</span></div>
         <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
-          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table}${list.tableLabelVisible ? list.tableLabel : ''} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
+          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
         </tbody></table>
       </section>
     </div>
@@ -1255,7 +1255,7 @@ function CreateListModal({ token, tournament, role, players, lists, canManagePla
           <label>Spieltag<input type="date" required value={form.matchday} onChange={(event) => setForm({ ...form, matchday: event.target.value })} /></label>
           <label>Serie<input type="number" min="1" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label>
           <label>Tisch<input type="number" min="1" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label>
-          <label>Tischkürzel<select value={form.tableLabel} onChange={(event) => setForm({ ...form, tableLabel: event.target.value })}>{TABLE_LABEL_OPTIONS.map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+          <label>Serienkürzel<LetterStepper value={form.tableLabel} onChange={(tableLabel) => setForm({ ...form, tableLabel })} /> </label>
         </div>
         {sameBaseSlot.length > 0 && <small className="field-hint">Für diesen Tag, diese Serie und diesen Tisch gibt es bereits: {sameBaseSlot.map((list) => list.tableLabel).join(', ')}. Wähle ein freies Kürzel.</small>}
         <LineupPicker players={players} value={lineup} onChange={setLineup} canManagePlayers={canManagePlayers} min={rules?.lineup?.min} max={rules?.lineup?.max} />
@@ -1268,6 +1268,20 @@ function CreateListModal({ token, tournament, role, players, lists, canManagePla
           <button className="primary-button" disabled={busy || !rules || lineup.length < rules.lineup.min || Boolean(windowPhase) || Boolean(labelConflict)}>{busy ? 'Wird angelegt …' : !rules ? 'Regeln werden geladen …' : <>Liste anlegen <ArrowRight size={17} /></>}</button>
         </div>
       </form>
+    </div>
+  </div>
+}
+
+function LetterStepper({ value, onChange }) {
+  const index = TABLE_LABEL_OPTIONS.indexOf(value)
+  const currentIndex = index < 0 ? 0 : index
+  const change = (offset) => onChange(TABLE_LABEL_OPTIONS[Math.max(0, Math.min(TABLE_LABEL_OPTIONS.length - 1, currentIndex + offset))])
+
+  return <div className="letter-stepper">
+    <output aria-live="polite">{TABLE_LABEL_OPTIONS[currentIndex]}</output>
+    <div className="letter-stepper-arrows">
+      <button type="button" className="icon-button" title="Nächstes Kürzel" aria-label="Nächstes Kürzel" disabled={currentIndex >= TABLE_LABEL_OPTIONS.length - 1} onClick={() => change(1)}><ChevronUp size={14} /></button>
+      <button type="button" className="icon-button" title="Vorheriges Kürzel" aria-label="Vorheriges Kürzel" disabled={currentIndex <= 0} onClick={() => change(-1)}><ChevronDown size={14} /></button>
     </div>
   </div>
 }
@@ -1300,7 +1314,7 @@ function ListSettingsModal({ token, tournament, list, onClose, onSaved }) {
         <div className="form-grid">
           <label>Serie<input type="number" required min="1" max="999" value={form.series} onChange={(event) => setForm({ ...form, series: event.target.value })} /></label>
           <label>Tisch<input type="number" required min="1" max="999" value={form.table} onChange={(event) => setForm({ ...form, table: event.target.value })} /></label>
-          <label>Tischkürzel<select value={form.tableLabel} onChange={(event) => setForm({ ...form, tableLabel: event.target.value })}>{TABLE_LABEL_OPTIONS.map((label) => <option key={label} value={label}>{label}</option>)}</select></label>
+          <label>Serienkürzel<LetterStepper value={form.tableLabel} onChange={(tableLabel) => setForm({ ...form, tableLabel })} /></label>
         </div>
         <small className="field-hint">Wähle ein freies Kürzel für diesen Tischslot.</small>
         {error && <div className="error-message">{error}</div>}
@@ -1335,6 +1349,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   const canEdit = role === 'ADMIN' || !list.locked
   const listGameCount = list.gameCount ?? list.games?.length ?? 0
   const canDeleteList = role === 'ADMIN' || (list.status === 'OPEN' && list.matchday === localDateIso() && listGameCount === 0)
+  function startGameEntry() { setProblem(''); setEditingGame(null); setShowWizard(true) }
 
   // Beide Zahlenreihen kommen aus der API: der Kontoverlauf ("verloren zählt
   // doppelt" samt Boni) und die Ergebnistabelle, aus der die vier Abschlusszeilen
@@ -1405,17 +1420,18 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
   return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token} eyebrow="Tischliste">
     <div className="workspace-head">
       <button className="back-link" onClick={onBack}><ArrowLeft size={16} /> Übersicht</button>
-      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</span><h1>Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
+      <div className="workspace-title"><span className="eyebrow">{list.matchday} · Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''} · Tisch {list.table}</span><h1>Tisch {list.table}</h1><span className={`status ${list.counted ? 'submitted' : ''}`}>{list.counted ? 'Geschlossen' : 'Offen'}</span></div>
       <div className="workspace-actions">
         {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Liste abgeben</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
         {canDeleteList && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
-        <button className="primary-button" disabled={list.locked} onClick={() => { setProblem(''); setEditingGame(null); setShowWizard(true) }}><Plus size={17} /> Spiel eintragen</button>
+        <button className="primary-button inline-game-entry" disabled={list.locked} onClick={startGameEntry}><Plus size={17} /> Spiel eintragen</button>
       </div>
     </div>
+    <button className="primary-button desktop-game-entry" disabled={list.locked} onClick={startGameEntry}><Plus size={18} /> Spiel eintragen</button>
     {notice && <div className="success-message">{notice}</div>}
     {problem && <div className="error-message workspace-problem" role="alert">{problem}</div>}
-    <div className="workspace-grid">
+    <div className="workspace-grid workspace-grid-with-game-action">
       <GameTable list={list} rounds={rounds} results={results} canEdit={canEdit} onSelect={setDetailGame} onEdit={(game) => { setProblem(''); setEditingGame(game); setShowWizard(true) }}>
         <ProgressChart eyebrow="Punkteentwicklung" title="Kontoverlauf dieser Liste" note="Punktekonto nach jedem Spiel dieser Liste – mit den Boni (+50 / −50 und der Gegnerbonus für verlorene Spiele der Mitspieler). Der letzte Punkt ist der Gesamtstand der Liste; eine Zeile der Tabelle antippen zeigt alle Details." labels={chart.labels} series={chart.series} scale={scale} onScale={setScale} scales={scaleOptions}>
           {scale === 'custom' && <label className="chart-custom">Spiele je Punkt<input type="number" min="1" max="99" value={customScale} onChange={(event) => setCustomScale(event.target.value)} /></label>}
@@ -1738,7 +1754,7 @@ function GameDetail({ list, game, round, canDelete, onClose, onEdit, onDelete })
   return <div className="modal-backdrop" onClick={onClose}>
     <div className="modal detail-modal" role="dialog" aria-modal="true" aria-label="Spieldetails" onClick={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose}><X size={18} /></button>
-      <span className="eyebrow">{list.matchday} · Serie {list.series} · Tisch {list.table}{list.tableLabelVisible ? list.tableLabel : ''}</span>
+      <span className="eyebrow">{list.matchday} · Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''} · Tisch {list.table}</span>
       <h2>Spiel {game.position}: {outcomeLabel(game)}</h2>
       <p className="modal-copy">{game.passedOut ? `Eingepasst – ${game.dealer} gab. In diesem Spiel gab es keinen Alleinspieler.` : `${game.declarer} spielte allein, ${game.dealer} war Geber.`}</p>
       <div className="modal-actions detail-actions">{onDelete && <button type="button" className="secondary-button danger" onClick={onDelete}><Trash2 size={16} /> Löschen</button>}<button type="button" className="secondary-button" onClick={onClose}>Schließen</button>{onEdit && <button type="button" className="primary-button" onClick={onEdit}><Pencil size={16} /> Spiel bearbeiten</button>}</div>

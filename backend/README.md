@@ -1516,14 +1516,14 @@ their options while searching. `?limit=` is capped at 100.
 | `matchday`    | string   | `YYYY-MM-DD`, a matchday of the tournament – several lists may share it    |
 | `series`      | number   | "Serie" of the head, an integer ≥ 1 – required                             |
 | `table`       | number   | "Tisch" of the head, an integer ≥ 1 – required                             |
-| `tableLabel`  | string   | one or two letters, e.g. `A` or `B`; defaults to `A` for API compatibility |
+| `tableLabel`  | string   | series suffix, one or two letters; defaults to `A` for API compatibility |
 | `playerNames` | string[] | optional: 3–5 names of this tournament **in seating order**, no duplicates |
 | `games`       | game[]   | optional: entered in order, they become rounds 1…n                         |
 
-The pair of a table label and a series can only identify one sheet per evening.
-Several lists may share the same date, series and table when their labels differ
-(`A`, `B`, …). The label is included in list data, but the frontend displays it
-only when more than one list has the same date, series and table.
+The pair of a series suffix and a table can only identify one sheet per evening.
+Several lists may share the same date, series and table when their suffixes differ
+(`Serie 1A`, `Serie 1B`, …). The suffix is included in list data, but the frontend
+displays it after the series only when that date, series and table has duplicates.
 
 Lineup and first games may be sent in one request, which saves a round trip when
 an evening is entered at once.
