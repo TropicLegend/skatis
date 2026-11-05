@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Clock, ClipboardList, Copy, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Clock, ClipboardList, Copy, Download, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
+import { downloadPlayerCardsPdf } from './lib/player-cards.js'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withLevelChain, withStep } from './lib/skat.js'
 import { setDesktopOverride, useMobile } from './lib/useMedia.js'
 // Die Schriften liegen im Paket und kommen vom eigenen Server: kein Aufruf bei
@@ -988,6 +989,10 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
   // Weitere klappt auf Tippen auf. Die breite Tabelle bleibt dem Desktop.
   const mobile = useMobile()
   const [expanded, setExpanded] = useState(null)
+  // Die Spielerkarten entstehen erst beim Klick – jsPDF und die Abfrage der
+  // Gruppensortierung sollen nicht bei jedem Aufruf der Rangliste laufen.
+  const [cardsBusy, setCardsBusy] = useState(false)
+  const [cardsError, setCardsError] = useState('')
 
   // Der Verlauf kommt aus `standings/history`: dieselben Zahlen wie die Tabelle
   // darunter, nur datiert. Jede Skalierung wird einmal geholt und gemerkt.
@@ -1006,6 +1011,26 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
 
   const history = histories[scale]
   const chart = standingsProgressChart(history)
+
+  /**
+   * Die Kärtchen kommen immer aus der Sortierung „Alle Spieler mit Gruppen“ –
+   * unabhängig davon, welche Gruppe gerade in der Tabelle gewählt ist. Der Stand
+   * („Stand vom …“) gilt auch für die Karten.
+   */
+  async function downloadCards() {
+    setCardsBusy(true); setCardsError('')
+    try {
+      const params = new URLSearchParams({ grouped: 'true' })
+      if (asOf !== 'current') params.set('asOf', asOf)
+      const cardsStanding = await request(`/tournaments/${tournament.id}/standings?${params}`, { token })
+      await downloadPlayerCardsPdf({ standing: cardsStanding, tournament })
+    } catch (problem) {
+      setCardsError(errorNotice(problem))
+    } finally {
+      setCardsBusy(false)
+    }
+  }
+
   return <section className="tournament-ranking">
     <div className="ranking-heading">
       <div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div>
@@ -1019,8 +1044,10 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
           {(standing.availableMatchdays ?? []).map((day) => <option key={day} value={day}>Stand vom {day.split('-').reverse().join('.')}</option>)}
         </select></label>
         <span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span>
+        <button className="secondary-button" type="button" disabled={cardsBusy || !standing.players.length} onClick={downloadCards} title="Ein Kärtchen je Spieler zum Ausschneiden – als PDF herunterladen"><Download size={16} /> {cardsBusy ? 'Karten werden erstellt …' : 'Spielerkarten (PDF)'}</button>
       </div>
     </div>
+    {cardsError && <div className="error-message">{cardsError}</div>}
     {mobile ? <div className="ranking-cards">
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
