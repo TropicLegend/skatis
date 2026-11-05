@@ -1025,7 +1025,7 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
         <button type="button" className="ranking-card-head" aria-expanded={expanded === player.name} onClick={() => setExpanded(expanded === player.name ? null : player.name)}>
           <span className="rank-badge">{player.rank ?? '–'}</span>
-          <span className="rank-name">{player.name}{player.group && <small className="rank-group-label">Gruppe {player.group.rank}</small>}</span>
+          <span className="rank-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name}</small>}</span>
           <span className="rank-average"><strong>{player.averageScore === null ? '–' : <CountUp value={player.averageScore} />}</strong><small>Ø Punkte</small></span>
           <ChevronRight size={18} className="rank-caret" />
         </button>
@@ -1046,7 +1046,7 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
       <div className="ranking-header"><span>Rang</span><span>Spieler</span><span className="num">Spiele</span><span className="num">Ø Punkte</span><span className="num" title="Durchschnittliche Punkte pro 36 Spiele">Ø / 36</span><span className="num" title="Anzahl gewonnene Alleinspiele">Gewonnene<br />Alleinspiele</span><span className="num" title="Anzahl verlorene Alleinspiele">Verlorene<br />Alleinspiele</span><span className="num" title="Gewonnene Gegenspiele: verlorene Alleinspiele der Mitspieler">Gegner</span><span className="num" title="Punkteveränderung seit dem letzten Spieltag">± Spieltag</span><span className="num">Gesamt</span></div>
       {standing.players.map((player) => <div className="ranking-row" key={player.name} role="button" tabIndex={0} title={`${player.name}: Details und Statistiken`} onClick={() => onOpenPlayer(player)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenPlayer(player) } }}>
         <strong>{player.rank ?? '–'}</strong>
-        <span className="ranking-player-name">{player.name}{player.group && <small className="rank-group-label">Gruppe {player.group.rank}</small>}</span>
+        <span className="ranking-player-name">{player.name}{player.group && <small className="rank-group-label">{player.group.name}</small>}</span>
         <span className="num">{player.gamesPlayed}</span>
         <span className="num">{player.averageScore ?? '–'}</span>
         <span className="num">{player.averageScorePer36 ?? '–'}</span>
