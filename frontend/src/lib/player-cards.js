@@ -127,10 +127,25 @@ function drawCard(doc, { x, y, player, tournamentName }) {
   doc.setCharSpace(0)
 
   doc.setTextColor(COLORS.ink)
-  fitText(doc, player.group?.name ?? 'Ohne Gruppe', leftWidth, 8.5, 6)
-  doc.text(shorten(doc, player.group?.name ?? 'Ohne Gruppe', leftWidth), x + PAD, y + 34.5)
+  const groupWidth = 20
+  fitText(doc, player.group?.name ?? 'Ohne Gruppe', groupWidth, 8.5, 6)
+  doc.text(shorten(doc, player.group?.name ?? 'Ohne Gruppe', groupWidth), x + PAD, y + 34.5)
   doc.setFontSize(11)
   doc.text(averageLabel(player.averageScore), x + PAD, y + 44)
+
+  // Zwei Kästchen für je eine Zahl, rechts neben Gruppe und Spielschnitt –
+  // perfekt übereinander, ohne die übrigen Elemente zu verschieben.
+  const numberX = x + 26.5
+  const numberLabelWidth = 17.5
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(COLORS.muted)
+  fitText(doc, 'Tischnummer Serie 1', numberLabelWidth, 4.6, 3.8)
+  doc.text('Tischnummer Serie 1', numberX, y + 30)
+  doc.text('Tischnummer Serie 2', numberX, y + 39)
+  doc.setFillColor('#ffffff')
+  doc.setDrawColor(COLORS.line)
+  doc.rect(numberX, y + 31.2, 11, 5, 'FD')
+  doc.rect(numberX, y + 40.2, 11, 5, 'FD')
 
   // Das Feld zum Eintragen: ein hochkantiges Viereck am rechten Rand.
   doc.setDrawColor(COLORS.line)
