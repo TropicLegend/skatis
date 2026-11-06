@@ -28,6 +28,12 @@ function averageLabel(value) {
   return value.toLocaleString('de-DE', { maximumFractionDigits: 2 })
 }
 
+/** Ganze Zahl mit deutschem Tausenderpunkt (`1.524`) – `–` ohne Wert. */
+function roundLabel(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '–'
+  return value.toLocaleString('de-DE', { maximumFractionDigits: 0 })
+}
+
 /** Verkleinert die Schrift, bis der Text in die Breite passt – nicht unter `minSize`. */
 function fitText(doc, text, maxWidth, maxSize, minSize) {
   let size = maxSize
@@ -94,7 +100,24 @@ function drawCard(doc, { x, y, player, tournamentName }) {
   doc.setCharSpace(-0.1)
   doc.setFontSize(8.5)
   doc.text('skatis', x + PAD + 8.6, y + 9.8)
+  const brandWidth = doc.getTextWidth('skatis')
   doc.setCharSpace(0)
+
+  // Die Gruppe steht in der Kopfzeile direkt hinter der Wortmarke.
+  const groupText = player.group?.name ?? 'Ohne Gruppe'
+  const groupX = x + PAD + 8.6 + brandWidth + 1.4
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.6)
+  doc.setTextColor(COLORS.muted)
+  doc.text('·', groupX, y + 9.8)
+  const groupStart = groupX + doc.getTextWidth('·') + 1
+  const groupMaxWidth = x + 58 - groupStart
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(player.group?.name ? COLORS.ink : COLORS.muted)
+  fitText(doc, groupText, groupMaxWidth, 6.6, 5)
+  doc.text(shorten(doc, groupText, groupMaxWidth), groupStart, y + 9.8)
+
+  doc.setFont('helvetica', 'bold')
   doc.setFontSize(4.4)
   doc.setCharSpace(0.3)
   doc.setTextColor(COLORS.muted)
@@ -122,42 +145,45 @@ function drawCard(doc, { x, y, player, tournamentName }) {
   doc.setFontSize(4.6)
   doc.setTextColor(COLORS.muted)
   doc.setCharSpace(0.3)
-  doc.text('GRUPPE', x + PAD, y + 30)
-  doc.text('SPIELSCHNITT', x + PAD, y + 39)
+  doc.text('SERIENSCHNITT', x + PAD, y + 27.5)
+  doc.text('SPIELSCHNITT', x + PAD, y + 35)
+  doc.text('SPIELE', x + PAD, y + 42)
   doc.setCharSpace(0)
 
+  // Die Zahlen der Rangliste: Schnitt je 36 Spiele, Schnitt je Spiel, Spiele.
   doc.setTextColor(COLORS.ink)
-  const groupWidth = 20
-  fitText(doc, player.group?.name ?? 'Ohne Gruppe', groupWidth, 8.5, 6)
-  doc.text(shorten(doc, player.group?.name ?? 'Ohne Gruppe', groupWidth), x + PAD, y + 34.5)
+  doc.setFontSize(10)
+  doc.text(roundLabel(player.averageScorePer36), x + PAD, y + 31.5)
   doc.setFontSize(11)
-  doc.text(averageLabel(player.averageScore), x + PAD, y + 44)
+  doc.text(averageLabel(player.averageScore), x + PAD, y + 39)
+  doc.setFontSize(9)
+  doc.text(String(player.gamesPlayed ?? 0), x + PAD, y + 45.5)
 
-  // Zwei Kästchen für je eine Zahl, rechts neben Gruppe und Spielschnitt –
-  // perfekt übereinander, ohne die übrigen Elemente zu verschieben.
+  // Zwei Kästchen für je eine Zahl, rechts neben den Schnitten – perfekt
+  // übereinander, ohne die übrigen Elemente zu verschieben.
   const numberX = x + 26.5
   const numberLabelWidth = 17.5
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(COLORS.muted)
   fitText(doc, 'Tischnummer Serie 1', numberLabelWidth, 4.6, 3.8)
-  doc.text('Tischnummer Serie 1', numberX, y + 30)
-  doc.text('Tischnummer Serie 2', numberX, y + 39)
+  doc.text('Tischnummer Serie 1', numberX, y + 27.5)
+  doc.text('Tischnummer Serie 2', numberX, y + 35)
   doc.setFillColor('#ffffff')
   doc.setDrawColor(COLORS.line)
-  doc.rect(numberX, y + 31.2, 11, 5, 'FD')
-  doc.rect(numberX, y + 40.2, 11, 5, 'FD')
+  doc.rect(numberX, y + 28.7, 11, 4.4, 'FD')
+  doc.rect(numberX, y + 36.2, 11, 4.4, 'FD')
 
   // Das Feld zum Eintragen: ein hochkantiges Viereck am rechten Rand.
   doc.setDrawColor(COLORS.line)
   doc.setLineWidth(0.25)
-  doc.line(x + 46.1, y + 19, x + 46.1, y + 44, 'S')
+  doc.line(x + 46.1, y + 19, x + 46.1, y + 41.5, 'S')
   doc.setFont('helvetica', 'normal')
   fitText(doc, 'Spielschnitt Serie 1', fieldWidth, 5.4, 4.2)
   doc.setTextColor(COLORS.muted)
   doc.text(shorten(doc, 'Spielschnitt Serie 1', fieldWidth), fieldX, y + 22)
   doc.setFillColor('#ffffff')
   doc.setDrawColor(COLORS.line)
-  doc.rect(fieldX, y + 23.5, fieldWidth, 20.5, 'FD')
+  doc.rect(fieldX, y + 23.5, fieldWidth, 18, 'FD')
 }
 
 /** Das Download-Datum als `TT.MM.JJJJ` – wie im Dateinamen üblich. */
