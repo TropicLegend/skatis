@@ -18,6 +18,7 @@ import {
   getTournamentStandings,
   getStandingsHistory,
   getPlayerStats,
+  getTournamentStatistics,
   listTournaments,
   updateTournament,
 } from './tournament.service.js';
@@ -180,6 +181,18 @@ tournamentRouter.get(
     res.json({ data: stats });
   },
 );
+
+/**
+ * Whole-tournament statistics over all counted lists, independent of a player:
+ * totals, outcomes, Spielarten and the distribution of their Gewinnstufen.
+ * Readable by both roles.
+ */
+tournamentRouter.get('/:tournamentId/statistics', authenticate(), async (req, res) => {
+  const { tournamentId } = tournamentIdParams.parse(req.params);
+  const stats = await getTournamentStatistics(tournamentId);
+
+  res.json({ data: stats });
+});
 
 /**
  * Admin only: change the name, the matchdays and the normal ("Spieler-")

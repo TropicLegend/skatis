@@ -914,6 +914,7 @@ numbers that could drift from what the API calculates.
 | GET    | `/tournaments/:tournamentId/standings` | any   | The standing over all lists that count                  |
 | GET    | `/tournaments/:tournamentId/standings/history` | any | The standing at the end of every matchday, week or month |
 | GET    | `/tournaments/:tournamentId/standings/players/:playerName` | any | How one player took part in the rounds and how he did there |
+| GET    | `/tournaments/:tournamentId/statistics` | any   | Whole-tournament totals, outcomes, Spielarten and Gewinnstufen |
 | GET    | `/tournaments/:tournamentId/log`       | any   | The change log of the tournament, newest first          |
 | PATCH  | `/tournaments/:tournamentId`           | ADMIN | Change `name`, `matchdays` and/or the player password   |
 | DELETE | `/tournaments/:tournamentId`           | ADMIN | Delete incl. players, lists and games                   |
@@ -1222,6 +1223,85 @@ All shares are percentages rounded to one decimal and `null` while the
 denominator is `0`.
 
 **Errors:** `404` unknown tournament or unknown player.
+
+#### `GET /tournaments/:tournamentId/statistics`
+
+Statistics of the **whole tournament**, independent of the players. The endpoint
+uses exactly the lists that count for the [standing](#tournament-standings), so
+its totals and the ranking never disagree. Reading is allowed for both roles.
+`src/modules/tournaments/tournament-stats.ts` holds the pure aggregation.
+
+**Response** `200`
+
+```json
+{
+  "data": {
+    "tournamentId": "K7M2P4QX",
+    "listsCounted": 3,
+    "matchdaysCounted": 2,
+    "totalGames": 11,
+    "playedGames": 10,
+    "passedOutGames": 1,
+    "outcomes": {
+      "won": 6,
+      "lost": 4,
+      "passedOut": 1,
+      "wonShare": 54.5,
+      "lostShare": 36.4,
+      "passedOutShare": 9.1
+    },
+    "gameTypes": [
+      { "gameType": "HERZ", "played": 3, "won": 2, "lost": 1, "share": 30, "winShare": 66.7 },
+      { "gameType": "PIK", "played": 2, "won": 1, "lost": 1, "share": 20, "winShare": 50 },
+      { "gameType": "KARO", "played": 1, "won": 1, "lost": 0, "share": 10, "winShare": 100 },
+      { "gameType": "KREUZ", "played": 1, "won": 0, "lost": 1, "share": 10, "winShare": 0 },
+      { "gameType": "GRAND", "played": 2, "won": 1, "lost": 1, "share": 20, "winShare": 50 },
+      { "gameType": "NULL", "played": 1, "won": 1, "lost": 0, "share": 10, "winShare": 100 }
+    ],
+    "gameTypeGroups": [
+      { "group": "SUIT", "played": 7, "won": 4, "share": 70, "winShare": 57.1 },
+      { "group": "GRAND", "played": 2, "won": 1, "share": 20, "winShare": 50 },
+      { "group": "NULL", "played": 1, "won": 1, "share": 10, "winShare": 100 }
+    ],
+    "features": [
+      {
+        "key": "hand",
+        "total": 2,
+        "byGameType": [
+          { "gameType": "HERZ", "count": 1, "share": 50 },
+          { "gameType": "GRAND", "count": 1, "share": 50 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The example shortens `features` to `hand`; the response always contains all six
+feature objects, each with the full `byGameType` list.
+
+`totalGames` counts every entered round, including passed-out games.
+`playedGames` counts only decided Alleinspiele (won or lost); `passedOutGames` is
+the rest. The three `outcomes` counts therefore add up to `totalGames`. Their
+shares are percentages of `totalGames`, rounded to one decimal, and the rounding
+difference goes to the largest part so that they add up to **exactly 100**.
+
+`gameTypes` always reports all six Spielarten in enum order and `gameTypeGroups`
+all three groups – `SUIT` (the four colours), `GRAND` and `NULL`. `played` there
+excludes passed-out rounds, `share` is the Spielart's part of the decided games
+and `winShare` is `won / played` – the Gewinnwahrscheinlichkeit of that Spielart.
+
+`features` reports `hand`, `offen`, `schneiderAnnounced`, `schwarzAnnounced`,
+`schneider` and `schwarz`. A game can carry several of them, so the totals are not
+disjoint. `total` is the number of decided games with that feature; `byGameType`
+splits it over all six Spielarten, where `share` is the count's part of `total`
+(this is the distribution a frontend shows per Spielart). Passed-out rounds carry
+no Spielart and are never counted in a feature.
+
+All shares are percentages rounded to one decimal and `null` while the
+denominator is `0`.
+
+**Errors:** `404` unknown tournament.
 
 #### `GET /tournaments/:tournamentId/log`
 
@@ -2488,7 +2568,8 @@ backend/
 │   │   ├── tournaments/        # schemas, service, routes
 │   │   │   ├── tournament.routes.ts   # /tournaments, /tournaments/:id
 │   │   │   ├── standings.ts           # the standing over all matchdays
-│   │   │   └── player-stats.ts        # how one player took part in the rounds
+│   │   │   ├── player-stats.ts        # how one player took part in the rounds
+│   │   │   └── tournament-stats.ts    # whole-tournament totals and distributions
 │   │   ├── players/            # players of a tournament
 │   │   │   └── player-names.ts        # the names a game stores for its lineup
 │   │   ├── lists/              # lists + games

@@ -25,6 +25,10 @@ import {
   type TournamentStandingsDto,
 } from './standings.js';
 import { playerGameStats, type PlayerGameStatsDto, type StatGame } from './player-stats.js';
+import {
+  tournamentGameStats,
+  type TournamentStatisticsDto,
+} from './tournament-stats.js';
 
 /** Number of attempts to find a free tournament id. */
 const MAX_ID_ATTEMPTS = 5;
@@ -254,6 +258,11 @@ async function loadCountedResults(tournamentId: string, groupId?: string): Promi
             gameValue: true,
             gameType: true,
             hand: true,
+            offen: true,
+            schneiderAnnounced: true,
+            schwarzAnnounced: true,
+            schneider: true,
+            schwarz: true,
           },
         },
       },
@@ -394,6 +403,21 @@ export async function getPlayerStats(
     player,
     ...playerGameStats(player.name, games),
   };
+}
+
+/**
+ * Whole-tournament statistics over every counted list, independent of a player.
+ * The same games feed the ranking and the player statistics; this endpoint only
+ * aggregates them by outcome, Spielart and the selected Gewinnstufen.
+ */
+export async function getTournamentStatistics(
+  tournamentId: string,
+): Promise<TournamentStatisticsDto> {
+  const { tournamentId: id, results, games } = await loadCountedResults(tournamentId);
+  return tournamentGameStats(id, games, {
+    listsCounted: results.length,
+    matchdaysCounted: new Set(results.map((result) => result.matchday)).size,
+  });
 }
 
 export async function updateTournament(

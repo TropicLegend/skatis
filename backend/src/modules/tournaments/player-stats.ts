@@ -34,6 +34,12 @@ export interface StatGame {
   gameType: GameType | null;
   /** Gewinnstufe "Hand" – also set for "Null Hand". */
   hand: boolean;
+  /** Further Gewinnstufen and results – only needed by tournament-wide stats. */
+  offen?: boolean;
+  schneiderAnnounced?: boolean;
+  schwarzAnnounced?: boolean;
+  schneider?: boolean;
+  schwarz?: boolean;
 }
 
 export interface PlayerRoleStatsDto {

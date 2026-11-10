@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Clock, ClipboardList, Copy, Download, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, ChartPie, Check, ChevronDown, ChevronRight, ChevronUp, CircleHelp, Clock, ClipboardList, Copy, Download, Eye, EyeOff, History, LogOut, Monitor, Pencil, Plus, RotateCcw, Smartphone, Trophy, X, Trash2, LockKeyhole, UnlockKeyhole, Users } from 'lucide-react'
 import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
@@ -212,6 +212,20 @@ const GAME_TYPE_GROUPS = {
   GRAND: { label: 'Grand', color: '#db6f40' },
   NULL: { label: 'Null', color: '#7d6a9c' },
 }
+
+/** Die Gewinnstufen der Turnierstatistik – Reihenfolge und Beschriftung der Tabellen. */
+const TOURNAMENT_FEATURES = {
+  hand: 'Hand',
+  offen: 'Offen',
+  schneiderAnnounced: 'Schneider Ang.',
+  schwarzAnnounced: 'Schwarz Ang.',
+  schneider: 'Schneider',
+  schwarz: 'Schwarz',
+}
+const TOURNAMENT_FEATURE_TABLES = [
+  { title: 'Hand und Offen', eyebrow: 'Spielweise', keys: ['hand', 'offen'] },
+  { title: 'Angesagt und gespielt', eyebrow: 'Gewinnstufen', keys: ['schneiderAnnounced', 'schwarzAnnounced', 'schneider', 'schwarz'] },
+]
 
 /**
  * Die Regeln des Spiels (`GET /rules`) sind für alle Turniere gleich und werden
@@ -654,7 +668,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   const [playerGroups, setPlayerGroups] = useState([])
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupRank, setNewGroupRank] = useState(1)
-  const [standingGroupId, setStandingGroupId] = useState('all')
+  const [standingGroupId, setStandingGroupId] = useState('grouped')
   const [standingAsOf, setStandingAsOf] = useState('current')
   const [playerName, setPlayerName] = useState('')
   const [playerError, setPlayerError] = useState('')
@@ -700,6 +714,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
   }).filter(Boolean)
   const showLists = !mobile || section === 'lists'
   const showRanking = !mobile || section === 'ranking'
+  const showStats = !mobile || section === 'stats'
   const showPlayers = !mobile || section === 'players'
   async function loadPlayers() { setPlayers(await request(`/tournaments/${tournament.id}/players`, { token })); setPlayerError('') }
   async function loadPlayerGroups() {
@@ -881,6 +896,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       </div>}
     </>}
     {showRanking && standing && <TournamentRanking key={`${rankingRevision}-${standingGroupId}-${standingAsOf}-${tournament.opponentBonusVariant}`} standing={standing} tournament={tournament} token={token} groups={playerGroups} groupId={standingGroupId} asOf={standingAsOf} onGroupChange={setStandingGroupId} onAsOfChange={setStandingAsOf} onOpenPlayer={openPlayer} />}
+    {showStats && <TournamentStats tournament={tournament} token={token} lists={lists} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className={`player-tag${player.hiddenFromStandings ? ' player-hidden' : ''}`} key={player.name}>{player.name}{role === 'ADMIN' && <><button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button><button className="icon-button" type="button" aria-label={player.hiddenFromStandings ? `${player.name} in Rangliste einblenden` : `${player.name} aus Rangliste ausblenden`} title={player.hiddenFromStandings ? 'In Rangliste einblenden' : 'Aus Rangliste ausblenden'} onClick={() => togglePlayerStandingVisibility(player)}>{player.hiddenFromStandings ? <Eye size={14} /> : <EyeOff size={14} />}</button></>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{role === 'ADMIN' && <div className="player-groups"><div className="player-groups-heading"><h3>Spielergruppen</h3><form onSubmit={addPlayerGroup}><input required maxLength="64" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Gruppenname" /><button className="icon-button" title="Gruppe erstellen"><Plus size={17} /></button></form></div>{playerGroups.map((group) => <details className="player-group" key={group.id}><summary><span>{group.name}</span><small>{group.playerNames.length} Spieler</small></summary><button className="icon-button danger" type="button" title={`${group.name} löschen`} onClick={() => removePlayerGroup(group)}><Trash2 size={15} /></button><div className="group-members">{players.map((player) => <label key={player.name}><input type="checkbox" checked={group.playerNames.includes(player.name)} onChange={(event) => toggleGroupMember(group, player, event.target.checked)} />{player.name}</label>)}</div></details>)}</div>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
     {showPlayers && role === 'ADMIN' && <PlayerGroupMatrix players={players} groups={playerGroups} newGroupName={newGroupName} newGroupRank={newGroupRank} onNameChange={setNewGroupName} onRankChange={setNewGroupRank} onCreate={addPlayerGroup} onDelete={removePlayerGroup} onRankSelect={changePlayerGroupRank} onMemberToggle={toggleGroupMember} />}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
@@ -917,14 +933,14 @@ function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onName
 }
 
 /**
- * Die Tab-Leiste der Handy-Ansicht: die drei Bereiche der Übersicht, mit einem
+ * Die Tab-Leiste der Handy-Ansicht: die vier Bereiche der Übersicht, mit einem
  * gleitenden Feld hinter dem aktiven Tab. Auf dem Desktop gibt es sie nicht – dort
  * stehen die Abschnitte wie bisher untereinander.
  */
-const SECTIONS = [['lists', 'Übersicht', ClipboardList], ['ranking', 'Rangliste', Trophy], ['players', 'Spieler', Users]]
+const SECTIONS = [['lists', 'Übersicht', ClipboardList], ['ranking', 'Rangliste', Trophy], ['stats', 'Statistik', ChartPie], ['players', 'Spieler', Users]]
 
 function SectionTabs({ value, onChange }) {
-  return <nav className="tabbar" aria-label="Bereiche">
+  return <nav className="tabbar" style={{ '--tabs': SECTIONS.length, '--tab-pill-width': `calc((100% - ${20 + (SECTIONS.length - 1) * 6}px) / ${SECTIONS.length})` }} aria-label="Bereiche">
     <i className="tab-pill" style={{ '--i': Math.max(0, SECTIONS.findIndex(([id]) => id === value)) }} aria-hidden="true" />
     {SECTIONS.map(([id, label, Icon]) => <button key={id} type="button" className={value === id ? 'active' : ''} aria-current={value === id ? 'page' : undefined} onClick={() => { onChange(id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}><Icon size={22} /><span>{label}</span></button>)}
   </nav>
@@ -1091,6 +1107,123 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
 }
 
 /**
+ * Die Statistik des ganzen Turniers – unabhängig von den Spielern. Alle Zahlen
+ * kommen fertig gerechnet aus `…/statistics`: Gesamtzahl, Ergebnisquoten,
+ * Spielarten mit Gewinnchance und die Verteilung der Gewinnstufen.
+ */
+function TournamentStats({ tournament, token, lists = [] }) {
+  const [stats, setStats] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!tournament?.id) return undefined
+    let active = true
+    setLoading(true)
+    request(`/tournaments/${tournament.id}/statistics`, { token })
+      .then((value) => { if (active) { setStats(value); setError('') } })
+      .catch((problem) => { if (active) setError(errorNotice(problem)) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [tournament?.id, token, lists])
+
+  const percentLabel = (value) => (value === null || value === undefined ? '–' : `${value.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`)
+  const playedTypes = (stats?.gameTypes ?? []).filter((entry) => entry.played > 0)
+  const pieSlices = (stats?.gameTypeGroups ?? []).map((group) => ({
+    label: GAME_TYPE_GROUPS[group.group]?.label ?? group.group,
+    value: group.played,
+    color: GAME_TYPE_GROUPS[group.group]?.color ?? '#c1c3ba',
+  }))
+  const featureByKey = new Map((stats?.features ?? []).map((feature) => [feature.key, feature]))
+  const featureFor = (key) => featureByKey.get(key) ?? { key, total: 0, byGameType: [] }
+  const featureCell = (key, gameType) => featureFor(key).byGameType.find((entry) => entry.gameType === gameType) ?? { count: 0, share: null }
+  const outcomeShares = [stats?.outcomes.wonShare, stats?.outcomes.lostShare, stats?.outcomes.passedOutShare]
+  const outcomeSum = outcomeShares.every((value) => value !== null && value !== undefined)
+    ? outcomeShares.reduce((sum, value) => sum + value, 0)
+    : null
+  const winShare = stats && stats.playedGames > 0
+    ? Math.round((stats.outcomes.won / stats.playedGames) * 1000) / 10
+    : null
+  const groupWinSummary = (stats?.gameTypeGroups ?? [])
+    .filter((group) => group.played > 0)
+    .map((group) => `${GAME_TYPE_GROUPS[group.group]?.label ?? group.group} ${percentLabel(group.winShare)}`)
+    .join(' · ')
+
+  return <section className="tournament-statistics">
+    <div className="ranking-heading">
+      <div><span className="eyebrow">Gesamtes Turnier</span><h2>Statistik</h2></div>
+      {stats && <span className="dealer-note">{stats.listsCounted} gewertete Listen · {stats.matchdaysCounted} Spieltage</span>}
+    </div>
+    {error && <div className="error-message">{error}</div>}
+    {!stats && !error && <Skeleton lines={5} />}
+    {stats && <>
+      <div className="stats-row tournament-overview">
+        <div className="stat"><span>Spiele insgesamt</span><strong>{stats.totalGames}</strong><small>{stats.passedOutGames} eingepasst</small></div>
+        <div className="stat"><span>Alleinspiele</span><strong>{stats.playedGames}</strong><small>gewonnen oder verloren</small></div>
+        <div className="stat"><span>Gewinnquote Alleinspieler</span><strong>{percentLabel(winShare)}</strong><small>{stats.outcomes.won} von {stats.playedGames} entschiedenen Spielen</small></div>
+        <div className="stat"><span>Spieltage</span><strong>{stats.matchdaysCounted}</strong><small>aus {stats.listsCounted} gewerteten Listen</small></div>
+      </div>
+
+      <section className="player-panel outcome-panel">
+        <div className="section-heading"><div><span className="eyebrow">Alle Runden</span><h2>Gewonnen, verloren, eingepasst</h2></div><span className="dealer-note">Summe {outcomeSum === null ? '–' : `${outcomeSum.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}</span></div>
+        <div className="outcome-grid">
+          <div className="outcome-card won"><span>Gewonnen</span><strong>{percentLabel(stats.outcomes.wonShare)}</strong><small>{stats.outcomes.won} Spiele</small></div>
+          <div className="outcome-card lost"><span>Verloren</span><strong>{percentLabel(stats.outcomes.lostShare)}</strong><small>{stats.outcomes.lost} Spiele</small></div>
+          <div className="outcome-card passed"><span>Eingepasst</span><strong>{percentLabel(stats.outcomes.passedOutShare)}</strong><small>{stats.outcomes.passedOut} Spiele</small></div>
+        </div>
+        <div className="outcome-meter" aria-hidden="true">
+          <i className="won" style={{ width: `${stats.outcomes.wonShare ?? 0}%` }} />
+          <i className="lost" style={{ width: `${stats.outcomes.lostShare ?? 0}%` }} />
+          <i className="passed" style={{ width: `${stats.outcomes.passedOutShare ?? 0}%` }} />
+        </div>
+      </section>
+
+      <div className="player-tables">
+        <section className="player-panel">
+          <div className="section-heading"><div><span className="eyebrow">Spielarten</span><h2>Was wird gespielt?</h2></div><span className="dealer-note">Anteil an {stats.playedGames} Alleinspielen</span></div>
+          <PieChart slices={pieSlices} centerLabel="Alleinspiele" emptyHint="Noch keine Alleinspiele eingetragen." />
+          {groupWinSummary && <p className="chart-note">Gewinnquote nach Gruppe: {groupWinSummary}.</p>}
+        </section>
+        <section className="player-panel">
+          <div className="section-heading"><div><span className="eyebrow">Spielarten</span><h2>Gewinnwahrscheinlichkeit</h2></div><span className="dealer-note">je Spielart</span></div>
+          {playedTypes.length ? <div className="feature-table-scroll">
+            <table className="detail-table stats-detail">
+              <thead><tr><th scope="col">Spielart</th><th scope="col">Gespielt</th><th scope="col">Gewonnen</th><th scope="col">Verloren</th><th scope="col">Gewinnquote</th></tr></thead>
+              <tbody>{playedTypes.map((entry) => <tr key={entry.gameType}>
+                <td><span className={`suit-icon suit-${entry.gameType.toLowerCase()}`}>{gameTypeSymbol(entry.gameType)}</span>{gameTypeLabel(entry.gameType)}</td>
+                <td>{entry.played}<small>{percentLabel(entry.share)}</small></td>
+                <td>{entry.won}</td>
+                <td>{entry.lost}</td>
+                <td><strong>{percentLabel(entry.winShare)}</strong></td>
+              </tr>)}</tbody>
+            </table>
+          </div> : <p className="chart-note">Noch keine entschiedenen Alleinspiele eingetragen.</p>}
+        </section>
+      </div>
+
+      <div className="player-tables tournament-feature-tables">
+        {TOURNAMENT_FEATURE_TABLES.map(({ title, eyebrow, keys }) => <section className="player-panel" key={title}>
+          <div className="section-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div><span className="dealer-note">Verteilung auf die Spielarten</span></div>
+          {playedTypes.length ? <div className="feature-table-scroll">
+            <table className="detail-table stats-detail feature-distribution">
+              <thead><tr><th scope="col">Spielart</th>{keys.map((key) => <th scope="col" key={key}>{TOURNAMENT_FEATURES[key]}<small>{featureFor(key).total}×</small></th>)}</tr></thead>
+              <tbody>{playedTypes.map((entry) => <tr key={entry.gameType}>
+                <td><span className={`suit-icon suit-${entry.gameType.toLowerCase()}`}>{gameTypeSymbol(entry.gameType)}</span>{gameTypeLabel(entry.gameType)}</td>
+                {keys.map((key) => {
+                  const cell = featureCell(key, entry.gameType)
+                  return <td key={key}>{cell.count}{cell.share !== null && <small>{percentLabel(cell.share)}</small>}</td>
+                })}
+              </tr>)}</tbody>
+            </table>
+          </div> : <p className="chart-note">Noch keine entschiedenen Alleinspiele eingetragen.</p>}
+        </section>)}
+      </div>
+      {loading && <p className="chart-note">Statistik wird aktualisiert …</p>}
+    </>}
+  </section>
+}
+
+/**
  * Die Ansicht eines Spielers: seine Zahlen aus der Rangliste, der Verlauf seines
  * Kontos je Zeitraum und seine Abende. Alles kommt aus der API – die Wertung aus
  * `…/standings`, der Verlauf aus `…/standings/history` und die Abende aus den
@@ -1194,7 +1327,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
 
     <div className="player-tables">
       <section className="player-panel">
-        <div className="section-heading"><div><span className="eyebrow">Rollen</span><h2>Seine Aufgaben</h2></div><span className="dealer-note">in {stats?.roles.played ?? player.gamesPlayed} Spielen am Tisch</span></div>
+        <div className="section-heading"><div><span className="eyebrow">Rollen</span><h2>Spielanteil</h2></div><span className="dealer-note">in {stats?.roles.played ?? player.gamesPlayed} Spielen am Tisch</span></div>
         {statsError && <div className="error-message">{statsError}</div>}
         {!stats && !statsError && <Skeleton lines={3} />}
         {stats && <div className="stat-grid">
@@ -1205,7 +1338,7 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
         </div>}
       </section>
       <section className="player-panel">
-        <div className="section-heading"><div><span className="eyebrow">Quoten</span><h2>Wie er abschneidet</h2></div></div>
+        <div className="section-heading"><div><span className="eyebrow">Quoten</span><h2>Erfolgsquote</h2></div></div>
         {stats && <div className="stat-grid">
           {item('Alleinspiele gewonnen', percentLabel(stats.declarer.winShare), `${stats.declarer.won} von ${stats.declarer.played}`)}
           {item('Gegenspiele gewonnen', percentLabel(stats.defender.winShare), `${stats.defender.won} von ${stats.defender.played}`)}
