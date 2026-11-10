@@ -12,6 +12,7 @@ import {
   NULL_VALUES,
   calculateGameValue,
   countLevels,
+  firstCardPlayer,
   maxMatadors,
   nextDealer,
   playingPlayers,
@@ -97,6 +98,33 @@ describe('who plays a round', () => {
   it('restricts nobody when the Geber is not in the lineup', () => {
     expect(sittingOutPlayers(LINEUP_5, 'Unbekannt')).toEqual([]);
     expect(playingPlayers(LINEUP_5, 'Unbekannt')).toEqual(LINEUP_5);
+  });
+});
+
+describe('firstCardPlayer', () => {
+  it('starts with the player after the Geber when everybody plays', () => {
+    expect(firstCardPlayer(LINEUP_3, 'Anna')).toBe('Bert');
+    expect(firstCardPlayer(LINEUP_3, 'Clara')).toBe('Anna');
+  });
+
+  it('skips the Geber when four players are on the list', () => {
+    expect(firstCardPlayer(LINEUP_4, 'Anna')).toBe('Bert');
+    expect(firstCardPlayer(LINEUP_4, 'Dora')).toBe('Anna');
+  });
+
+  it('skips the seats next to the Geber when five players are on the list', () => {
+    // Bert deals, Anna and Clara sit out – Dora is the first player after Bert.
+    expect(firstCardPlayer(LINEUP_5, 'Bert')).toBe('Dora');
+    // Anna deals, Emil and Bert sit out – Clara is the first player after Anna.
+    expect(firstCardPlayer(LINEUP_5, 'Anna')).toBe('Clara');
+  });
+
+  it('always names one of the three players of the round', () => {
+    for (const lineup of [LINEUP_3, LINEUP_4, LINEUP_5]) {
+      for (const dealer of lineup) {
+        expect(playingPlayers(lineup, dealer)).toContain(firstCardPlayer(lineup, dealer));
+      }
+    }
   });
 });
 

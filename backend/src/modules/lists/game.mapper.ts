@@ -1,6 +1,6 @@
 import type { Game, GameType, Matadors, Prisma } from '@prisma/client';
 import type { GameInput } from './game.schemas.js';
-import { calculateGameValue } from './game-rules.js';
+import { calculateGameValue, firstCardPlayer } from './game-rules.js';
 
 export interface GameDto {
   id: string;
@@ -15,6 +15,8 @@ export interface GameDto {
   sittingOutPlayers: string[];
   /** Geber of the round. */
   dealer: string;
+  /** First player after the Geber who takes part in the round – they lay the first card. */
+  firstCardPlayer: string;
   passedOut: boolean;
   declarer: string | null;
   gameType: GameType | null;
@@ -51,6 +53,7 @@ export function toGameDto(game: Game, lineup: readonly string[]): GameDto {
     players: [...game.players],
     sittingOutPlayers: lineup.filter((name) => !game.players.includes(name)),
     dealer: game.dealer,
+    firstCardPlayer: firstCardPlayer(lineup, game.dealer),
     passedOut: game.declarer === null,
     declarer: game.declarer,
     gameType: game.gameType,

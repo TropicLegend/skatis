@@ -344,6 +344,7 @@ describe('toGameDto result columns', () => {
 
   it('has nobody sitting out when the lineup is the round', () => {
     expect(dto().sittingOutPlayers).toEqual([]);
+    expect(dto().firstCardPlayer).toBe('Bert');
   });
 
   it('names the players who sit out when the lineup is bigger than the round', () => {

@@ -1,4 +1,4 @@
-import { nextDealer, playingPlayers, sittingOutPlayers } from './game-rules.js';
+import { firstCardPlayer, nextDealer, playingPlayers, sittingOutPlayers } from './game-rules.js';
 
 /**
  * The round a `POST …/games` would create.
@@ -19,6 +19,8 @@ export interface RoundPreviewDto {
   lineup: string[];
   /** Geber of the round – follows the seating order. */
   dealer: string;
+  /** First player after the Geber who takes part in the round – they lay the first card. */
+  firstCardPlayer: string;
   /** The three players of the round: the allowed Alleinspieler. */
   playingPlayers: string[];
   /** The players who sit out this round (3 → none, 4 → the Geber, 5 → the seats around them). */
@@ -45,6 +47,7 @@ export function buildRoundPreview(
     position: dealers.length + 1,
     lineup: [...lineup],
     dealer,
+    firstCardPlayer: firstCardPlayer(lineup, dealer),
     playingPlayers: playingPlayers(lineup, dealer),
     sittingOutPlayers: sittingOutPlayers(lineup, dealer),
   };

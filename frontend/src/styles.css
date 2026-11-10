@@ -59,6 +59,8 @@
 .tournament-ranking .chart-block{border-top:1px solid var(--line);margin-top:20px;padding:20px 0 0}
 .wizard-hint{margin:0 0 15px;text-align:center;font:11px 'DM Mono';color:var(--muted)}
 .wizard-hint strong{color:var(--ink)}
+.first-card-player{margin:0 0 22px;text-align:center;font:700 clamp(24px,4vw,34px)/1.15 'Playfair Display',Georgia,serif;letter-spacing:-.8px;color:var(--ink)}
+.first-card-player strong{color:var(--orange-dark)}
 .choice-card.sitting-out{background:#f0ece3;border-style:dashed;color:#8f938a}
 .sits-out-flag{position:absolute;bottom:8px;font:9px 'DM Mono';letter-spacing:.3px;color:#9a988f}
 .detail-modal{max-width:680px}

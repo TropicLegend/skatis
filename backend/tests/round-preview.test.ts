@@ -14,6 +14,7 @@ describe('buildRoundPreview', () => {
       position: 1,
       lineup: [...THREE],
       dealer: 'Anna',
+      firstCardPlayer: 'Bert',
       playingPlayers: [...THREE],
       sittingOutPlayers: [],
     });
@@ -38,6 +39,7 @@ describe('buildRoundPreview', () => {
 
     expect(preview.sittingOutPlayers).toEqual(['Anna']);
     expect(preview.playingPlayers).toEqual(['Bert', 'Clara', 'Dora']);
+    expect(preview.firstCardPlayer).toBe('Bert');
   });
 
   it('lets the Geber play and the seats around them sit out in a lineup of five', () => {
@@ -46,6 +48,7 @@ describe('buildRoundPreview', () => {
     expect(preview.dealer).toBe('Bert');
     expect(preview.sittingOutPlayers).toEqual(['Anna', 'Clara']);
     expect(preview.playingPlayers).toEqual(['Bert', 'Dora', 'Emil']);
+    expect(preview.firstCardPlayer).toBe('Dora');
   });
 
   it('wraps around at the end of the seating order', () => {

@@ -144,6 +144,33 @@ export function playingPlayers(lineup: readonly string[], dealer: string): strin
   return lineup.filter((name) => !sittingOut.has(name));
 }
 
+/**
+ * The player who lays the first card: the first player after the Geber who also
+ * takes part in the round. With four players the Geber sits out, so the search
+ * simply continues past the Geber; with five the seat directly after them sits
+ * out, so the next seat that is still playing lays the first card.
+ */
+export function firstCardPlayer(lineup: readonly string[], dealer: string): string {
+  const playing = playingPlayers(lineup, dealer);
+  const first = playing[0];
+  if (first === undefined) {
+    throw new Error('Cannot determine the first card player for an empty round');
+  }
+
+  const dealerIndex = lineup.indexOf(dealer);
+  // A dealer outside the lineup cannot happen for stored games; the first player
+  // of the round is the only sensible fallback, matching `nextDealer`.
+  if (dealerIndex === -1) return first;
+
+  const playingSet = new Set(playing);
+  for (let offset = 1; offset <= lineup.length; offset += 1) {
+    const candidate = lineup[(dealerIndex + offset) % lineup.length];
+    if (candidate !== undefined && playingSet.has(candidate)) return candidate;
+  }
+
+  return first;
+}
+
 export interface MatadorInput {
   suit: Matadors;
   count: number;

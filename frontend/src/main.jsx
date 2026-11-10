@@ -1993,9 +1993,10 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
   }, [existingGame, list.id, tournamentId, token])
 
   const round = existingGame
-    ? { position: existingGame.position, dealer: existingGame.dealer, playingPlayers: existingGame.players || [], sittingOutPlayers: existingGame.sittingOutPlayers ?? [] }
+    ? { position: existingGame.position, dealer: existingGame.dealer, firstCardPlayer: existingGame.firstCardPlayer, playingPlayers: existingGame.players || [], sittingOutPlayers: existingGame.sittingOutPlayers ?? [] }
     : nextRound
   const dealer = round?.dealer ?? ''
+  const firstCard = round?.firstCardPlayer ?? ''
   const playing = round?.playingPlayers ?? []
   const sittingOut = round?.sittingOutPlayers ?? []
   const gameNumber = round?.position ?? (list.gameCount || list.games?.length || 0) + 1
@@ -2043,7 +2044,7 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
     if (step < 4) return go(step + 1)
     if (game.passedOut) return onSave({ passedOut: true, note: game.note })
 
-    const { id, position, dealer, players: gamePlayers, sittingOutPlayers, gameValue, positiveGameValue, negativeGameValue, nullVariant, createdAt, updatedAt, matadors, ...payload } = game
+    const { id, position, dealer, firstCardPlayer, players: gamePlayers, sittingOutPlayers, gameValue, positiveGameValue, negativeGameValue, nullVariant, createdAt, updatedAt, matadors, ...payload } = game
     // Ein Nullspiel hat keine Spitzen, der Server lehnt sie dort ab.
     return onSave(game.gameType === 'NULL' ? payload : { ...payload, matadors })
   }
@@ -2097,6 +2098,7 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
         </div>}
 
         {step === 3 && <div className="wizard-section">
+          {firstCard && <p className="first-card-player"><strong>{firstCard}</strong> legt die erste Karte.</p>}
           <div className="segmented">
             <button className={game.matadors.suit === 'WITH' ? 'active' : ''} onClick={() => setGame({ ...game, matadors: { ...game.matadors, suit: 'WITH' } })}>Mit</button>
             <button className={game.matadors.suit === 'WITHOUT' ? 'active' : ''} onClick={() => setGame({ ...game, matadors: { ...game.matadors, suit: 'WITHOUT' } })}>Ohne</button>

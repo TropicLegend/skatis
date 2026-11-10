@@ -1881,6 +1881,7 @@ The lineup has to be complete (3, 4 or 5 players), otherwise the answer is `409`
     "position": 5,
     "lineup": ["Anna", "Bert", "Clara", "Dora", "Emil"],
     "dealer": "Clara",
+    "firstCardPlayer": "Emil",
     "playingPlayers": ["Anna", "Clara", "Emil"],
     "sittingOutPlayers": ["Bert", "Dora"]
   }
@@ -1888,7 +1889,9 @@ The lineup has to be complete (3, 4 or 5 players), otherwise the answer is `409`
 ```
 
 `position` is the round number the new game gets and `dealer` the Geber of that
-round. `playingPlayers` names the three players of the round in seating order –
+round. `firstCardPlayer` is the first player after the Geber who takes part in
+the round – they lay the first card; players who sit out between the two are
+skipped. `playingPlayers` names the three players of the round in seating order –
 exactly the ones that may be sent as `declarer` – and `sittingOutPlayers` the
 ones who sit out: with five players the Geber plays and the two seats around them
 sit out, with four the Geber sits out, with three nobody does.
@@ -2255,6 +2258,7 @@ reopened on the same evening, both are `false`/`OPEN` again.
 | `id`                                                      | string                                                            | API                                           |
 | `position`                                                | number                                                            | API – the round, counted from 1               |
 | `dealer`                                                  | string                                                            | API – follows the seating order               |
+| `firstCardPlayer`                                         | string                                                            | API – first player after the Geber who plays  |
 | `players`                                                 | string[]                                                          | API – the three players of the round          |
 | `sittingOutPlayers`                                       | string[]                                                          | API – the lineup minus the three above        |
 | `passedOut`                                               | boolean                                                           | client – step 1                               |
