@@ -1268,8 +1268,8 @@ its totals and the ranking never disagree. Reading is allowed for both roles.
         "key": "hand",
         "total": 2,
         "byGameType": [
-          { "gameType": "HERZ", "count": 1, "share": 50 },
-          { "gameType": "GRAND", "count": 1, "share": 50 }
+          { "gameType": "HERZ", "count": 1, "won": 1, "share": 50, "winShare": 100 },
+          { "gameType": "GRAND", "count": 1, "won": 0, "share": 50, "winShare": 0 }
         ]
       }
     ]
@@ -1295,8 +1295,9 @@ and `winShare` is `won / played` – the Gewinnwahrscheinlichkeit of that Spiela
 `schneider` and `schwarz`. A game can carry several of them, so the totals are not
 disjoint. `total` is the number of decided games with that feature; `byGameType`
 splits it over all six Spielarten, where `share` is the count's part of `total`
-(this is the distribution a frontend shows per Spielart). Passed-out rounds carry
-no Spielart and are never counted in a feature.
+(this is the distribution a frontend shows per Spielart) and `winShare` is
+`won / count` – for example the Erfolgsquote of "Grand Schneider angesagt".
+Passed-out rounds carry no Spielart and are never counted in a feature.
 
 All shares are percentages rounded to one decimal and `null` while the
 denominator is `0`.

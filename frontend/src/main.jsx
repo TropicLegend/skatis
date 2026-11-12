@@ -223,8 +223,8 @@ const TOURNAMENT_FEATURES = {
   schwarz: 'Schwarz',
 }
 const TOURNAMENT_FEATURE_TABLES = [
-  { title: 'Hand und Offen', eyebrow: 'Spielweise', keys: ['hand', 'offen'] },
-  { title: 'Angesagt und gespielt', eyebrow: 'Gewinnstufen', keys: ['schneiderAnnounced', 'schwarzAnnounced', 'schneider', 'schwarz'] },
+  { title: 'Hand und Offen', eyebrow: 'Spielweise', keys: ['hand', 'offen'], excludeNull: false },
+  { title: 'Angesagt und gespielt', eyebrow: 'Gewinnstufen', keys: ['schneiderAnnounced', 'schwarzAnnounced', 'schneider', 'schwarz'], excludeNull: true },
 ]
 
 /**
@@ -1136,7 +1136,7 @@ function TournamentStats({ tournament, token, lists = [] }) {
   }))
   const featureByKey = new Map((stats?.features ?? []).map((feature) => [feature.key, feature]))
   const featureFor = (key) => featureByKey.get(key) ?? { key, total: 0, byGameType: [] }
-  const featureCell = (key, gameType) => featureFor(key).byGameType.find((entry) => entry.gameType === gameType) ?? { count: 0, share: null }
+  const featureCell = (key, gameType) => featureFor(key).byGameType.find((entry) => entry.gameType === gameType) ?? { count: 0, won: 0, share: null, winShare: null }
   const outcomeShares = [stats?.outcomes.wonShare, stats?.outcomes.lostShare, stats?.outcomes.passedOutShare]
   const outcomeSum = outcomeShares.every((value) => value !== null && value !== undefined)
     ? outcomeShares.reduce((sum, value) => sum + value, 0)
@@ -1202,21 +1202,30 @@ function TournamentStats({ tournament, token, lists = [] }) {
       </div>
 
       <div className="player-tables tournament-feature-tables">
-        {TOURNAMENT_FEATURE_TABLES.map(({ title, eyebrow, keys }) => <section className="player-panel" key={title}>
-          <div className="section-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div><span className="dealer-note">Verteilung auf die Spielarten</span></div>
-          {playedTypes.length ? <div className="feature-table-scroll">
-            <table className="detail-table stats-detail feature-distribution">
-              <thead><tr><th scope="col">Spielart</th>{keys.map((key) => <th scope="col" key={key}>{TOURNAMENT_FEATURES[key]}<small>{featureFor(key).total}×</small></th>)}</tr></thead>
-              <tbody>{playedTypes.map((entry) => <tr key={entry.gameType}>
-                <td><span className={`suit-icon suit-${entry.gameType.toLowerCase()}`}>{gameTypeSymbol(entry.gameType)}</span>{gameTypeLabel(entry.gameType)}</td>
-                {keys.map((key) => {
-                  const cell = featureCell(key, entry.gameType)
-                  return <td key={key}>{cell.count}{cell.share !== null && <small>{percentLabel(cell.share)}</small>}</td>
-                })}
-              </tr>)}</tbody>
-            </table>
-          </div> : <p className="chart-note">Noch keine entschiedenen Alleinspiele eingetragen.</p>}
-        </section>)}
+        {TOURNAMENT_FEATURE_TABLES.map(({ title, eyebrow, keys, excludeNull }) => {
+          // Null kennt keine Schneider-/Schwarz-Ansagen, deshalb bleibt es aus
+          // der zweiten Tabelle draußen. Die Hand-/Offen-Tabelle zeigt es weiter.
+          const rows = excludeNull ? playedTypes.filter((entry) => entry.gameType !== 'NULL') : playedTypes
+          return <section className="player-panel" key={title}>
+            <div className="section-heading"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div><span className="dealer-note">Verteilung und Gewinnquote je Spielart</span></div>
+            {rows.length ? <div className="feature-table-scroll">
+              <table className="detail-table stats-detail feature-distribution">
+                <thead><tr><th scope="col">Spielart</th>{keys.map((key) => <th scope="col" key={key}>{TOURNAMENT_FEATURES[key]}<small>{featureFor(key).total}×</small></th>)}</tr></thead>
+                <tbody>{rows.map((entry) => <tr key={entry.gameType}>
+                  <td><span className={`suit-icon suit-${entry.gameType.toLowerCase()}`}>{gameTypeSymbol(entry.gameType)}</span>{gameTypeLabel(entry.gameType)}</td>
+                  {keys.map((key) => {
+                    const cell = featureCell(key, entry.gameType)
+                    return <td key={key}>
+                      <strong>{cell.count}×</strong>
+                      {cell.share !== null && <small>{percentLabel(cell.share)} Anteil</small>}
+                      {cell.winShare !== null && <small className="feature-win-share">{percentLabel(cell.winShare)} gewonnen</small>}
+                    </td>
+                  })}
+                </tr>)}</tbody>
+              </table>
+            </div> : <p className="chart-note">Keine passenden Spiele für diese Tabelle.</p>}
+          </section>
+        })}
       </div>
       {loading && <p className="chart-note">Statistik wird aktualisiert …</p>}
     </>}
@@ -1406,7 +1415,7 @@ function CreateListModal({ token, tournament, role, players, lists, canManagePla
   const windowPhase = role === 'ADMIN' ? null : windowState(tournament, form.matchday)
   async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { const created = await request(`/tournaments/${tournament.id}/lists`, { method: 'POST', token, body: { matchday: form.matchday, series: Number(form.series), table: Number(form.table), tableLabel: form.tableLabel, playerNames: lineup } }); await onCreated(created) } catch (err) { setError(err.message) } finally { setBusy(false) } }
   return <div className="modal-backdrop" onClick={onClose}>
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}>
+    <div className="modal create-list-modal" role="dialog" aria-modal="true" aria-label="Neue Tischliste" onClick={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose}><X size={18} /></button>
       <span className="eyebrow">Neue Tischliste</span><h2>Ein Blatt, ein Abend.</h2>
       <p className="modal-copy">Definiere den Tisch und die Sitzreihenfolge. Die erste Person gibt in Spiel eins.</p>
@@ -1600,7 +1609,7 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
     </div>
     {showWizard && <GameWizard list={list} existingGame={editingGame} token={token} tournamentId={tournament.id} error={problem} onClose={() => { setShowWizard(false); setEditingGame(null); setProblem('') }} onSave={saveGame} />}
     {confirmDelete && <ConfirmSheet title="Liste löschen?" text="Diese Liste und alle ihre Spiele werden entfernt. Das lässt sich nicht rückgängig machen." confirmLabel="Liste löschen" onCancel={() => setConfirmDelete(false)} onConfirm={removeList} />}
-    {confirmSubmit && <ConfirmSheet title="Liste abgeben?" text="Willst du die Liste wirklich abgeben?" confirmLabel="Liste abgeben" onCancel={() => setConfirmSubmit(false)} onConfirm={() => { setConfirmSubmit(false); updateList('submit') }} />}
+    {confirmSubmit && <ConfirmSheet title="Liste abgeben?" text="Willst du die Liste wirklich abgeben? Sind sich alle Spieler über das Ergebnis einig?" confirmLabel="Liste abgeben" onCancel={() => setConfirmSubmit(false)} onConfirm={() => { setConfirmSubmit(false); updateList('submit') }} />}
     {confirmGame && <ConfirmSheet title={`Spiel ${confirmGame.position} löschen?`} text={confirmGame.passedOut ? 'Das eingepasste Spiel wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.' : `Das Spiel von ${confirmGame.declarer} wird aus der Liste entfernt. Die übrigen Spiele behalten ihre Nummer und ihren Geber.`} confirmLabel="Spiel löschen" onCancel={() => setConfirmGame(null)} onConfirm={removeGame} />}
     {detailGame && <GameDetail list={list} game={detailGame} round={detailRound} canDelete={canEdit && detailGame.position === lastGamePosition} onClose={() => setDetailGame(null)} onEdit={canEdit ? () => { setProblem(''); setDetailGame(null); setEditingGame(detailGame); setShowWizard(true) } : null} onDelete={canEdit && detailGame.position === lastGamePosition ? () => { setConfirmGame(detailGame); setDetailGame(null) } : null} />}
     {showSettings && <ListSettingsModal token={token} tournament={tournament} list={list} onClose={() => setShowSettings(false)} onSaved={(updated) => { onUpdated(updated); setShowSettings(false); succeed('Tisch und Serie wurden gespeichert.') }} />}

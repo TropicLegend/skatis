@@ -105,6 +105,7 @@ describe('tournamentGameStats', () => {
           schneider: true,
         }),
         game('Bert', true, 'GRAND', { hand: true, schwarzAnnounced: true, schwarz: true }),
+        game('Clara', false, 'HERZ', { schneiderAnnounced: true }),
         game('Clara', false, 'NULL', { offen: true }),
         game(null, null, null, { hand: true }),
       ],
@@ -117,7 +118,11 @@ describe('tournamentGameStats', () => {
       expect.objectContaining({ gameType: 'HERZ', count: 1, share: 50 }),
     );
     expect(byKey.get('offen')?.total).toBe(1);
-    expect(byKey.get('schneiderAnnounced')?.total).toBe(1);
+    expect(byKey.get('schneiderAnnounced')?.total).toBe(2);
+    // Both Schneider angesagt games were Herz; one was won, one lost.
+    expect(byKey.get('schneiderAnnounced')?.byGameType).toContainEqual(
+      expect.objectContaining({ gameType: 'HERZ', count: 2, won: 1, share: 100, winShare: 50 }),
+    );
     expect(byKey.get('schwarzAnnounced')?.total).toBe(1);
     expect(byKey.get('schneider')?.total).toBe(1);
     expect(byKey.get('schwarz')?.total).toBe(1);

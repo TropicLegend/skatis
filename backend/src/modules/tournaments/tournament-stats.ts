@@ -58,11 +58,22 @@ export interface TournamentGameTypeGroupStatsDto {
   winShare: number | null;
 }
 
+export interface TournamentFeatureGameTypeDto {
+  gameType: GameType;
+  /** Decided Alleinspiele of this Spielart carrying the feature. */
+  count: number;
+  won: number;
+  /** Share of all games carrying the feature. */
+  share: number | null;
+  /** `won / count` in percent – the Erfolgsquote of this feature and Spielart. */
+  winShare: number | null;
+}
+
 export interface TournamentFeatureDistributionDto {
   key: TournamentFeatureKey;
   /** Decided Alleinspiele carrying this feature. */
   total: number;
-  byGameType: Array<{ gameType: GameType; count: number; share: number | null }>;
+  byGameType: TournamentFeatureGameTypeDto[];
 }
 
 export interface TournamentStatisticsDto {
@@ -153,9 +164,16 @@ export function tournamentGameStats(
     return {
       key,
       total: matching.length,
-      byGameType: GAME_TYPE_ORDER.map((gameType) => {
-        const count = matching.filter((game) => game.gameType === gameType).length;
-        return { gameType, count, share: percent(count, matching.length) };
+      byGameType: GAME_TYPE_ORDER.map((gameType): TournamentFeatureGameTypeDto => {
+        const ofType = matching.filter((game) => game.gameType === gameType);
+        const won = ofType.filter((game) => game.won).length;
+        return {
+          gameType,
+          count: ofType.length,
+          won,
+          share: percent(ofType.length, matching.length),
+          winShare: percent(won, ofType.length),
+        };
       }),
     };
   });

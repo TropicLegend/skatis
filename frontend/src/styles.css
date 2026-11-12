@@ -37,7 +37,6 @@
 .game-type-cell{white-space:normal}
 .game-type-cell>strong{font-weight:800;color:var(--ink);margin-right:7px}
 .level-badge{display:inline-block;margin:0 4px 3px 0;font:9px 'DM Mono';letter-spacing:.3px;background:#e7ece5;color:#4d6255;border-radius:4px;padding:3px 5px}
-.level-badge.announced{background:transparent;border:1px dashed #c2c8bd;color:#68746a}
 .chart-block{border-top:1px solid var(--line);padding:20px 22px 22px}
 .chart-head{display:flex;justify-content:space-between;align-items:end;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 .chart-head h3{font-size:19px;letter-spacing:-.7px;margin:7px 0 0}
@@ -248,7 +247,14 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .feature-table-scroll .detail-table{min-width:100%}
 .stats-detail small{display:block;margin-top:3px;font:9px 'DM Mono';color:var(--muted);white-space:nowrap}
 .stats-detail th small{display:block;margin-top:3px;font:9px 'DM Mono';color:var(--muted);text-transform:none}
-.feature-distribution{min-width:380px}
+.stats-detail .feature-win-share{color:#4d7957;font-weight:500}
+.tournament-statistics .player-tables,
+.tournament-statistics .player-panel,
+.tournament-statistics .pie-layout,
+.tournament-statistics .pie,
+.tournament-statistics .feature-table-scroll{min-width:0;max-width:100%}
+.feature-distribution{min-width:440px}
+.create-list-modal{max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:800px){.player-tables{grid-template-columns:1fr}.stats-row.player-stats{grid-template-columns:repeat(2,1fr)}.stats-row.tournament-overview{grid-template-columns:repeat(2,1fr)}.pie-layout{grid-template-columns:1fr}.bar-lists{grid-template-columns:1fr;gap:22px}.stat-grid{grid-template-columns:1fr}}
 /* Umschalter der Protokoll-Darstellung (modern / klassisch) */
 .panel-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
@@ -408,14 +414,16 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .dealer-note{display:block;white-space:normal}
 
   /* Turnierstatistik */
-  .tournament-statistics{margin-top:32px;padding:16px}
+  .tournament-statistics{margin-top:32px;padding:16px;max-width:100%;overflow-x:clip}
   .tournament-statistics .ranking-heading{align-items:flex-start;gap:10px}
+  .tournament-statistics .player-tables{width:100%}
+  .tournament-statistics .section-heading{flex-wrap:wrap;gap:6px 12px}
   .outcome-grid{gap:8px}
   .outcome-card{padding:11px 10px}
   .outcome-card strong{font-size:22px}
   .outcome-card span{font-size:8px;letter-spacing:.3px}
   .outcome-card small{font-size:9px}
-  .feature-distribution{min-width:340px}
+  .feature-distribution{min-width:420px}
 }
 
 /* ---------------------------------------------------------------------------
