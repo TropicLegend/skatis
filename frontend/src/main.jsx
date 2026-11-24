@@ -5,6 +5,7 @@ import LineChart from './components/LineChart.jsx'
 import { auditRoleLabel, describeAuditEntry, formatTimestamp } from './lib/audit.js'
 import PieChart from './components/PieChart.jsx'
 import { downloadPlayerCardsPdf } from './lib/player-cards.js'
+import { downloadStandingsPdf } from './lib/standings-pdf.js'
 import { GAME_TYPES, gameTypeLabel, gameTypeRules, gameTypeSymbol, levelsOf, listProgressionChart, listScaleOptions, matadorsLabel, outcomeLabel, playerProgressChart, PROGRESS_SCALES, roundAccounts, scaleStep, shortDate, standingsProgressChart, withLevelChain, withStep } from './lib/skat.js'
 import { setDesktopOverride, useMobile } from './lib/useMedia.js'
 // Die Schriften liegen im Paket und kommen vom eigenen Server: kein Aufruf bei
@@ -882,7 +883,7 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       <div className="screen" key={`player-${player.name}`}><PlayerView player={player} standing={standing} tournament={tournament} token={token} lists={lists} rankings={listRankings} onBack={() => window.history.back()} onOpenList={onOpenList} /></div>
     </Shell>
   }
-  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token}><div className="dashboard-header"><div><div className="dashboard-id-row">{role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}</div><h1>Übersicht</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p><p className="id-hint">Zum Mitspielen braucht jeder die Turnier-ID aus der Kopfzeile und das Passwort – antippen kopiert sie.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}<button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button></div></div>
+  return <Shell tournament={tournament} role={role} onLogout={onLogout} token={token}><div className="dashboard-header"><div><div className="dashboard-id-row">{role && <span className={`role-chip ${role === 'ADMIN' ? 'admin' : ''}`}>{role === 'ADMIN' ? 'ADMIN' : 'MITGLIED'}</span>}</div><h1>Übersicht</h1><p className="lede">Alle Listen deines Turniers auf einen Blick.</p><p className="id-hint">Zum Mitspielen braucht jeder die Turnier-ID aus der Kopfzeile und das Passwort – antippen kopiert sie.</p></div><div className="dashboard-actions">{role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><CalendarDays size={16} /> Turnier verwalten</button>}{(!mobile || section === 'lists') && <button className="primary-button" onClick={() => setShowCreate(true)}><Plus size={17} /> Neue Liste</button>}</div></div>
     {notice && <div className="error-message inline">{notice}</div>}
     {showLists && <div className="stats-row"><div className="stat"><span>{narrowed ? 'Listen in der Auswahl' : 'Listen gesamt'}</span><strong><CountUp value={page.total} /></strong><ClipboardList size={19} /></div><div className="stat"><span>Spieltage</span><strong><CountUp value={days.length} /></strong><CalendarDays size={19} /></div><div className="stat"><span>Turniertage</span><strong className="days" title={matchdayNames.length ? `Gespielt wird ${matchdayNames.join(', ')}` : 'Noch keine Spieltage festgelegt'}>{matchdayNames.length ? matchdayNames.join(', ') : 'Noch keine'}</strong><CalendarDays size={19} /></div></div>}
     {showLists && <>
@@ -937,7 +938,7 @@ function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onName
  * gleitenden Feld hinter dem aktiven Tab. Auf dem Desktop gibt es sie nicht – dort
  * stehen die Abschnitte wie bisher untereinander.
  */
-const SECTIONS = [['lists', 'Übersicht', ClipboardList], ['ranking', 'Rangliste', Trophy], ['stats', 'Statistik', ChartPie], ['players', 'Spieler', Users]]
+const SECTIONS = [['lists', 'Listen', ClipboardList], ['ranking', 'Rangliste', Trophy], ['stats', 'Statistik', ChartPie], ['players', 'Spieler', Users]]
 
 function SectionTabs({ value, onChange }) {
   return <nav className="tabbar" style={{ '--tabs': SECTIONS.length, '--tab-pill-width': `calc((100% - ${20 + (SECTIONS.length - 1) * 6}px) / ${SECTIONS.length})` }} aria-label="Bereiche">
@@ -1009,6 +1010,11 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
   // Gruppensortierung sollen nicht bei jedem Aufruf der Rangliste laufen.
   const [cardsBusy, setCardsBusy] = useState(false)
   const [cardsError, setCardsError] = useState('')
+  // Das Ranglisten-PDF entsteht wie die Karten erst beim Klick. Es wird immer
+  // aus der Sortierung „Alle Spieler mit Gruppen“ gebaut – unabhängig davon,
+  // welche Gruppe gerade in der Tabelle ausgewählt ist.
+  const [rankingPdfBusy, setRankingPdfBusy] = useState(false)
+  const [rankingPdfError, setRankingPdfError] = useState('')
 
   // Der Verlauf kommt aus `standings/history`: dieselben Zahlen wie die Tabelle
   // darunter, nur datiert. Jede Skalierung wird einmal geholt und gemerkt.
@@ -1047,6 +1053,21 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
     }
   }
 
+  /** Die vollständige Rangliste als Tabelle – dieselben Spalten wie am Desktop. */
+  async function downloadRanking() {
+    setRankingPdfBusy(true); setRankingPdfError('')
+    try {
+      const params = new URLSearchParams({ grouped: 'true' })
+      if (asOf !== 'current') params.set('asOf', asOf)
+      const pdfStanding = await request(`/tournaments/${tournament.id}/standings?${params}`, { token })
+      await downloadStandingsPdf({ standing: pdfStanding, tournament, asOf })
+    } catch (problem) {
+      setRankingPdfError(errorNotice(problem))
+    } finally {
+      setRankingPdfBusy(false)
+    }
+  }
+
   return <section className="tournament-ranking">
     <div className="ranking-heading">
       <div><span className="eyebrow">Gesamtes Turnier</span><h2>Rangliste</h2></div>
@@ -1060,9 +1081,11 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
           {(standing.availableMatchdays ?? []).map((day) => <option key={day} value={day}>Stand vom {day.split('-').reverse().join('.')}</option>)}
         </select></label>
         <span>{standing.listsCounted} gewertete Listen{mobile ? '' : ' · Spieler antippen für Details'}</span>
+        <button className="secondary-button" type="button" disabled={rankingPdfBusy || !standing.players.length} onClick={downloadRanking} title="Die vollständige aktuelle Rangliste in der Sortierung „Alle Spieler mit Gruppen“ als PDF herunterladen"><Download size={16} /> {rankingPdfBusy ? 'Rangliste wird erstellt …' : 'Rangliste (PDF)'}</button>
         <button className="secondary-button" type="button" disabled={cardsBusy || !standing.players.length} onClick={downloadCards} title="Ein Kärtchen je Spieler zum Ausschneiden – als PDF herunterladen"><Download size={16} /> {cardsBusy ? 'Karten werden erstellt …' : 'Spielerkarten (PDF)'}</button>
       </div>
     </div>
+    {rankingPdfError && <div className="error-message">{rankingPdfError}</div>}
     {cardsError && <div className="error-message">{cardsError}</div>}
     {mobile ? <div className="ranking-cards">
       {standing.players.map((player, index) => <div key={player.name} className={`ranking-card card-enter${expanded === player.name ? ' open' : ''}`} style={{ '--i': index }}>
@@ -1683,7 +1706,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
   // Spielpunkte nach dem Spiel (ohne die Boni) und die Zahl seiner bis dahin
   // gewonnenen bzw. verlorenen Alleinspiele – gefüllt wird immer nur die Spalte
   // des Alleinspielers. "Modern" lässt die Blöcke weg und zeigt nur die Zeile.
-  const [style, setStyle] = useState(() => (localStorage.getItem(TABLE_STYLE_KEY) === 'classic' ? 'classic' : 'modern'))
+  const [style, setStyle] = useState(() => (localStorage.getItem(TABLE_STYLE_KEY) === 'modern' ? 'modern' : 'classic'))
   const classic = style === 'classic'
   // Auf dem Handy ist das Protokoll eine Kartenliste – die breite Tabelle mit ihren
   // Spieler-Blöcken bleibt dem größeren Bildschirm.
@@ -1729,6 +1752,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
         <span className="dealer-note">{classic ? 'Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus' : 'Zeile antippen für Details'}</span>
       </div>
     </div>
+    <p className="table-style-note">Klassisch und Modern sind nur zwei Darstellungen – an der Wertung und den Punkten ändert sich nichts.</p>
     {classic ? <ClassicGames games={orderedGames} lineup={lineup} roundValue={roundValue} passedOutCounts={passedOutCounts} canEdit={canEdit} onEdit={onEdit} onSelect={onSelect} /> : <div className="game-cards">
       {orderedGames.length ? orderedGames.map((game, index) => {
         const delta = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
@@ -1763,6 +1787,7 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
         <span className="dealer-note">{classic ? 'Spielpunkte noch ohne die +50 / −50 und ohne Gegnerbonus · Zeile antippen für Details' : 'Geberfolge läuft automatisch · Zeile antippen für Details'}</span>
       </div>
     </div>
+    <p className="table-style-note">Klassisch und Modern sind nur zwei Darstellungen – an der Wertung und den Punkten ändert sich nichts.</p>
     <div className="table-wrap"><table>
       <thead>
         <tr>
@@ -2064,7 +2089,10 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
     <div className="wizard" role="dialog" aria-modal="true" aria-label="Spiel eintragen" onClick={(event) => event.stopPropagation()}>
       <div className="wizard-top">
         <div>
-          <span className="eyebrow">Spiel {gameNumber}</span>
+          <div className="wizard-round-line">
+            <span className="eyebrow">Spiel {gameNumber}</span>
+            {firstCard && !game.passedOut && <span className="wizard-first-card"><strong>{firstCard}</strong> legt die erste Karte.</span>}
+          </div>
           <div className="breadcrumb"><span>→ Spiel {gameNumber}</span>{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>
         </div>
         <button className="modal-close" onClick={onClose}><X size={18} /></button>
@@ -2107,7 +2135,6 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
         </div>}
 
         {step === 3 && <div className="wizard-section">
-          {firstCard && <p className="first-card-player"><strong>{firstCard}</strong> legt die erste Karte.</p>}
           <div className="segmented">
             <button className={game.matadors.suit === 'WITH' ? 'active' : ''} onClick={() => setGame({ ...game, matadors: { ...game.matadors, suit: 'WITH' } })}>Mit</button>
             <button className={game.matadors.suit === 'WITHOUT' ? 'active' : ''} onClick={() => setGame({ ...game, matadors: { ...game.matadors, suit: 'WITHOUT' } })}>Ohne</button>

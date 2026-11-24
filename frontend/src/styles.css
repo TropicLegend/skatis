@@ -58,8 +58,9 @@
 .tournament-ranking .chart-block{border-top:1px solid var(--line);margin-top:20px;padding:20px 0 0}
 .wizard-hint{margin:0 0 15px;text-align:center;font:11px 'DM Mono';color:var(--muted)}
 .wizard-hint strong{color:var(--ink)}
-.first-card-player{margin:0 0 22px;text-align:center;font:700 clamp(24px,4vw,34px)/1.15 'Playfair Display',Georgia,serif;letter-spacing:-.8px;color:var(--ink)}
-.first-card-player strong{color:var(--orange-dark)}
+.wizard-round-line{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
+.wizard-first-card{font-size:18px;font-weight:700;line-height:1.25;letter-spacing:-.3px;color:var(--ink)}
+.wizard-first-card strong{font-weight:800;color:var(--orange-dark)}
 .choice-card.sitting-out{background:#f0ece3;border-style:dashed;color:#8f938a}
 .sits-out-flag{position:absolute;bottom:8px;font:9px 'DM Mono';letter-spacing:.3px;color:#9a988f}
 .detail-modal{max-width:680px}
@@ -261,6 +262,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .table-style{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;cursor:pointer;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
 .table-style span{transition:color .15s}
 .table-style span.active{color:var(--ink);font-weight:500}
+.table-style-note{margin:-4px 0 12px;font-size:10px;line-height:1.55;color:var(--muted)}
 .table-style .switch{position:relative;width:34px;height:18px;border-radius:9px;background:#e4dfd4;border:1px solid var(--line);transition:background .15s}
 .table-style .switch i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fbfaf6;box-shadow:0 1px 2px rgba(62,53,39,.25);transition:left .15s}
 .table-style.classic .switch{background:var(--mint)}
@@ -394,6 +396,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
    .letter-stepper .icon-button{width:24px;height:18px;min-height:0;border-radius:3px}
   .panel-heading{padding:14px}
   .panel-tools{gap:10px}
+  .table-style-note{font-size:12px;margin:0 0 12px;padding:0 14px}
 
   /* Spieler-Seite und Diagramme */
   .player-panel{padding:16px}
@@ -518,6 +521,7 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 
   .wizard{display:flex;flex-direction:column;overflow:hidden;max-height:94dvh}
   .wizard-top{padding:18px 18px 0}
+  .wizard-first-card{font-size:16px}
   .progress{padding:14px 18px 6px}
   .wizard-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px 18px}
   .wizard-footer{position:sticky;bottom:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 18px calc(14px + env(safe-area-inset-bottom));background:#fbfaf6;border-top:1px solid var(--line)}
