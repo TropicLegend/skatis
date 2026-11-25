@@ -54,7 +54,7 @@
     "supertest": "^7.2.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.70.0",
+    "typescript-eslint": "^8.74.0",
     "vitest": "^5.0.1"
   }
 }
