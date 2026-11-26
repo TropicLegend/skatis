@@ -1538,9 +1538,9 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
       </section>
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Bilanz</span><h2>Seine Abende</h2></div><span className="dealer-note">{evenings.length} gewertete Zettel · antippen öffnet den Tisch</span></div>
-        <table className="detail-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th>Ergebnis</th></tr></thead><tbody>
-          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Abend.</td></tr>}
-        </tbody></table>
+        <div className="evening-table-scroll"><table className="detail-table evening-table"><thead><tr><th>Spieltag</th><th>Tisch</th><th>G / V / Gegner</th><th title="Spiele, an denen der Spieler am Tisch saß – ohne Aussetzen">Spiele</th><th>Spieleschnitt</th><th>Ergebnis</th></tr></thead><tbody>
+          {evenings.length ? evenings.map(({ list, row }) => <tr key={list.id} className="evening-row" role="button" tabIndex={0} title={`Tisch ${list.table} am ${shortDate(list.matchday)} öffnen`} onClick={() => onOpenList(list)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenList(list) } }}><td>{shortDate(list.matchday)}</td><td>Serie {list.series}{list.tableLabelVisible ? list.tableLabel : ''} · Tisch {list.table}</td><td>{row.won} / {row.lost} / {row.opponentWon}</td><td>{row.gamesPlayed}</td><td><strong>{gameAverage(row)}</strong></td><td><strong>{signedValue(row.total)}</strong></td></tr>) : <tr><td colSpan={6} className="muted">Noch kein gewerteter Abend.</td></tr>}
+        </tbody></table></div>
       </section>
     </div>
   </>
@@ -2220,7 +2220,7 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
       <div className="wizard-top">
         <div className="wizard-top-info">
           <span className="eyebrow">Spiel {gameNumber}</span>
-          <div className="breadcrumb"><span>→ Spiel {gameNumber}</span>{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>
+          {crumbs.length > 0 && <div className="breadcrumb">{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>}
         </div>
         {firstCard && !game.passedOut && <div className="wizard-first-card"><strong>{firstCard}</strong> legt die erste Karte.</div>}
         <button className="modal-close" onClick={onClose}><X size={18} /></button>

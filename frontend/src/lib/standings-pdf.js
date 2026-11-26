@@ -218,6 +218,36 @@ const FEATURE_LABELS = {
   schwarz: 'Schwarz',
 }
 
+const GAME_TYPE_LABELS = {
+  KARO: 'Karo',
+  HERZ: 'Herz',
+  PIK: 'Pik',
+  KREUZ: 'Kreuz',
+  GRAND: 'Grand',
+  NULL: 'Null',
+}
+
+const GAME_TYPE_COLORS = {
+  KARO: '#c99a3d',
+  HERZ: '#c55c55',
+  PIK: '#4f745a',
+  KREUZ: '#395a6b',
+  GRAND: '#db6f40',
+  NULL: '#7d6a9c',
+}
+
+const OUTCOME_COLORS = {
+  won: '#4d7957',
+  lost: '#bf5142',
+  passedOut: '#b8b1a2',
+}
+
+const GROUP_COLORS = {
+  SUIT: '#527b78',
+  GRAND: '#db6f40',
+  NULL: '#7d6a9c',
+}
+
 const FEATURE_TABLES = [
   { title: 'Hand und Offen', keys: ['hand', 'offen'], excludeNull: false },
   {
@@ -263,28 +293,126 @@ function drawStatisticsHeader(doc, { tournamentName, statistics }) {
 }
 
 /** Eine Kennzahlbox auf der Statistikseite. */
-function drawKpiBox(doc, { x, y, width, height, label, value, note }) {
-  doc.setFillColor(COLORS.stripe)
+function drawKpiBox(doc, { x, y, width, height, label, value, note, color = COLORS.ink }) {
+  doc.setFillColor('#fffdf9')
   doc.setDrawColor(COLORS.line)
   doc.setLineWidth(0.2)
-  doc.rect(x, y, width, height, 'FD')
+  doc.roundedRect(x, y, width, height, 2.5, 2.5, 'FD')
+  doc.setFillColor(color)
+  doc.rect(x, y, width, 1.4, 'F')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(6)
   doc.setTextColor(COLORS.muted)
-  doc.text(label.toUpperCase(), x + 3, y + 4.5)
+  doc.text(label.toUpperCase(), x + 3, y + 5.2)
 
-  doc.setFontSize(15)
+  doc.setFontSize(16)
   doc.setTextColor(COLORS.ink)
-  doc.text(String(value), x + 3, y + 11)
+  doc.text(String(value), x + 3, y + 12.3)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(6)
   doc.setTextColor(COLORS.muted)
-  doc.text(shorten(doc, note, width - 6), x + 3, y + 14.5)
+  doc.text(shorten(doc, note, width - 6), x + 3, y + 16)
 }
 
-/** Erste Statistikseite: Kennzahlen, Ergebnisse und Spielarten. */
+/** Zeichnet ein Donut-Diagramm aus einfachen Dreiecken – ohne Zusatzbibliothek. */
+function drawDonutChart(doc, { cx, cy, radius, thickness = 7, slices, centerValue, centerLabel }) {
+  const total = slices.reduce((sum, slice) => sum + Math.max(0, slice.value), 0)
+  if (total <= 0) return
+
+  let angle = -Math.PI / 2
+  for (const slice of slices) {
+    const value = Math.max(0, slice.value)
+    if (value === 0) continue
+    const end = angle + (value / total) * Math.PI * 2
+    const steps = Math.max(6, Math.ceil((end - angle) / 0.07))
+    doc.setFillColor(slice.color)
+    let previous = angle
+    for (let index = 1; index <= steps; index += 1) {
+      const next = angle + (end - angle) * (index / steps)
+      doc.triangle(
+        cx,
+        cy,
+        cx + radius * Math.cos(previous),
+        cy + radius * Math.sin(previous),
+        cx + radius * Math.cos(next),
+        cy + radius * Math.sin(next),
+        'F',
+      )
+      previous = next
+    }
+    angle = end
+  }
+
+  doc.setFillColor('#ffffff')
+  doc.circle(cx, cy, radius - thickness, 'F')
+  doc.setDrawColor(COLORS.line)
+  doc.setLineWidth(0.25)
+  doc.circle(cx, cy, radius, 'S')
+
+  doc.setTextColor(COLORS.ink)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.text(String(centerValue), cx, cy + 1, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(5.5)
+  doc.setTextColor(COLORS.muted)
+  doc.text(centerLabel, cx, cy + 5, { align: 'center' })
+}
+
+/** Ein Donut-Panel mit Titel und einer Legende aus drei Zeilen. */
+function drawDonutPanel(doc, { x, y, width, height, title, note, slices, centerValue, centerLabel }) {
+  doc.setFillColor('#fffdf9')
+  doc.setDrawColor(COLORS.line)
+  doc.setLineWidth(0.2)
+  doc.roundedRect(x, y, width, height, 3, 3, 'FD')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(COLORS.ink)
+  doc.text(title, x + 4, y + 7)
+  if (note) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6)
+    doc.setTextColor(COLORS.muted)
+    doc.text(note, x + 4, y + 11)
+  }
+
+  const cx = x + 25
+  const cy = y + height / 2 + 2
+  drawDonutChart(doc, {
+    cx,
+    cy,
+    radius: 18,
+    slices,
+    centerValue,
+    centerLabel,
+  })
+
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0)
+  let legendY = y + 17
+  for (const slice of slices) {
+    const share = total === 0 ? '–' : percentLabel((slice.value / total) * 100)
+    doc.setFillColor(slice.color)
+    doc.rect(x + 49, legendY - 2.7, 3, 3, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(COLORS.ink)
+    doc.text(slice.label, x + 55, legendY)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6)
+    doc.setTextColor(COLORS.muted)
+    doc.text(`${slice.value} Spiele`, x + 55, legendY + 3.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(COLORS.ink)
+    doc.text(share, x + width - 4, legendY, { align: 'right' })
+    legendY += 10.5
+  }
+}
+
+/** Erste Statistikseite: Kennzahlen, Ergebnis- und Spielarten-Pies, Gewinnquoten. */
 function drawStatisticsOverview(doc, { tournamentName, statistics }) {
   drawStatisticsHeader(doc, { tournamentName, statistics })
 
@@ -296,76 +424,79 @@ function drawStatisticsOverview(doc, { tournamentName, statistics }) {
       label: 'Spiele insgesamt',
       value: statistics.totalGames,
       note: `${statistics.passedOutGames} eingepasst`,
+      color: '#527b78',
     },
     {
       label: 'Alleinspiele',
       value: statistics.playedGames,
       note: 'gewonnen oder verloren',
+      color: '#4d7957',
     },
     {
       label: 'Gewinnquote',
       value: percentLabel(winQuote),
       note: `${statistics.outcomes.won} von ${statistics.playedGames}`,
+      color: '#db6f40',
     },
     {
       label: 'Spieltage',
       value: statistics.matchdaysCounted,
       note: `aus ${statistics.listsCounted} Listen`,
+      color: '#7d6a9c',
     },
   ]
 
-  const boxY = 38
   const boxGap = 4
   const boxWidth = (TABLE_WIDTH - boxGap * 3) / 4
   boxes.forEach((box, index) => {
     drawKpiBox(doc, {
       x: PAGE.margin + index * (boxWidth + boxGap),
-      y: boxY,
+      y: 38,
       width: boxWidth,
-      height: 17,
+      height: 20,
       ...box,
     })
   })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(COLORS.ink)
-  doc.text('Ergebnisverteilung', PAGE.margin, 64)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  const outcomes = [
-    ['Gewonnen', statistics.outcomes.won, statistics.outcomes.wonShare],
-    ['Verloren', statistics.outcomes.lost, statistics.outcomes.lostShare],
-    ['Eingepasst', statistics.outcomes.passedOut, statistics.outcomes.passedOutShare],
-  ]
-  const segmentWidth = TABLE_WIDTH / 3
-  outcomes.forEach(([label, count, share], index) => {
-    const x = PAGE.margin + index * segmentWidth
-    doc.setTextColor(COLORS.ink)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.text(`${label}: ${percentLabel(share)}`, x, 71)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    doc.setTextColor(COLORS.muted)
-    doc.text(`${count} Spiele`, x, 75.5)
+  const panelY = 65
+  const panelHeight = 53
+  const panelGap = 8
+  const panelWidth = (TABLE_WIDTH - panelGap) / 2
+  drawDonutPanel(doc, {
+    x: PAGE.margin,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    title: 'Ergebnisverteilung',
+    note: 'Gewonnen, verloren und eingepasst',
+    slices: [
+      { label: 'Gewonnen', value: statistics.outcomes.won, color: OUTCOME_COLORS.won },
+      { label: 'Verloren', value: statistics.outcomes.lost, color: OUTCOME_COLORS.lost },
+      { label: 'Eingepasst', value: statistics.outcomes.passedOut, color: OUTCOME_COLORS.passedOut },
+    ],
+    centerValue: statistics.totalGames,
+    centerLabel: 'Spiele',
+  })
+  drawDonutPanel(doc, {
+    x: PAGE.margin + panelWidth + panelGap,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    title: 'Spielarten',
+    note: 'Anteil der entschiedenen Alleinspiele',
+    slices: statistics.gameTypeGroups.map((group) => ({
+      label: group.group === 'SUIT' ? 'Farbspiel' : group.group === 'GRAND' ? 'Grand' : 'Null',
+      value: group.played,
+      color: GROUP_COLORS[group.group] ?? COLORS.muted,
+    })),
+    centerValue: statistics.playedGames,
+    centerLabel: 'Alleinspiele',
   })
 
-  const barY = 79
-  const wonWidth = ((statistics.outcomes.wonShare ?? 0) / 100) * TABLE_WIDTH
-  const lostWidth = ((statistics.outcomes.lostShare ?? 0) / 100) * TABLE_WIDTH
-  const passedWidth = ((statistics.outcomes.passedOutShare ?? 0) / 100) * TABLE_WIDTH
-  doc.setFillColor('#4d7957')
-  doc.rect(PAGE.margin, barY, wonWidth, 3, 'F')
-  doc.setFillColor('#bf5142')
-  doc.rect(PAGE.margin + wonWidth, barY, lostWidth, 3, 'F')
-  doc.setFillColor('#b8b1a2')
-  doc.rect(PAGE.margin + wonWidth + lostWidth, barY, passedWidth, 3, 'F')
-
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(COLORS.ink)
-  doc.text('Spielarten', PAGE.margin, 91)
+  doc.text('Gewinnquote je Spielart', PAGE.margin, 127)
 
   const columns = [
     { label: 'Spielart', width: 72, align: 'left' },
@@ -375,7 +506,7 @@ function drawStatisticsOverview(doc, { tournamentName, statistics }) {
     { label: 'Anteil', width: 40, align: 'right' },
     { label: 'Gewinnquote', width: 46, align: 'right' },
   ]
-  let y = 95
+  let y = 131
   doc.setFillColor(COLORS.header)
   doc.rect(PAGE.margin, y, TABLE_WIDTH, 8, 'F')
   doc.setTextColor(COLORS.cream)
@@ -395,20 +526,25 @@ function drawStatisticsOverview(doc, { tournamentName, statistics }) {
       doc.rect(PAGE.margin, y, TABLE_WIDTH, 7, 'F')
     }
     const values = [
-      entry.gameType,
+      null,
       String(entry.played),
       String(entry.won),
       String(entry.lost),
       percentLabel(entry.share),
       percentLabel(entry.winShare),
     ]
+    doc.setFillColor(GAME_TYPE_COLORS[entry.gameType] ?? COLORS.muted)
+    doc.rect(PAGE.margin + 2, y + 2.2, 2.6, 2.6, 'F')
     doc.setTextColor(COLORS.ink)
-    doc.setFont('helvetica', index === 0 ? 'bold' : 'normal')
+    doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
-    let x = PAGE.margin
-    columns.forEach((column, columnIndex) => {
-      const textX = column.align === 'left' ? x + 2 : column.align === 'right' ? x + column.width - 2 : x + column.width / 2
-      doc.text(values[columnIndex], textX, y + 4.8, { align: column.align === 'left' ? 'left' : column.align === 'right' ? 'right' : 'center' })
+    doc.text(GAME_TYPE_LABELS[entry.gameType] ?? entry.gameType, PAGE.margin + 6, y + 4.8)
+    let x = PAGE.margin + columns[0].width
+    columns.slice(1).forEach((column, columnIndex) => {
+      doc.setFont('helvetica', columnIndex === 4 ? 'bold' : 'normal')
+      const value = values[columnIndex + 1]
+      const textX = column.align === 'right' ? x + column.width - 2 : x + column.width / 2
+      doc.text(value, textX, y + 4.8, { align: column.align === 'right' ? 'right' : 'center' })
       x += column.width
     })
     doc.setDrawColor(COLORS.line)
@@ -416,99 +552,122 @@ function drawStatisticsOverview(doc, { tournamentName, statistics }) {
     doc.line(PAGE.margin, y + 7, PAGE.width - PAGE.margin, y + 7)
     y += 7
   })
-
-  const groups = statistics.gameTypeGroups
-    .filter((group) => group.played > 0)
-    .map((group) => `${group.group === 'SUIT' ? 'Farbspiel' : group.group === 'GRAND' ? 'Grand' : 'Null'} ${percentLabel(group.winShare)}`)
-    .join(' · ')
-  if (groups) {
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.8)
-    doc.setTextColor(COLORS.muted)
-    doc.text(`Gewinnquote nach Gruppe: ${groups}`, PAGE.margin, y + 6)
-  }
 }
 
-/** Eine Verteilungstabelle mit Anzahl, Anteil und Gewinnquote je Zelle. */
-function drawFeatureTable(doc, { y, title, keys, types, statistics }) {
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(COLORS.ink)
-  doc.text(title, PAGE.margin, y)
-
-  const firstWidth = 50
-  const columnWidth = (TABLE_WIDTH - firstWidth) / keys.length
-  const headerHeight = 9
-  const rowHeight = 9.5
-  let tableY = y + 4
-
-  doc.setFillColor(COLORS.header)
-  doc.rect(PAGE.margin, tableY, TABLE_WIDTH, headerHeight, 'F')
-  doc.setTextColor(COLORS.cream)
-  doc.setFontSize(6.3)
-  doc.text('Spielart', PAGE.margin + 2, tableY + 5.5)
-  const featureByKey = new Map(statistics.features.map((feature) => [feature.key, feature]))
-  keys.forEach((key, index) => {
-    const x = PAGE.margin + firstWidth + index * columnWidth
-    doc.text(`${FEATURE_LABELS[key] ?? key} · ${featureByKey.get(key)?.total ?? 0}×`, x + columnWidth / 2, tableY + 5.5, { align: 'center' })
-  })
-  tableY += headerHeight
-
-  types.forEach((entry, rowIndex) => {
-    if (rowIndex % 2 === 1) {
-      doc.setFillColor(COLORS.stripe)
-      doc.rect(PAGE.margin, tableY, TABLE_WIDTH, rowHeight, 'F')
-    }
-    doc.setTextColor(COLORS.ink)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
-    doc.text(entry.gameType, PAGE.margin + 2, tableY + 5.8)
-
-    keys.forEach((key, index) => {
-      const feature = featureByKey.get(key)
-      const cell = feature?.byGameType.find((value) => value.gameType === entry.gameType) ?? {
-        count: 0,
-        share: null,
-        winShare: null,
-      }
-      const x = PAGE.margin + firstWidth + index * columnWidth + columnWidth / 2
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(6)
-      doc.setTextColor(COLORS.ink)
-      doc.text(`${cell.count}×`, x, tableY + 3.2, { align: 'center' })
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(5.3)
-      doc.setTextColor(COLORS.muted)
-      doc.text(`${percentLabel(cell.share)} Anteil`, x, tableY + 6.1, { align: 'center' })
-      doc.setTextColor('#4d7957')
-      doc.text(`${percentLabel(cell.winShare)} gewonnen`, x, tableY + 8.8, { align: 'center' })
-    })
-
-    doc.setDrawColor(COLORS.line)
-    doc.setLineWidth(0.12)
-    doc.line(PAGE.margin, tableY + rowHeight, PAGE.width - PAGE.margin, tableY + rowHeight)
-    tableY += rowHeight
-  })
-
-  return tableY
-}
-
-/** Zweite Statistikseite: die beiden Verteilungstabellen. */
-function drawStatisticsFeatures(doc, { tournamentName, statistics }) {
-  drawStatisticsHeader(doc, { tournamentName, statistics })
+/** Ein Donut-Panel für eine Gewinnstufe mit Spielarten-Legende. */
+function drawFeaturePanel(doc, { x, y, width, height, key, feature, types, radius }) {
+  doc.setFillColor('#fffdf9')
+  doc.setDrawColor(COLORS.line)
+  doc.setLineWidth(0.2)
+  doc.roundedRect(x, y, width, height, 3, 3, 'FD')
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(COLORS.ink)
-  doc.text('Verteilung der Gewinnstufen', PAGE.margin, 39)
+  doc.text(FEATURE_LABELS[key] ?? key, x + 4, y + 7)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6)
+  doc.setTextColor(COLORS.muted)
+  doc.text(`${feature?.total ?? 0} Spiele mit dieser Stufe`, x + 4, y + 11)
 
-  let y = 46
-  FEATURE_TABLES.forEach(({ title, keys, excludeNull }) => {
-    const types = statistics.gameTypes.filter(
-      (entry) => entry.played > 0 && (!excludeNull || entry.gameType !== 'NULL'),
-    )
-    if (types.length === 0) return
-    y = drawFeatureTable(doc, { y, title, keys, types, statistics }) + 7
+  const byType = new Map((feature?.byGameType ?? []).map((entry) => [entry.gameType, entry]))
+  const slices = types.map((gameType) => ({
+    gameType,
+    label: GAME_TYPE_LABELS[gameType] ?? gameType,
+    value: byType.get(gameType)?.count ?? 0,
+    color: GAME_TYPE_COLORS[gameType] ?? COLORS.muted,
+  }))
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0)
+  const cx = x + 27
+  const cy = y + height / 2 + 3
+  if (total === 0) {
+    doc.setFillColor('#f1eee6')
+    doc.circle(cx, cy, radius, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(COLORS.muted)
+    doc.text('0', cx, cy + 1, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.5)
+    doc.text('Spiele', cx, cy + 5, { align: 'center' })
+  } else {
+    drawDonutChart(doc, {
+      cx,
+      cy,
+      radius,
+      slices,
+      centerValue: total,
+      centerLabel: 'Spiele',
+    })
+  }
+
+  const legendStep = height <= 70 ? 8.7 : 10
+  let legendY = y + 14
+  for (const slice of slices) {
+    const entry = byType.get(slice.gameType) ?? null
+    const share = total === 0 ? null : (slice.value / total) * 100
+    doc.setFillColor(slice.color)
+    doc.rect(x + 52, legendY - 2.7, 3, 3, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(COLORS.ink)
+    doc.text(slice.label, x + 58, legendY)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(5.8)
+    doc.setTextColor(COLORS.muted)
+    doc.text(`${percentLabel(share)} Anteil · ${percentLabel(entry?.winShare)} gewonnen`, x + 58, legendY + 3.3)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(COLORS.ink)
+    doc.text(`${slice.value}×`, x + width - 4, legendY, { align: 'right' })
+    legendY += legendStep
+  }
+}
+
+/** Eine Statistikseite mit Donut-Charts für eine Gruppe von Gewinnstufen. */
+function drawStatisticsFeaturePage(doc, { tournamentName, statistics, title, keys, excludeNull }) {
+  drawStatisticsHeader(doc, { tournamentName, statistics })
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(COLORS.ink)
+  doc.text(title, PAGE.margin, 40)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(COLORS.muted)
+  doc.text(
+    'Anteile je Spielart, dazu die Gewinnquote innerhalb der jeweiligen Spielart.',
+    PAGE.margin,
+    45,
+  )
+
+  const types = statistics.gameTypes
+    .filter((entry) => entry.played > 0 && (!excludeNull || entry.gameType !== 'NULL'))
+    .map((entry) => entry.gameType)
+  if (types.length === 0) {
+    doc.setFontSize(9)
+    doc.text('Noch keine passenden entschiedenen Alleinspiele eingetragen.', PAGE.margin, 62)
+    return
+  }
+
+  const featureByKey = new Map(statistics.features.map((feature) => [feature.key, feature]))
+  const gap = 8
+  const width = (TABLE_WIDTH - gap) / 2
+  const height = keys.length === 2 ? 92 : 64
+  const rowGap = 8
+  keys.forEach((key, index) => {
+    const column = index % 2
+    const row = Math.floor(index / 2)
+    drawFeaturePanel(doc, {
+      x: PAGE.margin + column * (width + gap),
+      y: 52 + row * (height + rowGap),
+      width,
+      height,
+      key,
+      feature: featureByKey.get(key),
+      types,
+      radius: keys.length === 2 ? 23 : 18,
+    })
   })
 }
 
@@ -559,10 +718,12 @@ export async function downloadStandingsPdf({ standing, statistics, tournament, a
     drawStatisticsOverview(doc, { tournamentName, statistics })
     drawFooter(doc, page)
 
-    doc.addPage()
-    page += 1
-    drawStatisticsFeatures(doc, { tournamentName, statistics })
-    drawFooter(doc, page)
+    FEATURE_TABLES.forEach(({ title, keys, excludeNull }) => {
+      doc.addPage()
+      page += 1
+      drawStatisticsFeaturePage(doc, { tournamentName, statistics, title, keys, excludeNull })
+      drawFooter(doc, page)
+    })
   }
 
   await doc.save(fileName(tournamentName))
