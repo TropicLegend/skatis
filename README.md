@@ -1,5 +1,5 @@
 # Skatis
-Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente. :D :D :D :D
+Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente. :D :D :D :D :D
 
 ## Grundidee
 * Es können Turniere verwaltet werden
