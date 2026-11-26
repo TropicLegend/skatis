@@ -3,9 +3,9 @@ import { conflict, notFound } from '../../lib/http-error.js';
 import { toIsoDate } from '../../lib/dates.js';
 import { prisma } from '../../lib/prisma.js';
 import type { TournamentRole } from '../../lib/tokens.js';
-import { recordAudit, type AuditDetails } from '../audit/audit-log.js';
+import { recordAudit, type AuditDetailObject } from '../audit/audit-log.js';
 import { getTournamentRow } from '../tournaments/tournament.service.js';
-import { assertListEditable, assertMatchdayAllowed } from './list-access.js';
+import { assertExistingListAllowed, assertListEditable } from './list-access.js';
 import { findListOrThrow, lineupNames, type ListWithGames } from './list.service.js';
 import {
   assertDeclarerAllowed,
@@ -57,7 +57,7 @@ function lastDealer(list: ListWithGames): string | null {
 function gameDetails(
   list: ListWithGames,
   game: Pick<Game, 'id' | 'position' | 'declarer' | 'gameType' | 'gameValue' | 'won'>,
-): AuditDetails {
+): AuditDetailObject {
   return {
     listId: list.id,
     gameId: game.id,
@@ -135,7 +135,7 @@ export async function createGame(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  assertExistingListAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const lineup = lineupNames(list);
@@ -182,7 +182,7 @@ export async function replaceGame(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  assertExistingListAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const game = list.games.find((candidate) => candidate.id === gameId);
@@ -200,6 +200,7 @@ export async function replaceGame(
     players: playingPlayers(lineup, game.dealer),
   });
 
+  const before = gameDetails(list, game);
   const updated = await prisma.game.update({
     where: { id: game.id },
     data: toGameUpdateData(properties),
@@ -209,7 +210,7 @@ export async function replaceGame(
     tournamentId: tournament.id,
     role,
     action: 'game.updated',
-    details: gameDetails(list, updated),
+    details: { listId: list.id, gameId: updated.id, before, after: gameDetails(list, updated) },
   });
 
   return toGameDto(updated, lineup);
@@ -224,7 +225,7 @@ export async function deleteGame(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  assertExistingListAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   const game = assertLastGame(list.id, gameId, list.games);

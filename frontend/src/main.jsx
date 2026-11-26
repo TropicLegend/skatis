@@ -204,6 +204,18 @@ const initialGame = { passedOut: false, declarer: '', gameType: '', hand: false,
 // `withLevelChain`). Ein höherer Schritt holt die darunterliegenden mit.
 const ANNOUNCED_CHAIN = ['hand', 'schneiderAnnounced', 'schwarzAnnounced', 'offen']
 const PLAYED_CHAIN = ['schneider', 'schwarz']
+
+/**
+ * Die Ansagen ziehen ihre gespielte Stufe mit: Schneider Ang. setzt Schneider,
+ * Schwarz Ang. setzt Schwarz – auch wenn die Ansage über die Kette (z. B. Offen)
+ * mit eingeschaltet wird. Umgekehrt bleibt eine gespielte Stufe unabhängig.
+ */
+function withAnnouncedLevels(levels, key, value) {
+  const next = withLevelChain(ANNOUNCED_CHAIN, levels, key, value)
+  if (next.schneiderAnnounced) next.schneider = true
+  if (next.schwarzAnnounced) next.schwarz = true
+  return next
+}
 /** Spielarten des Wizards – Beschriftung und Symbol; die Grundwerte kommen aus `/rules`. */
 const gameTypes = GAME_TYPES
 
@@ -734,6 +746,24 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
       setNewGroupRank(group.rank + 1)
     } catch (error) { setPlayerError(errorNotice(error)) }
   }
+  async function renamePlayerGroup(group, name) {
+    const nextName = name.trim()
+    if (!nextName || nextName === group.name) return false
+    setPlayerError('')
+    try {
+      const updated = await request(`/tournaments/${tournament.id}/players/groups/${group.id}`, {
+        method: 'PATCH', token, body: { name: nextName },
+      })
+      setPlayerGroups((current) => current
+        .map((entry) => entry.id === group.id ? updated : entry)
+        .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)))
+      setRankingRevision((revision) => revision + 1)
+      return true
+    } catch (error) {
+      setPlayerError(errorNotice(error))
+      return false
+    }
+  }
   async function changePlayerGroupRank(group, rank) {
     if (!Number.isInteger(rank) || rank < 1 || rank > 999 || rank === group.rank) return
     setPlayerError('')
@@ -899,19 +929,35 @@ function Dashboard({ tournament, role, lists, onOpenList, onLogout, token, onCre
     {showRanking && standing && <TournamentRanking key={`${rankingRevision}-${standingGroupId}-${standingAsOf}-${tournament.opponentBonusVariant}`} standing={standing} tournament={tournament} token={token} groups={playerGroups} groupId={standingGroupId} asOf={standingAsOf} onGroupChange={setStandingGroupId} onAsOfChange={setStandingAsOf} onOpenPlayer={openPlayer} />}
     {showStats && <TournamentStats tournament={tournament} token={token} lists={lists} />}
     {showPlayers && <section className="roster-panel"><div><span className="eyebrow">Turnier-Roster</span><h2>Spieler</h2><p>Diese Namen können in Tischlisten gesetzt werden – neue Namen und Korrekturen macht der Admin.</p></div><div className="roster-content"><div className="player-tags">{players.length ? players.map((player) => editingPlayer === player.name ? <form className="player-tag-edit" key={player.name} onSubmit={(event) => renamePlayer(event, player.name)}><input autoFocus required maxLength="64" value={editedPlayerName} onChange={(event) => setEditedPlayerName(event.target.value)} /><button className="icon-button" type="submit" title="Namen speichern"><Check size={14} /></button><button className="icon-button" type="button" title="Abbrechen" onClick={() => setEditingPlayer(null)}><X size={14} /></button></form> : <span className={`player-tag${player.hiddenFromStandings ? ' player-hidden' : ''}`} key={player.name}>{player.name}{role === 'ADMIN' && <><button className="icon-button" type="button" title={`${player.name} umbenennen`} onClick={() => startEditing(player)}><Pencil size={13} /></button><button className="icon-button" type="button" aria-label={player.hiddenFromStandings ? `${player.name} in Rangliste einblenden` : `${player.name} aus Rangliste ausblenden`} title={player.hiddenFromStandings ? 'In Rangliste einblenden' : 'Aus Rangliste ausblenden'} onClick={() => togglePlayerStandingVisibility(player)}>{player.hiddenFromStandings ? <Eye size={14} /> : <EyeOff size={14} />}</button></>}</span>) : <span className="muted">Noch keine Spieler hinzugefügt</span>}</div>{role === 'ADMIN' ? <form className="player-form" onSubmit={addPlayer}><input required maxLength="64" value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Name hinzufügen" /><button className="primary-button" title="Spieler hinzufügen"><Plus size={17} /></button></form> : <p className="roster-hint">Nur der Admin kann Spieler hinzufügen oder umbenennen.</p>}{role === 'ADMIN' && <div className="player-groups"><div className="player-groups-heading"><h3>Spielergruppen</h3><form onSubmit={addPlayerGroup}><input required maxLength="64" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Gruppenname" /><button className="icon-button" title="Gruppe erstellen"><Plus size={17} /></button></form></div>{playerGroups.map((group) => <details className="player-group" key={group.id}><summary><span>{group.name}</span><small>{group.playerNames.length} Spieler</small></summary><button className="icon-button danger" type="button" title={`${group.name} löschen`} onClick={() => removePlayerGroup(group)}><Trash2 size={15} /></button><div className="group-members">{players.map((player) => <label key={player.name}><input type="checkbox" checked={group.playerNames.includes(player.name)} onChange={(event) => toggleGroupMember(group, player, event.target.checked)} />{player.name}</label>)}</div></details>)}</div>}{playerError && <div className="error-message">{playerError}</div>}</div></section>}
-    {showPlayers && role === 'ADMIN' && <PlayerGroupMatrix players={players} groups={playerGroups} newGroupName={newGroupName} newGroupRank={newGroupRank} onNameChange={setNewGroupName} onRankChange={setNewGroupRank} onCreate={addPlayerGroup} onDelete={removePlayerGroup} onRankSelect={changePlayerGroupRank} onMemberToggle={toggleGroupMember} />}
+    {showPlayers && role === 'ADMIN' && <PlayerGroupMatrix players={players} groups={playerGroups} newGroupName={newGroupName} newGroupRank={newGroupRank} onNameChange={setNewGroupName} onRankChange={setNewGroupRank} onCreate={addPlayerGroup} onDelete={removePlayerGroup} onRename={renamePlayerGroup} onRankSelect={changePlayerGroupRank} onMemberToggle={toggleGroupMember} />}
     {mobile && <SectionTabs value={section} onChange={setSection} />}
     {showCreate && <CreateListModal token={token} tournament={tournament} role={role} players={players} lists={lists} canManagePlayers={role === 'ADMIN'} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onCreated(); setFilter(created.matchday); setSeriesFilter(String(created.series)); setDefaultFiltersReady(true); setOffset(0); setReload((count) => count + 1) }} />}
     {showSettings && <TournamentSettings token={token} tournament={tournament} onClose={() => setShowSettings(false)} onUpdated={(updated, meta) => { onTournamentUpdated(updated); setShowSettings(false); if (meta && meta.passwordChanged) onLogout('Das Spielerpasswort wurde geändert – alle bisherigen Sitzungen sind beendet. Bitte melde dich neu an.') }} />}
   </Shell>
 }
 
-function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onNameChange, onRankChange, onCreate, onDelete, onRankSelect, onMemberToggle }) {
+function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onNameChange, onRankChange, onCreate, onDelete, onRename, onRankSelect, onMemberToggle }) {
   const maxRank = Math.max(groups.length + 1, ...groups.map((group) => group.rank + 1), 5)
   const rankOptions = Array.from({ length: maxRank }, (_, index) => index + 1)
+  const [editingGroupId, setEditingGroupId] = useState(null)
+  const [editedGroupName, setEditedGroupName] = useState('')
+
+  function startEditing(group) {
+    setEditingGroupId(group.id)
+    setEditedGroupName(group.name)
+  }
+
+  async function saveGroupName(event, group) {
+    event.preventDefault()
+    const saved = await onRename(group, editedGroupName)
+    if (saved) {
+      setEditingGroupId(null)
+      setEditedGroupName('')
+    }
+  }
 
   return <section className="roster-panel group-matrix-panel">
-    <div><span className="eyebrow">Admin-Bereich</span><h2>Gruppenzuordnung</h2><p>Jeder Spieler gehört höchstens einer Gruppe an. Der Gruppenrang bestimmt die Reihenfolge der gruppierten Rangliste.</p></div>
+    <div><span className="eyebrow">Admin-Bereich</span><h2>Gruppenzuordnung</h2><p>Jeder Spieler gehört höchstens einer Gruppe an. Der Gruppenrang bestimmt die Reihenfolge der gruppierten Rangliste; Gruppen lassen sich hier auch umbenennen.</p></div>
     <div className="roster-content">
       <form className="group-matrix-create" onSubmit={onCreate}>
         <label>Gruppenname<input required maxLength="64" value={newGroupName} onChange={(event) => onNameChange(event.target.value)} placeholder="Gruppe A" /></label>
@@ -920,7 +966,13 @@ function PlayerGroupMatrix({ players, groups, newGroupName, newGroupRank, onName
       </form>
       {groups.length > 0 && <div className="group-matrix-scroll"><table className="group-matrix">
         <thead><tr><th scope="col">Spieler</th>{groups.map((group) => <th scope="col" key={group.id}>
-          <div className="group-matrix-heading"><strong>{group.name}</strong><button className="icon-button danger" type="button" title={`${group.name} löschen`} aria-label={`${group.name} löschen`} onClick={() => onDelete(group)}><Trash2 size={15} /></button></div>
+          {editingGroupId === group.id
+            ? <form className="group-rename-form" onSubmit={(event) => saveGroupName(event, group)}>
+                <input autoFocus required maxLength="64" value={editedGroupName} onChange={(event) => setEditedGroupName(event.target.value)} aria-label={`Neuer Name für ${group.name}`} />
+                <button className="icon-button" type="submit" title="Neuen Gruppennamen speichern"><Check size={14} /></button>
+                <button className="icon-button" type="button" title="Umbenennen abbrechen" onClick={() => setEditingGroupId(null)}><X size={14} /></button>
+              </form>
+            : <div className="group-matrix-heading"><strong>{group.name}</strong><div className="group-matrix-actions"><button className="icon-button" type="button" title={`${group.name} umbenennen`} aria-label={`${group.name} umbenennen`} onClick={() => startEditing(group)}><Pencil size={14} /></button><button className="icon-button danger" type="button" title={`${group.name} löschen`} aria-label={`${group.name} löschen`} onClick={() => onDelete(group)}><Trash2 size={15} /></button></div></div>}
           <label className="group-rank-field">Rang<select value={group.rank} aria-label={`Rang von ${group.name}`} onChange={(event) => onRankSelect(group, Number(event.target.value))}>{rankOptions.map((rank) => <option key={rank} value={rank}>{rank}</option>)}</select></label>
         </th>)}</tr></thead>
         <tbody>{players.map((player) => <tr key={player.name}>
@@ -961,7 +1013,7 @@ function TimeField({ value, onChange, label }) {
     const digits = value.replace(/\D/g, '')
     if (digits.length === 3) onChange(`0${digits[0]}:${digits.slice(1)}`)
   }
-  return <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} placeholder="18:00" aria-label={label} value={value} onChange={(event) => onChange(format(event.target.value))} onBlur={complete} />
+  return <input type="text" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={5} placeholder="HH:MM" aria-label={label} value={value} onChange={(event) => onChange(format(event.target.value))} onBlur={complete} />
 }
 
 function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
@@ -970,27 +1022,98 @@ function MatchdayPicker({ value, onChange, windows = {}, onWindowsChange }) {
   // Anlege-Formular kommt ohne, die Turnier-Einstellungen nicht.
   const withTimes = typeof onWindowsChange === 'function'
   const setTime = (day, key, time) => onWindowsChange({ ...windows, [day]: { from: '', to: '', ...windows[day], [key]: time } })
-  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für den Turnierabend.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><TimeField label={`Beginn ${weekdayLabel(day)}`} value={windows[day]?.from ?? ''} onChange={(time) => setTime(day, 'from', time)} /><em>bis</em><TimeField label={`Ende ${weekdayLabel(day)}`} value={windows[day]?.to ?? ''} onChange={(time) => setTime(day, 'to', time)} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis im 24-Stunden-Format. Ohne Uhrzeit endet der Tag um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
+  return <fieldset className="matchday-picker"><legend>Spieltage</legend><p>Wähle mindestens einen Wochentag für den Turnierabend.</p><div>{weekdays.map(([day, label]) => <button type="button" key={day} className={value.includes(Number(day)) ? 'selected' : ''} onClick={() => toggle(Number(day))}><span>{day}</span>{label}</button>)}</div>{withTimes && value.length > 0 && <div className="matchday-times">{value.map((day) => <label key={day} className="matchday-time"><span>{weekdayLabel(day)}</span><TimeField label={`Beginn ${weekdayLabel(day)}`} value={windows[day]?.from ?? ''} onChange={(time) => setTime(day, 'from', time)} /><em>bis</em><TimeField label={`Ende ${weekdayLabel(day)}`} value={windows[day]?.to ?? ''} onChange={(time) => setTime(day, 'to', time)} /></label>)}</div>}{withTimes && <small className="field-hint">Optional je Spieltag eine Uhrzeit von–bis im 24-Stunden-Format. Beide Felder leer lassen heißt: keine zeitliche Einschränkung; der Tag endet dann um Mitternacht. Nach der Bis-Zeit gelten alle Listen des Tages als abgegeben, vor der Von-Zeit können Mitglieder noch keine Liste anlegen.</small>}</fieldset>
 }
 
 function TournamentSettings({ token, tournament, onClose, onUpdated }) {
   useEscape(onClose)
   useBackToClose(onClose)
   useScrollLock()
+  const [name, setName] = useState(tournament.name || '')
   const [matchdays, setMatchdays] = useState(tournament.matchdays || [])
   const [windows, setWindows] = useState(tournament.matchdayWindows || {})
   const [opponentBonusVariant, setOpponentBonusVariant] = useState(tournament.opponentBonusVariant || 'OFFICIAL')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordBusy, setPasswordBusy] = useState(false)
+
   // Die Spielzeiten der gewählten Tage einsammeln – dieselbe Prüfung wie beim
   // Anlegen: je Tag entweder beide Zeiten oder keine, „von“ vor „bis“.
   async function submit(event) {
     event.preventDefault(); setError('')
     const { windows: matchdayWindows, error: windowError } = windowsFrom(matchdays, windows)
     if (windowError) { setError(windowError); return }
-    try { const updated = await request(`/tournaments/${tournament.id}`, { method: 'PATCH', token, body: { matchdays, matchdayWindows, opponentBonusVariant, ...(password ? { password } : {}) } }); onUpdated(updated, { passwordChanged: Boolean(password) }) } catch (problem) { setError(problem.message) }
+    try {
+      const updated = await request(`/tournaments/${tournament.id}`, {
+        method: 'PATCH', token, body: { name, matchdays, matchdayWindows, opponentBonusVariant },
+      })
+      onUpdated(updated, { passwordChanged: false })
+    } catch (problem) {
+      setError(problem.message)
+    }
   }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={18} /></button><span className="eyebrow">Admin-Bereich</span><h2>Turnier verwalten</h2><p className="modal-copy">Lege fest, an welchen Wochentagen Listen erstellt und gespielt werden können – optional mit Uhrzeit von bis. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p><form onSubmit={submit}><MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} /><label className="bonus-variant-field">Gegenspielpunkte<select value={opponentBonusVariant} onChange={(event) => setOpponentBonusVariant(event.target.value)}><option value="OFFICIAL">Offizielle Variante (+40 / +30 / +24)</option><option value="MATHEMATICAL">Mathematisch korrekte Variante (+45 / +30 / +22,5)</option></select><small className="field-hint">Die Einstellung gilt für die Listen und die gesamte Rangliste dieses Turniers.</small></label><PasswordField label="Neues Spieler-Passwort optional" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leer lassen, wenn unverändert" /><small className="field-hint">Damit loggen sich die Mitglieder ein. Das Admin-Passwort lässt sich nicht ändern.</small>{error && <div className="error-message">{error}</div>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div></form></div></div>
+
+  async function changePassword(event) {
+    event.preventDefault(); setPasswordError('')
+    if (newPassword.length < 8) {
+      setPasswordError('Das neue Mitglieds-Passwort muss mindestens 8 Zeichen lang sein.')
+      return
+    }
+    setPasswordBusy(true)
+    try {
+      const updated = await request(`/tournaments/${tournament.id}`, {
+        method: 'PATCH', token, body: { password: newPassword },
+      })
+      setShowPasswordDialog(false)
+      setNewPassword('')
+      onUpdated(updated, { passwordChanged: true })
+    } catch (problem) {
+      setPasswordError(problem.message)
+    } finally {
+      setPasswordBusy(false)
+    }
+  }
+
+  return <>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="Turnier verwalten" onClick={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}><X size={18} /></button>
+        <span className="eyebrow">Admin-Bereich</span>
+        <h2>Turnier verwalten</h2>
+        <p className="modal-copy">Ändere Namen, Spieltage und Gegenspielpunkte des Turniers. Die Spielzeiten kannst du je Wochentag optional einschränken. Das Admin-Passwort bleibt, wie es beim Anlegen gesetzt wurde.</p>
+        <form onSubmit={submit}>
+          <label>Turniername<input required minLength="3" maxLength="64" value={name} onChange={(event) => setName(event.target.value)} placeholder="Turniername" /></label>
+          <MatchdayPicker value={matchdays} onChange={setMatchdays} windows={windows} onWindowsChange={setWindows} />
+          <label className="bonus-variant-field">Gegenspielpunkte<select value={opponentBonusVariant} onChange={(event) => setOpponentBonusVariant(event.target.value)}><option value="OFFICIAL">Offizielle Variante (+40 / +30 / +24)</option><option value="MATHEMATICAL">Mathematisch korrekte Variante (+45 / +30 / +22,5)</option></select><small className="field-hint">Die Einstellung gilt für die Listen und die gesamte Rangliste dieses Turniers.</small></label>
+          <div className="password-reset-row">
+            <div><strong>Mitglieds-Passwort</strong><small>Damit loggen sich die Mitglieder ein. Das Passwort wird nur geändert, wenn du es hier ausdrücklich neu setzt.</small></div>
+            <button type="button" className="secondary-button" onClick={() => { setPasswordError(''); setNewPassword(''); setShowPasswordDialog(true) }}><LockKeyhole size={16} /> Mitglieds-Passwort neu setzen</button>
+          </div>
+          {error && <div className="error-message">{error}</div>}
+          <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Abbrechen</button><button className="primary-button">Änderungen speichern <Check size={16} /></button></div>
+        </form>
+      </div>
+    </div>
+
+    {showPasswordDialog && <div className="modal-backdrop password-backdrop" onClick={() => setShowPasswordDialog(false)}>
+      <div className="modal password-modal" role="dialog" aria-modal="true" aria-label="Mitglieds-Passwort neu setzen" onClick={(event) => event.stopPropagation()}>
+        <button className="modal-close" onClick={() => setShowPasswordDialog(false)}><X size={18} /></button>
+        <span className="eyebrow">Mitglieder-Zugang</span>
+        <h2>Passwort neu setzen</h2>
+        <p className="modal-copy">Nach dem Speichern werden alle bisherigen Sitzungen der Mitglieder beendet. Danach gilt nur noch das neue Passwort.</p>
+        <form onSubmit={changePassword}>
+          <PasswordField label="Neues Mitglieds-Passwort" required minLength={8} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Mindestens 8 Zeichen" />
+          {passwordError && <div className="error-message">{passwordError}</div>}
+          <div className="modal-actions">
+            <button type="button" className="secondary-button" onClick={() => setShowPasswordDialog(false)}>Abbrechen</button>
+            <button className="primary-button" disabled={passwordBusy}>{passwordBusy ? 'Wird gespeichert …' : 'Passwort speichern'}</button>
+          </div>
+        </form>
+      </div>
+    </div>}
+  </>
 }
 
 function ListCard({ list, ranking, index = 0, onClick }) {
@@ -1053,14 +1176,17 @@ function TournamentRanking({ standing, tournament, token, groups, groupId, asOf,
     }
   }
 
-  /** Die vollständige Rangliste als Tabelle – dieselben Spalten wie am Desktop. */
+  /** Die vollständige Rangliste als Tabelle – mit der Turnierstatistik darunter. */
   async function downloadRanking() {
     setRankingPdfBusy(true); setRankingPdfError('')
     try {
       const params = new URLSearchParams({ grouped: 'true' })
       if (asOf !== 'current') params.set('asOf', asOf)
-      const pdfStanding = await request(`/tournaments/${tournament.id}/standings?${params}`, { token })
-      await downloadStandingsPdf({ standing: pdfStanding, tournament, asOf })
+      const [pdfStanding, statistics] = await Promise.all([
+        request(`/tournaments/${tournament.id}/standings?${params}`, { token }),
+        request(`/tournaments/${tournament.id}/statistics`, { token }),
+      ])
+      await downloadStandingsPdf({ standing: pdfStanding, statistics, tournament, asOf })
     } catch (problem) {
       setRankingPdfError(errorNotice(problem))
     } finally {
@@ -1888,10 +2014,10 @@ function TableStyleSwitch({ value, onChange }) {
 }
 
 /** Passwortfeld mit Auge-Button – "Passwort anzeigen" ohne Browser-Add-on. */
-function PasswordField({ label, value, onChange, placeholder, required, minLength }) {
+function PasswordField({ label, value, onChange, placeholder, required, minLength, maxLength }) {
   const [visible, setVisible] = useState(false)
   const action = visible ? 'Passwort verbergen' : 'Passwort anzeigen'
-  return <label>{label}<span className="password-field"><input required={required} minLength={minLength} type={visible ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} /><button type="button" className="password-toggle" title={action} aria-label={action} aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
+  return <label>{label}<span className="password-field"><input required={required} minLength={minLength} maxLength={maxLength} type={visible ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} /><button type="button" className="password-toggle" title={action} aria-label={action} aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
 }
 
 /**
@@ -1988,6 +2114,10 @@ function wizardGame(existingGame) {
     declarer: existingGame.declarer ?? '',
     gameType: existingGame.gameType ?? '',
     won: existingGame.won ?? initialGame.won,
+    // Ältere Spiele konnten „Schneider Ang.“ ohne „Schneider“ speichern. Der
+    // Wizard zeigt die neue, zwingende Kombination und speichert sie so.
+    schneider: Boolean(existingGame.schneider || existingGame.schneiderAnnounced),
+    schwarz: Boolean(existingGame.schwarz || existingGame.schwarzAnnounced),
     note: existingGame.note ?? '',
     matadors: existingGame.matadors ?? initialGame.matadors,
     nullVariant: existingGame.hand && existingGame.offen ? 'hand-offen' : existingGame.hand ? 'hand' : existingGame.offen ? 'offen' : 'normal',
@@ -2088,13 +2218,11 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
   return <div className="modal-backdrop wizard-backdrop" onClick={onClose}>
     <div className="wizard" role="dialog" aria-modal="true" aria-label="Spiel eintragen" onClick={(event) => event.stopPropagation()}>
       <div className="wizard-top">
-        <div>
-          <div className="wizard-round-line">
-            <span className="eyebrow">Spiel {gameNumber}</span>
-            {firstCard && !game.passedOut && <span className="wizard-first-card"><strong>{firstCard}</strong> legt die erste Karte.</span>}
-          </div>
+        <div className="wizard-top-info">
+          <span className="eyebrow">Spiel {gameNumber}</span>
           <div className="breadcrumb"><span>→ Spiel {gameNumber}</span>{crumbs.map((crumb) => <React.Fragment key={crumb}><ChevronRight size={13} /><span className="crumb-current">{crumb}</span></React.Fragment>)}</div>
         </div>
+        {firstCard && !game.passedOut && <div className="wizard-first-card"><strong>{firstCard}</strong> legt die erste Karte.</div>}
         <button className="modal-close" onClick={onClose}><X size={18} /></button>
       </div>
 
@@ -2123,12 +2251,12 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
           {!rules && <p className="wizard-hint">Regeln werden geladen …</p>}
           <div className="choice-grid game-type-grid">{gameTypes.map((type) => <button key={type.id} className={`choice-card game-type ${game.gameType === type.id ? 'selected' : ''}`} onClick={() => selectGameType(type.id)}><span className={`suit-icon suit-${type.id.toLowerCase()}`}>{type.symbol}</span><strong>{type.label}</strong><small>Grundwert {gameTypeRules(rules, type.id)?.baseValue ?? '…'}</small></button>)}</div>
           {game.gameType && <div className="options-block">{game.gameType === 'NULL' ? <NullVariantOptions variant={game.nullVariant} nullValues={rules?.nullValues} onChange={(option) => setGame({ ...game, ...option })} /> : <>
-            <Toggle label="Hand" hint="Ohne Skataufnahme" checked={game.hand} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'hand', v) })} />
+            <Toggle label="Hand" hint="Ohne Skataufnahme" checked={game.hand} onChange={(v) => setGame({ ...game, ...withAnnouncedLevels(game, 'hand', v) })} />
             <div className="announces">
               <span className="option-label">Zusatz-Ansagen</span>
-              <Toggle label="Schneider angesagt" checked={game.schneiderAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'schneiderAnnounced', v) })} />
-              <Toggle label="Schwarz angesagt" checked={game.schwarzAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'schwarzAnnounced', v) })} />
-              <Toggle label="Offen / Ouvert" checked={game.offen} onChange={(v) => setGame({ ...game, ...withLevelChain(ANNOUNCED_CHAIN, game, 'offen', v) })} />
+              <Toggle label="Schneider angesagt" checked={game.schneiderAnnounced} onChange={(v) => setGame({ ...game, ...withAnnouncedLevels(game, 'schneiderAnnounced', v) })} />
+              <Toggle label="Schwarz angesagt" checked={game.schwarzAnnounced} onChange={(v) => setGame({ ...game, ...withAnnouncedLevels(game, 'schwarzAnnounced', v) })} />
+              <Toggle label="Offen / Ouvert" checked={game.offen} onChange={(v) => setGame({ ...game, ...withAnnouncedLevels(game, 'offen', v) })} />
               <small className="field-hint">Eine höhere Ansage schaltet die darunterliegenden automatisch mit – und eine abgeschaltete nimmt sie wieder weg.</small>
             </div>
           </>}</div>}
@@ -2154,8 +2282,8 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
           </div>
           {game.gameType !== 'NULL' && <div className="options-block">
             <span className="option-label">Erreichte Stufen</span>
-            <Toggle label="Schneider gespielt" checked={game.schneider} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schneider', v) })} />
-            <Toggle label="Schwarz gespielt" checked={game.schwarz} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schwarz', v) })} />
+            <Toggle label="Schneider gespielt" hint={game.schneiderAnnounced ? 'Durch Schneider Ang. vorgegeben' : undefined} checked={game.schneider} disabled={game.schneiderAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schneider', v) })} />
+            <Toggle label="Schwarz gespielt" hint={game.schwarzAnnounced ? 'Durch Schwarz Ang. vorgegeben' : undefined} checked={game.schwarz} disabled={game.schwarzAnnounced} onChange={(v) => setGame({ ...game, ...withLevelChain(PLAYED_CHAIN, game, 'schwarz', v) })} />
             <small className="field-hint">Schwarz gespielt heißt immer auch Schneider gespielt.</small>
           </div>}
         </div>}

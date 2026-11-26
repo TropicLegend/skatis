@@ -41,10 +41,20 @@ export const AUDIT_ACTIONS = [
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
+/** One nested object behind a change – used for before/after snapshots. */
+export type AuditDetailObject = Record<string, string | number | boolean | null>;
+
 /** The numbers behind a change – plain JSON, no secrets. */
 export type AuditDetails = Record<
   string,
-  string | number | boolean | string[] | number[] | null | Record<string, string | number>
+  | string
+  | number
+  | boolean
+  | string[]
+  | number[]
+  | null
+  | AuditDetailObject
+  | AuditDetailObject[]
 >;
 
 export interface AuditLogInput {

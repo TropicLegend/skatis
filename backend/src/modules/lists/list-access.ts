@@ -256,6 +256,21 @@ export function assertMatchdayAllowed(
 }
 
 /**
+ * Existing lists may be corrected by an admin on any date – also on a day that
+ * is not a configured matchday at all. Creating a list still goes through
+ * {@link assertMatchdayAllowed}, so the tournament calendar keeps its meaning.
+ */
+export function assertExistingListAllowed(
+  tournament: TournamentRules,
+  matchday: string,
+  role: TournamentRole,
+  now: Date = new Date(),
+): void {
+  if (role === 'ADMIN') return;
+  assertMatchdayAllowed(tournament, matchday, role, now);
+}
+
+/**
  * A submitted list is frozen for members. Admins may keep working on it at any
  * time ("Nutzer kann im Nachhinein Listen modifizieren, ggf. korrigieren und
  * löschen") – they do not have to reopen it first.

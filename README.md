@@ -17,10 +17,15 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente. :D :D :D 
   * Die Statistik-Seite wertet das gesamte Turnier unabhängig von den Spielern aus: Anzahl aller Runden und Alleinspiele, die Anteile gewonnen/verloren/eingepasst (zusammen 100 %), die Spielarten als Kuchendiagramm, die Gewinnquote je Spielart sowie die Verteilung und Gewinnquote von Hand/Offen und Schneider Ang./Schwarz Ang./Schneider/Schwarz je Spielart. Die Tabelle der angesagten und gespielten Gewinnstufen lässt Nullspiele aus, weil sie diese Stufen nicht kennt.
   * Spiele können nur für Spieler geführt werden, die Teil der Liste sind.
   * Aus der Rangliste lassen sich Spielerkarten als PDF herunterladen – 16 Kärtchen im Querformat je A4-Querseite zum Ausschneiden, jeweils mit Name, Platz und Gruppe der Sortierung „Alle Spieler mit Gruppen“, dem Spielschnitt, der Anzahl der Spiele, dem Serienschnitt (Ø Punkte je 36 Spiele), einem leeren Feld „Spielschnitt Serie 1“ und zwei Kästchen für die Tischnummern der Serien 1 und 2. Das PDF entsteht im Browser, heißt `Skatis_Spielerkarten_<Turniername>_<Datum>.pdf` und geht bei mehr als 16 Spielern auf der nächsten Seite weiter.
-  * Zusätzlich lässt sich die vollständige aktuelle Rangliste als Tabellen-PDF herunterladen – immer in der Sortierung „Alle Spieler mit Gruppen“ und mit denselben Spalten wie die Desktop-Rangliste. Bei mehr Spielern als auf eine Seite passen, wird die Tabelle fortgesetzt.
+  * Zusätzlich lässt sich die vollständige aktuelle Rangliste als Tabellen-PDF herunterladen – immer in der Sortierung „Alle Spieler mit Gruppen“ und mit denselben Spalten wie die Desktop-Rangliste. Bei mehr Spielern als auf eine Seite passen, wird die Tabelle fortgesetzt. Danach folgen eigene Seiten mit den Turnierstatistiken.
   * Auf dem Handy heißt der erste Reiter „Listen“; der Knopf „Neue Liste“ erscheint nur dort. In den anderen Reitern wird er ausgeblendet.
   * Das Spielprotokoll startet mit der klassischen Darstellung. Ein Hinweis erklärt, dass Klassisch und Modern nur zwei Darstellungen derselben Wertung sind.
-  * Beim Eintragen eines Spiels steht bereits in der Kopfzeile jedes Schritts, wer die erste Karte legt – zusätzlich zur großen Anzeige im Schritt „Spitzen“.
+  * Beim Eintragen eines Spiels steht in der Kopfzeile jedes Schritts zentriert, wer die erste Karte legt.
+  * Schneider Ang. setzt automatisch Schneider, Schwarz Ang. setzt automatisch Schwarz. Das Frontend verhindert das Abwählen der vorgegebenen gespielten Stufe; das Backend lehnt widersprüchliche Spiele ab.
+  * Im Admin-Bereich lassen sich der Turniername ändern und das Mitglieds-Passwort über ein eigenes kleines Fenster neu setzen. Leere Spielzeitfelder bedeuten ausdrücklich keine zeitliche Einschränkung.
+  * Gruppen können umbenannt werden. Das Protokoll zeigt Gruppenwechsel als „Spieler: Gruppe A → Gruppe B“ und Spieländerungen als „vorher → nachher“.
+  * Admins dürfen bestehende Listen und Spiele auch an Tagen bearbeiten, die kein konfigurierter Turniertag sind; das Anlegen neuer Listen bleibt weiterhin auf Turniertage beschränkt.
+  * Jeder Tag, an dem mindestens eine Liste existiert, erscheint in der Aufschlüsselung „Nach Zeitraum“ der Spielerstatistiken – auch wenn für ihn noch kein gewertetes Ergebnis vorliegt.
   * Die Zurück-Taste des Browsers bleibt in der App: von einer Liste zur Übersicht, von der Spieler-Seite zur Rangliste, und offene Dialoge schließen sich damit – aus der Website heraus führt sie nicht mehr. Nach einem Neuladen steht die zuletzt geöffnete Liste wieder da.
 
 ## Logik

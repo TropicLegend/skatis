@@ -352,7 +352,7 @@ export async function getStandingsHistory(
   groupBy: StandingsGroupBy,
   options: StandingsOptions = {},
 ): Promise<StandingsHistoryDto> {
-  const { tournamentId: id, visibleRoster, groups, results } = await loadCountedResults(
+  const { tournamentId: id, visibleRoster, groups, results, availableMatchdays } = await loadCountedResults(
     tournamentId,
     options.groupId,
   );
@@ -361,12 +361,16 @@ export async function getStandingsHistory(
     groups,
     grouped: options.grouped,
   });
+  const listDays = options.asOf
+    ? availableMatchdays.filter((matchday) => matchday <= options.asOf!)
+    : availableMatchdays;
 
   return standingsHistory(
     id,
     standings.players.map((player) => player.name),
     snapshot,
     groupBy,
+    listDays,
   );
 }
 

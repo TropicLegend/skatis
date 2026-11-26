@@ -328,6 +328,8 @@ export function standingsHistory(
   names: readonly string[],
   lists: readonly ListResultsDto[],
   groupBy: StandingsGroupBy = 'matchday',
+  /** Every day with at least one list – also days without a counted result yet. */
+  listDays: readonly string[] = [],
 ): StandingsHistoryDto {
   const score: Record<string, number> = {};
   const gamesPlayed: Record<string, number> = {};
@@ -339,33 +341,45 @@ export function standingsHistory(
   const buckets: StandingsHistoryBucketDto[] = [];
   let current: StandingsHistoryBucketDto | null = null;
 
-  // Several lists may share a matchday, so the buckets are filled in time order.
-  const ordered = [...lists].sort((a, b) => a.matchday.localeCompare(b.matchday));
+  // Several lists may share a matchday. The timeline also contains days that
+  // have a list but no counted result yet: they show the standing unchanged and
+  // therefore keep the "Nach Zeitraum" table complete.
+  const listsByDay = new Map<string, ListResultsDto[]>();
+  for (const list of lists) {
+    const dayLists = listsByDay.get(list.matchday) ?? [];
+    dayLists.push(list);
+    listsByDay.set(list.matchday, dayLists);
+  }
+  const timeline = [...new Set([...listDays, ...lists.map((list) => list.matchday)])]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
 
-  for (const list of ordered) {
-    for (const player of list.players) {
-      // A player outside the roster cannot happen through the API; skipping keeps
-      // the history consistent with the standing.
-      if (!Object.hasOwn(score, player.name)) continue;
+  for (const day of timeline) {
+    for (const list of listsByDay.get(day) ?? []) {
+      for (const player of list.players) {
+        // A player outside the roster cannot happen through the API; skipping
+        // keeps the history consistent with the standing.
+        if (!Object.hasOwn(score, player.name)) continue;
 
-      score[player.name] = (score[player.name] ?? 0) + player.total;
-      gamesPlayed[player.name] = (gamesPlayed[player.name] ?? 0) + player.gamesPlayed;
+        score[player.name] = (score[player.name] ?? 0) + player.total;
+        gamesPlayed[player.name] = (gamesPlayed[player.name] ?? 0) + player.gamesPlayed;
+      }
     }
 
-    const key = bucketKey(list.matchday, groupBy);
+    const key = bucketKey(day, groupBy);
     if (current === null || current.key !== key) {
       current = {
         key,
-        from: list.matchday,
-        to: list.matchday,
+        from: day,
+        to: day,
         matchdayCount: 1,
         averageScore: {},
         score: {},
         gamesPlayed: {},
       };
       buckets.push(current);
-    } else if (current.to !== list.matchday) {
-      current.to = list.matchday;
+    } else if (current.to !== day) {
+      current.to = day;
       current.matchdayCount += 1;
     }
 

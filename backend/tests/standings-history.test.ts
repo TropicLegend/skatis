@@ -114,6 +114,22 @@ describe('standingsHistory', () => {
     expect(history.buckets.map((bucket) => bucket.from)).toEqual(['2026-09-16', '2026-09-30']);
   });
 
+  it('keeps a day with a list but no counted result as its own bucket', () => {
+    const lists = [matchday('2026-09-16', [game('Anna', true, 60)])];
+    const history = standingsHistory(
+      TOURNAMENT_ID,
+      ROSTER,
+      lists,
+      'matchday',
+      ['2026-09-16', '2026-09-20'],
+    );
+
+    expect(history.buckets.map((bucket) => bucket.key)).toEqual(['2026-09-16', '2026-09-20']);
+    expect(history.buckets[1]?.score['Anna']).toBe(history.buckets[0]?.score['Anna']);
+    expect(history.buckets[1]?.gamesPlayed['Anna']).toBe(history.buckets[0]?.gamesPlayed['Anna']);
+    expect(history.buckets[1]?.matchdayCount).toBe(1);
+  });
+
   it('groups a week into one bucket and counts its matchdays', () => {
     const history = standingsHistory(
       TOURNAMENT_ID,

@@ -379,16 +379,35 @@ describe('gameSchema – played games', () => {
     ).toThrow();
   });
 
-  it('accepts Hand, Schneider Ang., Schwarz Ang. and Offen together', () => {
+  it('accepts Hand, Schneider Ang., Schwarz Ang. and Offen together with the played levels', () => {
     const parsed = playedGameSchema.parse({
       ...validGame,
       hand: true,
       schneiderAnnounced: true,
       schwarzAnnounced: true,
       offen: true,
+      schneider: true,
+      schwarz: true,
     });
 
     expect(parsed.offen).toBe(true);
+    expect(parsed.schneider).toBe(true);
+    expect(parsed.schwarz).toBe(true);
+  });
+
+  it('requires the played level whenever a level was announced', () => {
+    expect(() =>
+      playedGameSchema.parse({ ...validGame, hand: true, schneiderAnnounced: true }),
+    ).toThrow(/Schneider Ang\. requires Schneider/);
+    expect(() =>
+      playedGameSchema.parse({
+        ...validGame,
+        hand: true,
+        schneiderAnnounced: true,
+        schwarzAnnounced: true,
+        schneider: true,
+      }),
+    ).toThrow(/Schwarz Ang\. requires Schwarz/);
   });
 
   it('requires Spitzen for a suit or grand game', () => {

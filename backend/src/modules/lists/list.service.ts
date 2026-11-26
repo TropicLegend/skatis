@@ -8,6 +8,7 @@ import { getTournamentRow } from '../tournaments/tournament.service.js';
 import { resolveTournamentPlayers } from '../players/player.service.js';
 import {
   assertDayNotOver,
+  assertExistingListAllowed,
   assertListDeletable,
   assertListEditable,
   assertMatchdayAllowed,
@@ -545,7 +546,7 @@ export async function setListPlayers(
   const tournament = await getTournamentRow(tournamentId);
   const list = await findListOrThrow(tournament.id, listId);
 
-  assertMatchdayAllowed(tournament, toIsoDate(list.matchday), role);
+  assertExistingListAllowed(tournament, toIsoDate(list.matchday), role);
   assertListEditable(list.status, role);
 
   if (list.games.length > 0) {

@@ -86,10 +86,20 @@ export const playedGameSchema = z
       path: ['matadors', 'count'],
     },
   )
-  // Step 4 – the result.
+  // Step 4 – the result. An announced level is always also a played level:
+  // whoever announces Schneider must have played Schneider, and the same holds
+  // for Schwarz. The reverse is not true – a level can be played unannounced.
   .refine((game) => game.gameType !== 'NULL' || (!game.schneider && !game.schwarz), {
     message: 'A null game cannot be Schneider or Schwarz',
     path: ['gameType'],
+  })
+  .refine((game) => !game.schneiderAnnounced || game.schneider, {
+    message: 'Schneider Ang. requires Schneider',
+    path: ['schneider'],
+  })
+  .refine((game) => !game.schwarzAnnounced || game.schwarz, {
+    message: 'Schwarz Ang. requires Schwarz',
+    path: ['schwarz'],
   })
   .refine((game) => !game.schwarz || game.schneider, {
     message: 'Schwarz requires Schneider',

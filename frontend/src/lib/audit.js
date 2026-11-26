@@ -130,7 +130,12 @@ export function describeAuditEntry(entry) {
     case 'game.created':
       return { title: 'Spiel eingetragen', detail: gameText(details) }
     case 'game.updated':
-      return { title: 'Spiel geändert', detail: gameText(details) }
+      return {
+        title: 'Spiel geändert',
+        detail: details.before && details.after
+          ? `${gameText(details.before)} → ${gameText(details.after)}`
+          : gameText(details),
+      }
     case 'game.deleted':
       return { title: 'Spiel gelöscht', detail: gameText(details) }
     case 'player.added':
@@ -159,11 +164,26 @@ export function describeAuditEntry(entry) {
         title: 'Spielergruppe geändert',
         detail: `${details.name ?? ''}${details.rank === undefined ? '' : ` · Rang ${details.rank}`}`,
       }
-    case 'group.members_changed':
+    case 'group.members_changed': {
+      const previous = details.previousGroups && typeof details.previousGroups === 'object'
+        ? details.previousGroups
+        : {}
+      const added = Array.isArray(details.addedPlayerNames) ? details.addedPlayerNames : []
+      const removed = Array.isArray(details.removedPlayerNames) ? details.removedPlayerNames : []
+      const moves = [
+        ...added.map((name) => {
+          const from = previous[name]
+          return from && from !== details.name
+            ? `${name}: ${from} → ${details.name}`
+            : `${name}: ohne Gruppe → ${details.name}`
+        }),
+        ...removed.map((name) => `${name}: ${previous[name] ?? details.name} → ohne Gruppe`),
+      ]
       return {
         title: `Mitglieder von ${details.name ?? 'Spielergruppe'} geändert`,
-        detail: listSummary('Spieler', details.playerNames),
+        detail: moves.length ? moves.join(' · ') : listSummary('Spieler', details.playerNames),
       }
+    }
     default:
       return { title: entry?.action ?? 'Änderung', detail: '' }
   }

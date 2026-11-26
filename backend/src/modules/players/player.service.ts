@@ -168,6 +168,32 @@ export async function setPlayerGroupMembers(
     });
   }
 
+  // The audit entry names the move, not only the resulting membership: a player
+  // who was checked in another group is reported as "Gruppe A → Gruppe B".
+  const currentMembers = await prisma.playerGroupMembership.findMany({
+    where: { groupId: group.id },
+    select: { playerId: true, player: { select: { name: true } } },
+  });
+  const currentIds = new Set(currentMembers.map((member) => member.playerId));
+  const requestedIds = new Set(players.map((player) => player.id));
+  const addedPlayerNames = players
+    .filter((player) => !currentIds.has(player.id))
+    .map((player) => player.name);
+  const removedPlayerNames = currentMembers
+    .filter((member) => !requestedIds.has(member.playerId))
+    .map((member) => member.player.name);
+  const previousMemberships = await prisma.playerGroupMembership.findMany({
+    where: { playerId: { in: players.map((player) => player.id) } },
+    select: { player: { select: { name: true } }, group: { select: { name: true } } },
+  });
+  const previousGroups: Record<string, string> = {}
+  for (const membership of previousMemberships) {
+    previousGroups[membership.player.name] = membership.group.name;
+  }
+  for (const name of removedPlayerNames) {
+    previousGroups[name] ??= group.name;
+  }
+
   await prisma.$transaction(async (transaction) => {
     await transaction.playerGroupMembership.deleteMany({ where: { groupId: group.id } });
     if (players.length > 0) {
@@ -188,7 +214,14 @@ export async function setPlayerGroupMembers(
     tournamentId: tournament.id,
     role,
     action: 'group.members_changed',
-    details: { groupId: group.id, name: group.name, playerNames: [...playerNames] },
+    details: {
+      groupId: group.id,
+      name: group.name,
+      playerNames: [...playerNames],
+      addedPlayerNames,
+      removedPlayerNames,
+      previousGroups,
+    },
   });
 
   return toPlayerGroupDto(updated);

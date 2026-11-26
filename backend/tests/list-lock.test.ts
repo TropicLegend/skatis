@@ -3,6 +3,7 @@ import { HttpError } from '../src/lib/http-error.js';
 import { isoWeekday, parseIsoDate, todayIso, toIsoDate } from '../src/lib/dates.js';
 import {
   assertDayNotOver,
+  assertExistingListAllowed,
   assertListDeletable,
   assertListEditable,
   assertMatchdayAllowed,
@@ -182,6 +183,19 @@ describe('the lock and the rejection of the API agree', () => {
     expect(() => assertMatchdayAllowed({ ...tournament, matchdays }, TODAY, 'MEMBER')).toThrow(
       HttpError,
     );
+  });
+
+  it('lets an admin change existing lists outside configured matchdays', () => {
+    const outside = { ...tournament, matchdays: [THIRD_WEEKDAY] };
+
+    expect(() => assertExistingListAllowed(outside, TODAY, 'ADMIN')).not.toThrow();
+    expect(() => assertExistingListAllowed(outside, TODAY, 'MEMBER')).toThrow(HttpError);
+  });
+
+  it('still refuses to create a list on a non-matchday – also for an admin', () => {
+    const outside = { ...tournament, matchdays: [THIRD_WEEKDAY] };
+
+    expect(() => assertMatchdayAllowed(outside, TODAY, 'ADMIN')).toThrow(HttpError);
   });
 });
 

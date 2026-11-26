@@ -58,8 +58,10 @@
 .tournament-ranking .chart-block{border-top:1px solid var(--line);margin-top:20px;padding:20px 0 0}
 .wizard-hint{margin:0 0 15px;text-align:center;font:11px 'DM Mono';color:var(--muted)}
 .wizard-hint strong{color:var(--ink)}
-.wizard-round-line{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
-.wizard-first-card{font-size:18px;font-weight:700;line-height:1.25;letter-spacing:-.3px;color:var(--ink)}
+.wizard-top{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:start;gap:16px;justify-content:normal}
+.wizard-top-info{min-width:0}
+.wizard-top .modal-close{grid-column:3;justify-self:end}
+.wizard-top .wizard-first-card{grid-column:2;justify-self:center;align-self:center;text-align:center;font-size:20px;font-weight:700;line-height:1.25;letter-spacing:-.3px;color:var(--ink)}
 .wizard-first-card strong{font-weight:800;color:var(--orange-dark)}
 .choice-card.sitting-out{background:#f0ece3;border-style:dashed;color:#8f938a}
 .sits-out-flag{position:absolute;bottom:8px;font:9px 'DM Mono';letter-spacing:.3px;color:#9a988f}
@@ -162,6 +164,10 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .group-matrix-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .group-matrix-heading strong{color:var(--ink)}
 .group-matrix-heading .icon-button{padding:4px}
+.group-matrix-actions{display:flex;align-items:center;gap:2px}
+.group-rename-form{display:flex;align-items:center;gap:3px;margin-bottom:5px}
+.group-rename-form input{min-width:0;height:30px;margin:0;padding:0 7px;font-size:11px}
+.group-rename-form .icon-button{padding:4px}
 .group-rank-field{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:3px;font-size:10px;color:var(--muted)}
 .group-rank-field select{min-height:30px;width:auto;padding:0 8px}
 .group-matrix td input{width:18px;height:18px;margin:0;accent-color:var(--moss)}
@@ -256,13 +262,21 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
 .tournament-statistics .feature-table-scroll{min-width:0;max-width:100%}
 .feature-distribution{min-width:440px}
 .create-list-modal{max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
+.password-reset-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:7px;background:#f7f3ea}
+.password-reset-row>div{display:grid;gap:4px;min-width:0}
+.password-reset-row strong{font-size:12px;color:var(--ink)}
+.password-reset-row small{font-size:10px;line-height:1.5;color:var(--muted)}
+.password-reset-row .secondary-button{flex:none}
+.password-backdrop{z-index:60;background:rgba(29,35,31,.58)}
+.password-modal{width:min(430px,100%);max-width:430px}
+@media(max-width:600px){.password-reset-row{align-items:stretch;flex-direction:column}.password-reset-row .secondary-button{width:100%;justify-content:center}}
 @media(max-width:800px){.player-tables{grid-template-columns:1fr}.stats-row.player-stats{grid-template-columns:repeat(2,1fr)}.stats-row.tournament-overview{grid-template-columns:repeat(2,1fr)}.pie-layout{grid-template-columns:1fr}.bar-lists{grid-template-columns:1fr;gap:22px}.stat-grid{grid-template-columns:1fr}}
 /* Umschalter der Protokoll-Darstellung (modern / klassisch) */
 .panel-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
 .table-style{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;cursor:pointer;font:9px 'DM Mono';letter-spacing:.4px;color:var(--muted)}
 .table-style span{transition:color .15s}
 .table-style span.active{color:var(--ink);font-weight:500}
-.table-style-note{margin:-4px 0 12px;font-size:10px;line-height:1.55;color:var(--muted)}
+.table-style-note{margin:-4px 0 12px;font-size:10px;line-height:1.55;text-align:right;color:var(--muted)}
 .table-style .switch{position:relative;width:34px;height:18px;border-radius:9px;background:#e4dfd4;border:1px solid var(--line);transition:background .15s}
 .table-style .switch i{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fbfaf6;box-shadow:0 1px 2px rgba(62,53,39,.25);transition:left .15s}
 .table-style.classic .switch{background:var(--mint)}
@@ -472,11 +486,11 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .ranking-card-item strong{font:600 15px 'DM Mono',monospace;color:var(--ink)}
 
   .game-cards{display:flex;flex-direction:column;gap:10px;padding:0 12px 12px}
-  .game-card{display:flex;flex-direction:column;gap:10px;padding:14px;background:#fbfaf6;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer}
+  .game-card{display:flex;flex-direction:column;gap:10px;min-width:0;max-width:100%;padding:14px;background:#fbfaf6;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer}
   .game-card:active{border-color:rgba(82,123,120,.45)}
   .game-card-head{display:flex;align-items:center;gap:10px}
   .game-card-round{font:500 12px 'DM Mono',monospace;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
-  .game-card-kind{display:flex;align-items:center;gap:6px;min-width:0;font:700 17px 'Manrope',sans-serif;color:var(--ink)}
+  .game-card-kind{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%;flex-wrap:wrap;font:700 17px 'Manrope',sans-serif;color:var(--ink)}
   .game-card-result{margin-left:auto;padding:5px 11px;border-radius:999px;background:rgba(29,35,31,.05);font:600 13px 'Manrope',sans-serif}
   .game-card-result.won{color:#2f6b46;background:rgba(63,122,85,.14)}
   .game-card-result.lost{color:#a8412c;background:rgba(191,81,66,.14)}
@@ -520,8 +534,10 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .modal-copy{font-size:14px}
 
   .wizard{display:flex;flex-direction:column;overflow:hidden;max-height:94dvh}
-  .wizard-top{padding:18px 18px 0}
-  .wizard-first-card{font-size:16px}
+  .wizard-top{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"info close" "first first";gap:8px 12px;padding:18px 18px 0}
+  .wizard-top-info{grid-area:info}
+  .wizard-top .modal-close{grid-area:close;grid-column:auto}
+  .wizard-top .wizard-first-card{grid-area:first;grid-column:auto;font-size:16px}
   .progress{padding:14px 18px 6px}
   .wizard-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px 18px}
   .wizard-footer{position:sticky;bottom:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 18px calc(14px + env(safe-area-inset-bottom));background:#fbfaf6;border-top:1px solid var(--line)}
@@ -725,10 +741,10 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
    (Spielnummer, Spielart, Spitzen, +/−), darunter die drei Werte je Spieler. Das
    zuletzt gespielte steht oben, darunter folgt die Ergebnistabelle. */
 .classic-games{display:grid;gap:10px;margin-top:12px}
-.classic-game{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
-.classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+.classic-game{min-width:0;max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
+.classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;max-width:100%;font-size:12px}
 .classic-round{font-weight:800}
-.classic-kind{display:inline-flex;align-items:center;gap:4px}
+.classic-kind{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;max-width:100%}
 .classic-matadors{color:var(--muted)}
 .classic-points{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
 .classic-grid{display:grid;gap:3px 8px;margin-top:8px;font-size:11px;overflow-x:auto}

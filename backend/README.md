@@ -246,7 +246,9 @@ A game follows the four steps of README.md. The API checks every one of them:
    as grand and at most 11 as suit game. Skipped for a null game, which must not
    send `matadors` at all.
 4. **Spielergebnis** – `schneider`, `schwarz` and `won`. `Schwarz` requires
-   `Schneider`, and a null game may not be Schneider or Schwarz.
+   `Schneider`; `Schneider Ang.` requires `schneider` and `Schwarz Ang.` requires
+   `schwarz`. The reverse is not required: a level can be played without being
+   announced. A null game may not be Schneider or Schwarz.
 
 The API derives the remaining properties:
 
@@ -447,8 +449,9 @@ A tournament has two passwords:
   matchday, enter games, correct or delete a game of that list and submit it.
   Nothing else, and only on matchdays of the tournament.
 - **admin password** → role `ADMIN`. May change matchdays, rename the tournament,
-  reset the player password, and modify or delete lists – at any time, including
-  past matchdays.
+  reset the player password, and modify or delete existing lists – at any time,
+  including past matchdays and days that are not configured matchdays. Creating
+  a **new** list still requires a configured matchday.
 
 Which password was used decides the role inside the returned token. Both
 passwords are stored as scrypt hashes; a password can never be read back.
@@ -556,8 +559,9 @@ any more:
   changed by an admin, who may `reopen` it to give it back to the members:
   `POST /api/tournaments/:tournamentId/lists/:listId/submit` and `…/reopen`.
 - **another day** – a member may only work on the list of the current matchday.
-  Lists of other days are read-only for them; an admin may also create and
-  correct lists of past or future matchdays.
+  Lists of other days are read-only for them. An admin may correct existing
+  lists and their games on any date; only creating a new list requires a
+  configured matchday.
 - **before the playing time** – today is in `matchdayWindows` and its `from` has
   not been reached: `WINDOW_NOT_STARTED`. Members may not create or change lists
   yet.
@@ -1118,7 +1122,10 @@ ranking is drawn from, and it follows the rules of
 
 Query: `?groupBy=matchday|week|month` (default `matchday`), optionally with
 `&groupId=<uuid>` or `&grouped=true` for a group-filtered or group-prioritized
-history. `&asOf=YYYY-MM-DD` limits it to the selected historical date.
+history. `&asOf=YYYY-MM-DD` limits it to the selected historical date. Every day
+with at least one list is included as a bucket – a day without a counted result
+keeps the previous score and games and therefore still appears in the player's
+"Nach Zeitraum" table.
 
 **Response** `200` – the month example of the table above:
 
