@@ -219,6 +219,15 @@ export function assertMatchdayAllowed(
   role: TournamentRole,
   now: Date = new Date(),
 ): void {
+  // No configured matchdays closes the tournament for new lists. Existing
+  // lists stay editable for admins through `assertExistingListAllowed`, so past
+  // results can still be corrected.
+  if (tournament.matchdays.length === 0) {
+    throw forbidden(
+      `"${tournament.name}" (${tournament.id}) has no matchdays configured – new lists are disabled`,
+    );
+  }
+
   const weekday = isoWeekday(parseIsoDate(matchday));
   if (!tournament.matchdays.includes(weekday)) {
     throw forbidden(

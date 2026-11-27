@@ -32,7 +32,6 @@ export const tournamentIdSchema = z
 /** ISO-8601 weekday numbers: 1 = Monday … 7 = Sunday. */
 export const matchdaysSchema = z
   .array(z.number().int().min(1).max(7))
-  .min(1, 'At least one matchday is required')
   .max(7, 'A week only has 7 days')
   .refine((days) => new Set(days).size === days.length, 'Matchdays must be unique');
 

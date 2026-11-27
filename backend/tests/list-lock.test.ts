@@ -197,6 +197,15 @@ describe('the lock and the rejection of the API agree', () => {
 
     expect(() => assertMatchdayAllowed(outside, TODAY, 'ADMIN')).toThrow(HttpError);
   });
+
+  it('closes new lists while no matchday is configured', () => {
+    const closed = { ...tournament, matchdays: [] };
+
+    expect(() => assertMatchdayAllowed(closed, TODAY, 'MEMBER')).toThrow(/no matchdays configured/);
+    expect(() => assertMatchdayAllowed(closed, TODAY, 'ADMIN')).toThrow(/no matchdays configured/);
+    expect(() => assertExistingListAllowed(closed, TODAY, 'ADMIN')).not.toThrow();
+    expect(listLockReasons(list('OPEN', TODAY), [], {}, 'MEMBER')).toContain('NOT_A_MATCHDAY');
+  });
 });
 
 describe('assertListDeletable', () => {

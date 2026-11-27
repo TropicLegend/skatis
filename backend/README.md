@@ -508,8 +508,9 @@ browser: the token itself stops working.
 
 ### Domain rules
 
-- `matchdays` are ISO weekdays (`1` = Monday … `7` = Sunday). A list only exists
-  for a matchday of its tournament.
+- `matchdays` are ISO weekdays (`1` = Monday … `7` = Sunday). The array may be
+  empty: the tournament then has no open matchdays and creating new lists is
+  disabled for every role. Admins can still correct existing lists.
 - `matchdayWindows` optionally gives a weekday a **playing time**, e.g.
   `{ "3": { "from": "18:00", "to": "22:30" } }` for a Wednesday. Before its
   `from` a `MEMBER` may not create or change lists – the evening has not started

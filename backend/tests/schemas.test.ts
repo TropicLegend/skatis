@@ -51,13 +51,17 @@ describe('createTournamentSchema', () => {
     expect(() => createTournamentSchema.parse({ ...validTournament, matchdays: [3, 3] })).toThrow();
   });
 
+  it('accepts clearing every matchday through the update schema', () => {
+    expect(updateTournamentSchema.parse({ matchdays: [] })).toEqual({ matchdays: [] });
+  });
+
   it('rejects weekdays outside of 1..7', () => {
     expect(() => createTournamentSchema.parse({ ...validTournament, matchdays: [0] })).toThrow();
     expect(() => createTournamentSchema.parse({ ...validTournament, matchdays: [8] })).toThrow();
   });
 
-  it('rejects empty matchdays', () => {
-    expect(() => createTournamentSchema.parse({ ...validTournament, matchdays: [] })).toThrow();
+  it('accepts empty matchdays – the tournament is then closed for new lists', () => {
+    expect(createTournamentSchema.parse({ ...validTournament, matchdays: [] }).matchdays).toEqual([]);
   });
 
   it('rejects short passwords', () => {

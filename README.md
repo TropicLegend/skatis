@@ -4,7 +4,7 @@ Skatis ist eine Webapp, unterteilt in Backend- und Frontendkomponente. :D :D :D 
 ## Grundidee
 * Es können Turniere verwaltet werden
   * Beim Erstellen setzt der Nutzer Turniername, Adminpasswort und normales Passwort – die beiden Passwörter müssen sich unterscheiden, sonst wäre jedes Mitglied Admin
-  * Beim Erstellen werden die Spieltage gewählt – auf Knopfdruck optional gleich mit einer Uhrzeit (von–bis, 24-Stunden-Format) je Spieltag
+  * Beim Erstellen werden die Spieltage gewählt – auf Knopfdruck optional gleich mit einer Uhrzeit (von–bis, 24-Stunden-Format) je Spieltag. Es darf auch kein Spieltag ausgewählt werden; dann ist das Turnier für neue Listen geschlossen, bestehende Listen kann der Admin weiterhin korrigieren.
   * Turniere beinhalten Listen, in die Spiele eingetragen werden (bzw. worden sind)
   * Es werden zwei Passwörter zur Verwaltung benötigt
     * Das Adminpasswort: Nutzer kann im Nachhinein Listen modifizieren, ggf. korrigieren und löschen - und außerdem Listen für die Vergangenheit erstellen. Nutzer kann Zeitraum in der Woche setzen/ändern in der andere Nutzer Listen erstellen und abgeben können - und dabei je Spieltag optional eine Uhrzeit (von bis) festlegen. Nutzer kann Tisch, Serie und Kürzel einer Liste korrigieren, falls sich ein Mitglied vertan hat, Spieler aus der Rangliste aus- oder einblenden, Gruppen mit Rang verwalten und die offizielle oder mathematisch korrekte Gegenspielpunkt-Variante wählen. Nutzer kann das normale Passwort neu setzen.
