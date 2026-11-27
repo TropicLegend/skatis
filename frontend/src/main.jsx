@@ -1533,9 +1533,9 @@ function PlayerView({ player, standing, tournament, token, lists = [], rankings 
     <div className="player-tables">
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Aufschlüsselung</span><h2>Nach Zeitraum</h2></div><span className="dealer-note">{groupByLabel}</span></div>
-        <table className="detail-table"><thead><tr><th>Stand</th><th>Spiele gesamt</th><th>Punktestand</th><th>Ø Punkte je Spiel</th></tr></thead><tbody>
+        <div className="period-table-scroll"><table className="detail-table period-table"><thead><tr><th>Stand</th><th>Spiele gesamt</th><th>Punktestand</th><th>Ø Punkte je Spiel</th></tr></thead><tbody>
           {periods.length ? periods.map((period) => <tr key={period.key}><td>{period.label}</td><td>{period.gamesPlayed}</td><td>{period.score}</td><td><strong>{period.averageScore ?? '–'}</strong></td></tr>) : <tr><td colSpan={4} className="muted">Noch kein gewerteter Spieltag.</td></tr>}
-        </tbody></table>
+        </tbody></table></div>
       </section>
       <section className="player-panel">
         <div className="section-heading"><div><span className="eyebrow">Bilanz</span><h2>Seine Abende</h2></div><span className="dealer-note">{evenings.length} gewertete Zettel · antippen öffnet den Tisch</span></div>
