@@ -407,9 +407,9 @@ td.summary-label{font-weight:800;color:var(--ink);white-space:nowrap}
   .workspace-title h1{font-size:30px}
   .workspace-actions{display:grid;grid-template-columns:1fr;gap:10px;margin-top:16px}
   .workspace-actions .primary-button,.workspace-actions .secondary-button{width:100%}
-   .inline-game-entry{display:inline-flex}
-   .desktop-game-entry{display:none}
-   .workspace-grid-with-game-action{padding-bottom:0}
+   .inline-game-entry{display:none}
+   .desktop-game-entry{display:inline-flex;right:14px;bottom:calc(18px + env(safe-area-inset-bottom))}
+   .workspace-grid-with-game-action{padding-bottom:96px}
    .letter-stepper .icon-button{width:24px;height:18px;min-height:0;border-radius:3px}
   .panel-heading{padding:14px}
   .panel-tools{gap:10px}
@@ -745,6 +745,7 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
    zuletzt gespielte steht oben, darunter folgt die Ergebnistabelle. */
 .classic-games{display:grid;gap:10px;margin-top:12px}
 .classic-game{min-width:0;max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
+.classic-game.round-end,.game-card.round-end{border-bottom:3px solid #c9c3b6;margin-bottom:5px}
 .classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;max-width:100%;font-size:12px}
 .classic-round{font-weight:800}
 .classic-kind{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;max-width:100%}

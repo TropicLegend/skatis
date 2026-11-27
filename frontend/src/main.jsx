@@ -1744,7 +1744,6 @@ function ListWorkspace({ list, tournament, role, token, onBack, onDeleted, onLog
         {role === 'ADMIN' && list.status === 'SUBMITTED' ? <button className="secondary-button" onClick={() => updateList('reopen')}><UnlockKeyhole size={16} /> Öffnen</button> : <button className="secondary-button" disabled={list.locked || list.counted} onClick={() => setConfirmSubmit(true)}><LockKeyhole size={16} /> Liste abgeben</button>}
         {role === 'ADMIN' && <button className="secondary-button" onClick={() => setShowSettings(true)}><Pencil size={16} /> Tisch/Serie</button>}
         {canDeleteList && <button className="icon-button danger" title="Liste löschen" onClick={deleteList}><Trash2 size={18} /></button>}
-        <button className="primary-button inline-game-entry" disabled={list.locked} onClick={startGameEntry}><Plus size={17} /> Spiel eintragen</button>
       </div>
     </div>
     <button className="primary-button desktop-game-entry" disabled={list.locked} onClick={startGameEntry}><Plus size={18} /> Spiel eintragen</button>
@@ -1781,7 +1780,8 @@ function ClassicGames({ games, lineup, roundValue, passedOutCounts, canEdit, onE
     {games.map((game, index) => {
       const declarer = game.passedOut ? null : game.declarer
       const cell = (name, field, show) => <span key={name} className={`classic-cell ${field}${name === declarer ? ' declarer' : ''}`}>{show && name === declarer ? roundValue(game, name, field) ?? '' : ''}</span>
-      return <div key={game.id} className="classic-game card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
+      const roundEnd = lineup.length > 0 && game.position % lineup.length === 0
+      return <div key={game.id} className={`classic-game card-enter${roundEnd ? ' round-end' : ''}`} style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
         <div className="classic-game-head">
           <span className="classic-round">Spiel {game.position}</span>
           <span className="classic-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
@@ -1838,8 +1838,8 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
   // Auf dem Handy ist das Protokoll eine Kartenliste – die breite Tabelle mit ihren
   // Spieler-Blöcken bleibt dem größeren Bildschirm.
   const mobile = useMobile()
-  // Das zuletzt gespielte Spiel steht oben – am Tisch will man es ohne Scrollen sehen.
-  const orderedGames = mobile ? [...games].reverse() : games
+  // Auf dem Handy gilt dieselbe Reihenfolge wie am Desktop: Spiel 1 zuerst.
+  const orderedGames = games
   function chooseStyle(next) { setStyle(next); localStorage.setItem(TABLE_STYLE_KEY, next) }
   const roundValue = (game, name, field) => roundsByPosition.get(game.position)?.[field]?.[name]
   const columns = (classic ? 6 + lineup.length * 3 : 7) + (canEdit ? 1 : 0)
@@ -1883,7 +1883,8 @@ function GameTable({ list, rounds = [], results = null, canEdit = false, onEdit,
     {classic ? <ClassicGames games={orderedGames} lineup={lineup} roundValue={roundValue} passedOutCounts={passedOutCounts} canEdit={canEdit} onEdit={onEdit} onSelect={onSelect} /> : <div className="game-cards">
       {orderedGames.length ? orderedGames.map((game, index) => {
         const delta = game.passedOut ? null : roundValue(game, game.declarer, 'delta') ?? null
-        return <div key={game.id} className="game-card card-enter" style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
+        const roundEnd = lineup.length > 0 && game.position % lineup.length === 0
+        return <div key={game.id} className={`game-card card-enter${roundEnd ? ' round-end' : ''}`} style={{ '--i': index }} role="button" tabIndex={0} title="Spieldetails anzeigen" onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(game) } }}>
           <div className="game-card-head">
             <span className="game-card-round">Spiel {game.position}</span>
             <span className="game-card-kind">{game.passedOut ? 'Eingepasst' : <>{gameTypeLabel(game.gameType)}{levelsOf(game).map((level) => <span key={level.key} className={`level-badge ${level.announced ? 'announced' : ''}`} title={level.title}>{level.short}</span>)}</>}</span>
