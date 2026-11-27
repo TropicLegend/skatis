@@ -2295,7 +2295,7 @@ function GameWizard({ list, existingGame, token, tournamentId, error = '', onClo
 
       <div className="wizard-footer">
         <button className="secondary-button" onClick={() => step > 1 ? go(previousStep) : onClose()}><ArrowLeft size={16} /> {step > 1 ? 'Zurück' : 'Abbrechen'}</button>
-        <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || (step === 2 && game.gameType === 'NULL') || game.passedOut ? (existingGame ? 'Spiel aktualisieren' : 'Spiel eintragen') : 'Weiter'} <ArrowRight size={16} /></button>
+        <button className="primary-button" disabled={!canNext} onClick={next}>{step === 4 || game.passedOut ? (existingGame ? 'Spiel aktualisieren' : 'Spiel eintragen') : 'Weiter'} <ArrowRight size={16} /></button>
       </div>
     </div>
   </div>

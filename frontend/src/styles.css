@@ -129,7 +129,7 @@ td.passed-col{padding:14px 6px}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
 /* Klassisches Protokoll: dickere Linie nach jedem vollständigen Geberzyklus */
-.game-row.round-end td{border-bottom:2px solid var(--line)}
+.game-row.round-end td{border-bottom:3px solid var(--muted)}
 /* Klassisches Protokoll: die vier Abschlusszeilen unter den Spielen */
 tr.summary>td{background:rgba(37,48,43,.03)}
 tr.summary td.spielpunkte,tr.summary td.spiel-count{color:var(--ink);font-size:11px;font-weight:800}
@@ -745,7 +745,7 @@ html.desktop-mode .topbar-mobile{display:inline-grid}
    zuletzt gespielte steht oben, darunter folgt die Ergebnistabelle. */
 .classic-games{display:grid;gap:10px;margin-top:12px}
 .classic-game{min-width:0;max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fffdf9}
-.classic-game.round-end,.game-card.round-end{border-bottom:3px solid #c9c3b6;margin-bottom:5px}
+.classic-game.round-end,.game-card.round-end{border-bottom:4px solid var(--muted);margin-bottom:8px}
 .classic-game-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0;max-width:100%;font-size:12px}
 .classic-round{font-weight:800}
 .classic-kind{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;max-width:100%}
