@@ -129,7 +129,7 @@ td.passed-col{padding:14px 6px}
 td.value-cell.plus,td.value-cell.up{color:#3f7a55}
 td.value-cell.minus,td.value-cell.down{color:var(--red)}
 /* Klassisches Protokoll: dickere Linie nach jedem vollständigen Geberzyklus */
-.game-row.round-end td{border-bottom:3px solid var(--muted)}
+.game-row.round-end td{border-bottom:2px solid var(--line)}
 /* Klassisches Protokoll: die vier Abschlusszeilen unter den Spielen */
 tr.summary>td{background:rgba(37,48,43,.03)}
 tr.summary td.spielpunkte,tr.summary td.spiel-count{color:var(--ink);font-size:11px;font-weight:800}
